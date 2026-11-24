@@ -28,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor.add_argument("--json", action="store_true", help="machine-readable output")
     doctor.add_argument(
+        "--no-contract",
+        action="store_true",
+        help="skip the hermes one-shot contract probe (about a minute) and report it unmeasured",
+    )
+    doctor.add_argument(
         "--require",
         metavar="BACKEND",
         help="exit non-zero unless this backend is VERIFIED",
@@ -38,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
 def cmd_doctor(args: argparse.Namespace) -> int:
     from .doctor import VERIFIED, diagnose
 
-    report = diagnose()
+    report = diagnose(contract=not args.no_contract)
     if args.json:
         print(json.dumps(report.as_dict(), indent=2))
     else:

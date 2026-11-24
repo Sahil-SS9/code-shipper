@@ -92,6 +92,44 @@ class HarnessStatusTests(unittest.TestCase):
         if claude is not None and claude.status != UNSUPPORTED:
             self.assertEqual(claude.status, UNVERIFIED)
 
+    def test_a_failed_contract_probe_downgrades_hermes(self) -> None:
+        # present but not working must not read as VERIFIED
+        with mock.patch("shutil.which", return_value="/usr/bin/hermes"), \
+             mock.patch("subprocess.run") as run, \
+             mock.patch("code_shipper.harness.contract_probe.probe",
+                        return_value={"ok": False, "reason": "provider never called"}):
+            run.return_value = mock.Mock(returncode=0, stdout="Hermes Agent v9", stderr="")
+            checks = check_harness("hermes")
+        contract = next(c for c in checks if c.name == "contract one-shot")
+        self.assertEqual(contract.status, UNVERIFIED)
+        self.assertIn("never called", contract.detail)
+
+    def test_a_passing_contract_probe_reports_verified(self) -> None:
+        with mock.patch("shutil.which", return_value="/usr/bin/hermes"), \
+             mock.patch("subprocess.run") as run, \
+             mock.patch("code_shipper.harness.contract_probe.probe",
+                        return_value={"ok": True, "reason": "one-shot completed"}):
+            run.return_value = mock.Mock(returncode=0, stdout="Hermes Agent v9", stderr="")
+            checks = check_harness("hermes")
+        self.assertEqual(Report().overall(checks), VERIFIED)
+
+    def test_a_probe_that_raises_does_not_crash_doctor(self) -> None:
+        with mock.patch("shutil.which", return_value="/usr/bin/hermes"), \
+             mock.patch("subprocess.run") as run, \
+             mock.patch("code_shipper.harness.contract_probe.probe",
+                        side_effect=RuntimeError("no temp dir")):
+            run.return_value = mock.Mock(returncode=0, stdout="Hermes Agent v9", stderr="")
+            checks = check_harness("hermes")
+        contract = next(c for c in checks if c.name == "contract one-shot")
+        self.assertEqual(contract.status, UNVERIFIED)
+
+    def test_a_missing_hermes_is_unsupported_without_running_a_probe(self) -> None:
+        with mock.patch("shutil.which", return_value=None), \
+             mock.patch("code_shipper.harness.contract_probe.probe") as probe_mock:
+            checks = check_harness("hermes")
+        self.assertEqual(Report().overall(checks), UNSUPPORTED)
+        probe_mock.assert_not_called()
+
     def test_missing_presets_are_unsupported(self) -> None:
         checks = check_harness("command")
         for check in checks:
@@ -144,13 +182,13 @@ class EnvAuditTests(unittest.TestCase):
 
 class DiagnoseTests(unittest.TestCase):
     def test_diagnose_returns_a_report_and_never_raises(self) -> None:
-        report = doctor.diagnose(env={"PATH": "/usr/bin"})
+        report = doctor.diagnose(env={"PATH": "/usr/bin"}, contract=False)
         self.assertIsInstance(report, Report)
         self.assertIn("docker-rootless", report.backends)
 
     def test_it_does_not_claim_docker_when_docker_is_absent(self) -> None:
         with mock.patch("shutil.which", return_value=None):
-            report = doctor.diagnose(env={"PATH": "/usr/bin"})
+            report = doctor.diagnose(env={"PATH": "/usr/bin"}, contract=False)
         self.assertEqual(report.backend_status("docker-rootless"), UNSUPPORTED)
 
 
@@ -162,17 +200,17 @@ class CliTests(unittest.TestCase):
         )
 
     def test_doctor_prints_a_report(self) -> None:
-        proc = self.run_cli("doctor")
+        proc = self.run_cli("doctor", "--no-contract")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("container backends:", proc.stdout)
 
     def test_doctor_json_is_valid(self) -> None:
-        proc = self.run_cli("doctor", "--json")
+        proc = self.run_cli("doctor", "--json", "--no-contract")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("backends", json.loads(proc.stdout))
 
     def test_require_refuses_an_unverified_backend(self) -> None:
-        proc = self.run_cli("doctor", "--require", "bubblewrap")
+        proc = self.run_cli("doctor", "--require", "bubblewrap", "--no-contract")
         if "bubblewrap: VERIFIED" in proc.stdout:
             self.assertEqual(proc.returncode, 0)
         else:
@@ -180,7 +218,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("not VERIFIED", proc.stderr)
 
     def test_require_unknown_backend_fails(self) -> None:
-        self.assertEqual(self.run_cli("doctor", "--require", "imaginary").returncode, 2)
+        self.assertEqual(self.run_cli("doctor", "--require", "imaginary", "--no-contract").returncode, 2)
 
     def test_version_works(self) -> None:
         proc = self.run_cli("--version")

@@ -150,12 +150,38 @@ def check_containment_controls() -> list[Check]:
     return [Check("platform", UNSUPPORTED, f"unknown platform {sys.platform}")]
 
 
-def check_harness(name: str) -> list[Check]:
-    from .harness.adapters import CommandHarness, HermesHarness
+def check_harness(name: str, *, contract: bool = True) -> list[Check]:
+    from .harness.adapters import CommandHarness
 
     if name == "hermes":
-        ok, reason = HermesHarness().available()
-        return [Check("hermes CLI", VERIFIED if ok else UNSUPPORTED, reason)]
+        from .harness.adapters import HermesHarness
+
+        present, reason = HermesHarness().available()
+        if not present:
+            return [Check("hermes CLI", UNSUPPORTED, reason)]
+        # Present is not the same as working. The contract is measured with a real one-shot against
+        # a loopback provider in a throwaway HERMES_HOME, never the user's own.
+        checks = [Check("hermes CLI", VERIFIED, reason)]
+        if not contract:
+            checks.append(
+                Check("contract one-shot", UNVERIFIED, "not run (--no-contract)")
+            )
+            return checks
+        try:
+            from .harness.contract_probe import probe
+
+            result = probe()
+        except Exception as exc:  # noqa: BLE001 - a probe failure is a status, not a crash
+            checks.append(Check("contract one-shot", UNVERIFIED, f"probe could not run: {exc}"))
+            return checks
+        checks.append(
+            Check(
+                "contract one-shot",
+                VERIFIED if result.get("ok") else UNVERIFIED,
+                str(result.get("reason", ""))[:200],
+            )
+        )
+        return checks
 
     if name == "command":
         checks: list[Check] = []
@@ -218,8 +244,13 @@ def env_audit(env: dict[str, str] | None = None, *, home: str | None = None) -> 
     return checks
 
 
-def diagnose(*, env: dict[str, str] | None = None) -> Report:
-    """Run every check and return the report. Never raises: a failing check is a status."""
+def diagnose(*, env: dict[str, str] | None = None, contract: bool = True) -> Report:
+    """Run every check and return the report. Never raises: a failing check is a status.
+
+    ``contract=False`` skips the hermes one-shot probe, which takes about a minute because it starts
+    a real agent session. That makes the probe opt-out for the cases where a quick inventory is what
+    is wanted, and it is why the CLI tests use it rather than waiting a minute each.
+    """
     report = Report()
     report.backends["docker-rootless"] = check_docker_rootless() + check_containment_controls()
     report.backends["bubblewrap"] = [
@@ -233,6 +264,6 @@ def diagnose(*, env: dict[str, str] | None = None) -> Report:
         )
     ]
     for name in ("hermes", "command", "openai_compat"):
-        report.harnesses[name] = check_harness(name)
+        report.harnesses[name] = check_harness(name, contract=contract)
     report.harnesses["environment"] = env_audit(env)
     return report
