@@ -138,14 +138,47 @@ so no completion is possible.
 
 ### Fail-closed, mode 2: broker stopped mid-run
 
-`run rc 1` after 205.9s. All 27 canaries passed (the socket existed when the run started and the
-network policy was unchanged). `adapter calls 0`, `completions 0`, no Hermes output.
+`run rc 5` in 85.9s, of which 60s was our own wall clock before we killed Hermes. All 27 canaries
+passed (the socket existed when the run started and the network policy was unchanged).
+**`adapter calls 0`, `adapter refused 7`, `completions 0`.**
 
-This one is the strongest of the three. Hermes was already running with a live adapter, the broker
-died, and the only outcome was 206 seconds of retries ending in a non-zero exit with zero
-completions. Getting this right took a fix: my first attempt passed a delay the worker ignored, so
-the run finished before the broker was stopped and the test proved nothing. The delay hook is now in
-the Hermes worker and the receipt records a 205-second run, which is what a real refusal looks like.
+This is the strongest of the three, and it is the case that earlier did not prove what it claimed.
+
+The gap that was closed: the adapter used to count only *successful* calls, and the adapter's
+stderr went to a pipe that was discarded when a timeout killed the run. So the old receipt showed
+only `subprocess.TimeoutExpired` and could not distinguish "Hermes tried and was refused" from
+"Hermes never reached the adapter at all". The boundary held either way, but the evidence did not
+show it.
+
+Three changes:
+
+1. The adapter keeps a **second counter for refused attempts** (`adapter-refused.json`), incremented
+   per refusal, separate from the completion counter. Only requests the broker actually served count
+   as completions.
+2. The adapter's output goes to a **file, not a pipe**, so it survives a hard kill and cannot block
+   on a full pipe. The receipt records its tail.
+3. **The wall clock is ours.** `run_hermes` uses `Popen` plus our own timeout, kills the process
+   itself, and returns that as a result rather than letting the timeout escape as an exception. The
+   receipt records `timed_out: true`.
+
+Observed adapter log from that run:
+
+```
+adapter: refused #5: broker unreachable: No such file or directory
+adapter: "POST /v1/chat/completions HTTP/1.1" 502 -
+adapter: refused #6: broker unreachable: No such file or directory
+adapter: "POST /v1/chat/completions HTTP/1.1" 502 -
+adapter: refused #7: broker unreachable: No such file or directory
+```
+
+The mid-run verdict now **requires** at least one refused attempt, zero completions, a non-empty
+adapter log and a non-zero exit. It was checked against deliberately broken receipts: zero refusals,
+empty log, one leaked completion, exit code 0, and a canary failure each produce FAIL. Before this,
+all five would have passed.
+
+This also confirms the timeout finding: Hermes ignored its own 120-second `--run-budget` and kept
+retrying. Only our own kill stopped it. Our timeouts and killing the Hermes process have to be what
+ends a run — the harness will not do it.
 
 ## A finding worth carrying into the product
 
@@ -189,19 +222,23 @@ python3 -B spikes/b1/cp3_run.py
 # CP3: fail closed, broker stopped before the run
 python3 -B spikes/b1/cp3_run.py --stop-broker-before-run
 
-# CP3: fail closed, broker stopped mid-run (takes ~3.5 minutes)
+# CP3: fail closed, broker stopped mid-run (takes ~90s; NOT part of --full)
 python3 -B spikes/b1/cp3_run.py --stop-broker-mid-run
 ```
 
 Each prints a summary and exits 0 only when its verdict passes. `--json` prints the full receipt;
 `--keep` retains the staging tree.
 
+`./scripts/run_tests.sh --full` covers the unit tests, all CP2 scenarios and the CP3 normal plus
+before-run cases. It does **not** include the mid-run case: that one needs `--full --slow`, because
+it is a real 85-second refusal loop rather than a fast check.
+
 ## Test output (real)
 
 ```
 $ ./scripts/run_tests.sh
 ----------------------------------------------------------------------
-Ran 122 tests in 21.256s
+Ran 127 tests in 22.273s
 
 OK
 ```

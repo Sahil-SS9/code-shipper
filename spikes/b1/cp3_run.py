@@ -220,11 +220,13 @@ def main(argv: list[str] | None = None) -> int:
         cmd = container_argv(spec, name=name, with_canary=not args.no_canary)
 
         if args.stop_broker_mid_run:
+            # Give Hermes a real wall clock of our own, not one inherited from the harness.
             (work / "task.json").write_text(
                 json.dumps(
                     {
                         "prompt": "Reply with exactly one word: pong. No punctuation, no explanation.",
                         "delay_s": 25,
+                        "timeout_s": 60,
                     }
                 ),
                 encoding="utf-8",
@@ -273,6 +275,18 @@ def main(argv: list[str] | None = None) -> int:
         calls_file = work / "adapter-calls.json"
         receipt["adapter_calls"] = (
             json.loads(calls_file.read_text(encoding="utf-8"))["calls"] if calls_file.exists() else 0
+        )
+        refused_file = work / "adapter-refused.json"
+        receipt["adapter_refused"] = (
+            json.loads(refused_file.read_text(encoding="utf-8"))["refused"]
+            if refused_file.exists()
+            else 0
+        )
+        adapter_log = work / "adapter.log"
+        receipt["adapter_log_tail"] = (
+            adapter_log.read_text(encoding="utf-8", errors="replace")[-4000:]
+            if adapter_log.exists()
+            else ""
         )
 
         entries = (
@@ -356,12 +370,25 @@ def _fail_closed_verdict(receipt: dict) -> bool:
         failed = canary.get("failed") or []
         if failed != ["broker socket present"]:
             return False
+        # the run stopped at the canary, so nothing should have reached the adapter at all
+        return receipt.get("adapter_refused", 0) == 0 and receipt.get("adapter_calls", 0) == 0
+
+    if receipt.get("broker_stopped_mid_run"):
+        # The socket existed when the run began, so every canary must have passed.
+        if canary.get("failed"):
+            return False
+        # And the run must PROVE it tried and was refused. Without this the record cannot tell a
+        # refused attempt from a run that never reached the adapter at all.
+        if receipt.get("adapter_refused", 0) < 1:
+            return False
+        if receipt.get("adapter_calls", 0) != 0:
+            return False
+        if not str(receipt.get("adapter_log_tail") or "").strip():
+            return False
         return True
 
-    # mid-run: the socket existed when the run began, so every canary must have passed
-    if canary.get("failed"):
-        return False
-    return True
+    # Neither fail-closed flag is set, so this is not a fail-closed receipt at all.
+    return False
 
 
 def _summary(receipt: dict) -> None:

@@ -71,15 +71,18 @@ def main() -> int:
             print("hermes-run: adapter never became ready", file=sys.stderr)
             return 4
 
-        hermes = run_hermes(prompt)
+        hermes = run_hermes(prompt, timeout=task.get("timeout_s", RUN_BUDGET_S + 60))
         result["hermes"] = hermes
+        # Written before the adapter is stopped: a hard stop must not be able to lose the evidence.
+        result["adapter_calls"] = read_counter("calls")
+        result["adapter_refused"] = read_counter("refused")
+        result["adapter_log_tail"] = read_adapter_log()
         (WORK / "hermes-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
 
-        adapter_calls = read_adapter_calls()
-        result["adapter_calls"] = adapter_calls
-        (WORK / "hermes-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-
-        print(f"hermes-run: exit {hermes['returncode']}, adapter calls {adapter_calls}")
+        print(
+            f"hermes-run: exit {hermes['returncode']}, "
+            f"completions {result['adapter_calls']}, refused {result['adapter_refused']}"
+        )
         return 0 if hermes["returncode"] == 0 else 5
     finally:
         stop_adapter(adapter_proc)
@@ -107,9 +110,16 @@ agent:
 
 
 def start_adapter() -> subprocess.Popen:
+    """Start the adapter with its output going to a file.
+
+    A PIPE that is never drained can fill and block the adapter mid-run, and with STOPPED/PIPE the
+    output is lost when the process is killed. A file survives both, so the refusal evidence is
+    still there after a hard stop.
+    """
+    log = open(WORK / "adapter.log", "w", encoding="utf-8")
     proc = subprocess.Popen(
         [sys.executable, "/app/adapter.py", str(ADAPTER_PORT)],
-        stdout=subprocess.PIPE,
+        stdout=log,
         stderr=subprocess.STDOUT,
         text=True,
         cwd="/app",
@@ -124,6 +134,7 @@ def stop_adapter(proc: subprocess.Popen) -> None:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(timeout=5)
 
 
 def wait_for_adapter(*, deadline: float) -> bool:
@@ -140,18 +151,32 @@ def wait_for_adapter(*, deadline: float) -> bool:
     return False
 
 
-def read_adapter_calls() -> int | None:
-    """The adapter counts every forwarded request on disk, so no shutdown hook is needed."""
-    path = WORK / "adapter-calls.json"
+def read_counter(kind: str) -> int:
+    """Read a counter the adapter wrote. Missing means zero, which is itself evidence."""
+    path = WORK / f"adapter-{kind}.json"
     if not path.exists():
         return 0
     try:
-        return int(json.loads(path.read_text(encoding="utf-8"))["calls"])
-    except (KeyError, ValueError, json.JSONDecodeError):
-        return None
+        return int(json.loads(path.read_text(encoding="utf-8"))[kind])
+    except (OSError, KeyError, ValueError, json.JSONDecodeError):
+        return -1
 
 
-def run_hermes(prompt: str) -> dict:
+def read_adapter_log(*, tail: int = 4000) -> str:
+    """The adapter's own output, including one line per refusal."""
+    try:
+        text = (WORK / "adapter.log").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return text[-tail:]
+
+
+def run_hermes(prompt: str, *, timeout: float) -> dict:
+    """Run one bounded Hermes session. On timeout we kill it ourselves and still return evidence.
+
+    Hermes ignores its own --run-budget when the provider keeps refusing: it retries for minutes.
+    So the wall clock here is ours, and a timeout is a result to record, not an exception to raise.
+    """
     env = {
         "PATH": "/opt/hermes/bin:/opt/hermes/.venv/bin:/usr/local/bin:/usr/bin:/bin",
         "HOME": str(WORK / "hermes-home"),
@@ -175,21 +200,34 @@ def run_hermes(prompt: str) -> dict:
         "--source", "tool",
     ]
     started = time.time()
-    proc = subprocess.run(
+    proc = subprocess.Popen(
         argv,
-        input=prompt,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         cwd=str(WORK),
         env=env,
-        capture_output=True,
         text=True,
-        timeout=RUN_BUDGET_S + 60,
     )
+    killed = False
+    try:
+        out, err = proc.communicate(input=prompt, timeout=timeout)
+        returncode = proc.returncode
+    except subprocess.TimeoutExpired:
+        # Our budget, not Hermes's. Kill it and record that we did.
+        killed = True
+        proc.kill()
+        out, err = proc.communicate()
+        returncode = proc.returncode if proc.returncode is not None else -9
+
     return {
         "argv": argv,
-        "returncode": proc.returncode,
+        "returncode": returncode,
         "seconds": round(time.time() - started, 2),
-        "stdout": proc.stdout[-4000:],
-        "stderr": proc.stderr[-4000:],
+        "timed_out": killed,
+        "timeout_s": timeout,
+        "stdout": (out or "")[-4000:],
+        "stderr": (err or "")[-4000:],
     }
 
 

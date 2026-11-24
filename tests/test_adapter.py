@@ -298,13 +298,17 @@ class StreamingTests(AdapterCase):
 
 
 class CallCountingTests(AdapterCase):
-    """The call count is evidence, so it must actually count."""
+    """The counters are evidence, so they must actually count."""
 
     def read_calls(self) -> int:
         return int(json.loads((self.tmp / "adapter-calls.json").read_text())["calls"])
 
+    def read_refused(self) -> int:
+        return int(json.loads((self.tmp / "adapter-refused.json").read_text())["refused"])
+
     def test_no_calls_file_before_any_request(self) -> None:
         self.assertFalse((self.tmp / "adapter-calls.json").exists())
+        self.assertFalse((self.tmp / "adapter-refused.json").exists())
 
     def test_each_forwarded_request_increments_the_count(self) -> None:
         for _ in range(3):
@@ -319,6 +323,47 @@ class CallCountingTests(AdapterCase):
     def test_streaming_requests_are_counted(self) -> None:
         self.post_stream({"messages": [{"role": "user", "content": "hi"}], "stream": True})
         self.assertEqual(self.read_calls(), 1)
+
+
+class RefusalCountingTests(AdapterCase):
+    """A refusal must leave evidence that an attempt was made.
+
+    Without this, a fail-closed run cannot be told apart from a run that never reached the adapter,
+    which is the difference between proving the boundary and assuming it.
+    """
+
+    broker_ok = False
+
+    def read_refused(self) -> int:
+        return int(json.loads((self.tmp / "adapter-refused.json").read_text())["refused"])
+
+    def test_refusal_increments_the_refused_counter(self) -> None:
+        self.post("/v1/chat/completions", {"messages": [{"role": "user", "content": "hi"}]})
+        self.assertEqual(self.read_refused(), 1)
+
+    def test_refusal_does_not_increment_the_completion_counter(self) -> None:
+        self.post("/v1/chat/completions", {"messages": [{"role": "user", "content": "hi"}]})
+        self.assertFalse((self.tmp / "adapter-calls.json").exists())
+
+    def test_repeated_refusals_all_count(self) -> None:
+        for _ in range(3):
+            self.post("/v1/chat/completions", {"messages": [{"role": "user", "content": "hi"}]})
+        self.assertEqual(self.read_refused(), 3)
+
+    def test_streaming_refusal_is_also_counted(self) -> None:
+        self.post("/v1/chat/completions", {"messages": [{"role": "user", "content": "hi"}], "stream": True})
+        self.assertEqual(self.read_refused(), 1)
+
+
+class DeadBrokerRefusalTests(AdapterCase):
+    def test_unreachable_broker_increments_refused(self) -> None:
+        self.broker.stop()
+        os.unlink(self.tmp / "broker.sock")
+        self.post("/v1/chat/completions", {"messages": [{"role": "user", "content": "hi"}]})
+        refused = json.loads((self.tmp / "adapter-refused.json").read_text())["refused"]
+        self.assertEqual(refused, 1)
+
+
 class CredentialFreeTests(unittest.TestCase):
     def test_adapter_source_contains_no_credential_or_provider_url(self) -> None:
         source = Path(adapter.__file__).read_text(encoding="utf-8")

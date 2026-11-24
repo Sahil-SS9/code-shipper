@@ -1,20 +1,20 @@
 {
-  "scratch": "/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz",
-  "container": "cs-cp3-3b2bfe4647",
+  "scratch": "/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7",
+  "container": "cs-cp3-c03e62d0b4",
   "credential": "synthetic",
   "run_dir_mode": "0o700",
   "run_dir_uid": 1001,
   "socket_mode": "0o666",
   "broker": {
-    "socket": "/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/broker/broker.sock",
+    "socket": "/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/broker/broker.sock",
     "capability_public": {
-      "run_id": "cp3-3c18812c",
+      "run_id": "cp3-980eb9e2",
       "provider": "local",
       "model": "auto",
       "max_requests": 8,
       "requests_used": 0,
       "max_output_tokens": 1024,
-      "expires_at": 1795545171.7689009,
+      "expires_at": 1795547417.6994627,
       "revoked": false
     },
     "max_requests": 8
@@ -35,19 +35,19 @@
     ],
     "mounts": {
       "/source": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/source",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/source",
         "mode": "ro"
       },
       "/work": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/work",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/work",
         "mode": "rw"
       },
       "/app": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/app",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/app",
         "mode": "ro"
       },
       "/run/cs": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/broker",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/broker",
         "mode": "ro"
       }
     },
@@ -58,8 +58,8 @@
   "broker_stopped_before_run": true,
   "run": {
     "returncode": 1,
-    "seconds": 0.39,
-    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=1783970]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nFAIL broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\n",
+    "seconds": 0.37,
+    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=2109564]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nFAIL broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\n",
     "stderr_tail": ""
   },
   "container_removed": true,
@@ -116,17 +116,17 @@
         "detail": ""
       },
       {
-        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/outside/out-of-container-canary)",
+        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/outside/out-of-container-canary)",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/outside/fake-gh-hosts.yml)",
+        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/outside/fake-gh-hosts.yml)",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-s8a6hzpz/outside/fake-fixer-token)",
+        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-paksn8v7/outside/fake-fixer-token)",
         "ok": true,
         "detail": ""
       },
@@ -153,7 +153,7 @@
       {
         "name": "host process is not visible",
         "ok": true,
-        "detail": "host_pid=1783970"
+        "detail": "host_pid=2109564"
       },
       {
         "name": "root filesystem not writable",
@@ -208,6 +208,8 @@
   },
   "hermes": null,
   "adapter_calls": 0,
+  "adapter_refused": 0,
+  "adapter_log_tail": "",
   "broker_receipts": [],
   "confirmed_completions": 0,
   "ledger_has_key": false,

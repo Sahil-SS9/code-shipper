@@ -35,20 +35,23 @@ CAPABILITY_FILE = WORK / "capability"
 MAX_BODY = 2 * 1024 * 1024
 
 
-def _calls_file() -> Path:
+def _counter_file(kind: str) -> Path:
     # Derived from WORK at call time, not bound at import: the tests point WORK at a temp dir, and
     # a module-level constant would keep writing to the real /work.
-    return WORK / "adapter-calls.json"
+    return WORK / f"adapter-{kind}.json"
 
 
-def _count() -> int:
-    """Increment and return the on-disk call count, under a lock file.
+def _bump(kind: str) -> int:
+    """Increment and return an on-disk counter, under a lock file.
 
-    A file-based counter, not a module global: the worker starts the adapter as a subprocess, so an
-    in-process counter is invisible across that boundary. Counting on disk also survives a crash,
-    which is what makes the number usable as evidence.
+    Two counters matter: "calls" (the broker served a completion) and "refused" (the adapter tried
+    and was refused). Without the second one, a fail-closed run is indistinguishable from a run
+    where the agent never tried at all — which is exactly the hole this closes.
+
+    File-based, not a module global: the worker starts the adapter as a subprocess, so an in-process
+    counter is invisible across that boundary. Counting on disk also survives a crash.
     """
-    lock = WORK / "adapter-calls.lock"
+    lock = WORK / "adapter-counters.lock"
     try:
         with open(lock, "a+") as handle:
             try:
@@ -57,12 +60,13 @@ def _count() -> int:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             except (ImportError, OSError):
                 pass
+            path = _counter_file(kind)
             try:
-                current = int(json.loads(_calls_file().read_text(encoding="utf-8"))["calls"])
+                current = int(json.loads(path.read_text(encoding="utf-8"))[kind])
             except (OSError, KeyError, ValueError, json.JSONDecodeError):
                 current = 0
             current += 1
-            _calls_file().write_text(json.dumps({"calls": current}), encoding="utf-8")
+            path.write_text(json.dumps({kind: current}), encoding="utf-8")
             return current
     except OSError:
         return -1
@@ -158,15 +162,18 @@ def make_handler(config: dict):
                 response = call_broker(config, payload)
             except BrokerRefused as exc:
                 # Fail closed. A 502 makes Hermes report an error; it must not look like a completion.
-                print(f"adapter: {exc}", file=sys.stderr, flush=True)
+                # Counted separately so a fail-closed run proves the attempt happened.
+                refused = _bump("refused")
+                print(f"adapter: refused #{refused}: {exc}", file=sys.stderr, flush=True)
                 self._json(502, {"error": {"message": str(exc), "type": "upstream_error"}})
                 return
             except (OSError, json.JSONDecodeError) as exc:
-                print(f"adapter: transport failure: {exc}", file=sys.stderr, flush=True)
+                refused = _bump("refused")
+                print(f"adapter: refused #{refused}: transport failure: {exc}", file=sys.stderr, flush=True)
                 self._json(502, {"error": {"message": "broker transport failure", "type": "upstream_error"}})
                 return
 
-            n = _count()
+            n = _bump("calls")
             usage = response.get("usage") or {}
             prompt_tokens = usage.get("prompt_chars", 0)
             completion_tokens = usage.get("completion_chars", 0)

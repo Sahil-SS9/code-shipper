@@ -1,20 +1,20 @@
 {
-  "scratch": "/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4",
-  "container": "cs-cp3-5f48a28c19",
+  "scratch": "/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip",
+  "container": "cs-cp3-00ae26c33a",
   "credential": "synthetic",
   "run_dir_mode": "0o700",
   "run_dir_uid": 1001,
   "socket_mode": "0o666",
   "broker": {
-    "socket": "/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/broker/broker.sock",
+    "socket": "/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/broker/broker.sock",
     "capability_public": {
-      "run_id": "cp3-e09e39d7",
+      "run_id": "cp3-52714c8f",
       "provider": "local",
       "model": "auto",
       "max_requests": 8,
       "requests_used": 0,
       "max_output_tokens": 1024,
-      "expires_at": 1795545151.4830308,
+      "expires_at": 1795547397.6325684,
       "revoked": false
     },
     "max_requests": 8
@@ -35,19 +35,19 @@
     ],
     "mounts": {
       "/source": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/source",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/source",
         "mode": "ro"
       },
       "/work": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/work",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/work",
         "mode": "rw"
       },
       "/app": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/app",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/app",
         "mode": "ro"
       },
       "/run/cs": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/broker",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/broker",
         "mode": "ro"
       }
     },
@@ -57,8 +57,8 @@
   "image_id": "sha256:4ffb7a8b30543d148d8ec92bdc8b7ecc50d4a9a051cdba9c15ea8c7189356433",
   "run": {
     "returncode": 0,
-    "seconds": 19.99,
-    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=1780879]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\nhermes-run: exit 0, adapter calls 2\n",
+    "seconds": 19.89,
+    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=2106145]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\nhermes-run: exit 0, completions 2, refused 0\n",
     "stderr_tail": ""
   },
   "container_removed": true,
@@ -115,17 +115,17 @@
         "detail": ""
       },
       {
-        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/outside/out-of-container-canary)",
+        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/outside/out-of-container-canary)",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/outside/fake-gh-hosts.yml)",
+        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/outside/fake-gh-hosts.yml)",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-o81f69z4/outside/fake-fixer-token)",
+        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-h4q66oip/outside/fake-fixer-token)",
         "ok": true,
         "detail": ""
       },
@@ -152,7 +152,7 @@
       {
         "name": "host process is not visible",
         "ok": true,
-        "detail": "host_pid=1780879"
+        "detail": "host_pid=2106145"
       },
       {
         "name": "root filesystem not writable",
@@ -227,13 +227,19 @@
         "tool"
       ],
       "returncode": 0,
-      "seconds": 19.13,
+      "seconds": 19.03,
+      "timed_out": false,
+      "timeout_s": 180,
       "stdout": "pong\n",
-      "stderr": "\nsession_id: local-437da42cbc41dd2229b0707d1ad16458c81d1893e4320bb5c0aa1eaebc8f0e7a\n"
+      "stderr": "\nsession_id: local-84ebafa6e2220519210875316c496e4ac86eee1653b6e21c16789f086366a317\n"
     },
-    "adapter_calls": 2
+    "adapter_calls": 2,
+    "adapter_refused": 0,
+    "adapter_log_tail": "tion occurred during processing of request from ('127.0.0.1', 54424)\nTraceback (most recent call last):\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"GET /v1/models HTTP/1.1\" 200 -\nadapter: \"POST /api/show HTTP/1.1\" 404 -\nadapter: code 400, message Bad request syntax ('{\"name\":\"auto\"}')\nadapter: \"{\"name\":\"auto\"}\" 400 -\n----------------------------------------\nException occurred during processing of request from ('127.0.0.1', 54446)\nTraceback (most recent call last):\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"GET /v1/models HTTP/1.1\" 200 -\n"
   },
   "adapter_calls": 2,
+  "adapter_refused": 0,
+  "adapter_log_tail": "tion occurred during processing of request from ('127.0.0.1', 54424)\nTraceback (most recent call last):\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"GET /v1/models HTTP/1.1\" 200 -\nadapter: \"POST /api/show HTTP/1.1\" 404 -\nadapter: code 400, message Bad request syntax ('{\"name\":\"auto\"}')\nadapter: \"{\"name\":\"auto\"}\" 400 -\n----------------------------------------\nException occurred during processing of request from ('127.0.0.1', 54446)\nTraceback (most recent call last):\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"GET /v1/models HTTP/1.1\" 200 -\n",
   "broker_receipts": [
     {
       "completion_chars": 4,
@@ -244,11 +250,11 @@
       "prompt_chars": 12915,
       "prompt_sha256": "77a42cd0f5392830680cc469ec75c4692a0754c696cff929eb7975fd2e8e7e7c",
       "provider": "local",
-      "run_id": "cp3-e09e39d7",
-      "ts": 1795541563.235
+      "run_id": "cp3-52714c8f",
+      "ts": 1795543809.578
     },
     {
-      "completion_chars": 45,
+      "completion_chars": 40,
       "error": null,
       "max_tokens": 512,
       "model": "auto",
@@ -256,8 +262,8 @@
       "prompt_chars": 1008,
       "prompt_sha256": "bf6d848c1dca6a1b35d8b305fcf3741adf4940342088115537f980f81e85753a",
       "provider": "local",
-      "run_id": "cp3-e09e39d7",
-      "ts": 1795541570.778
+      "run_id": "cp3-52714c8f",
+      "ts": 1795543816.861
     }
   ],
   "confirmed_completions": 2,
