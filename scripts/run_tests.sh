@@ -31,3 +31,19 @@ python3 -B spikes/b1/cp2_run.py --stop-broker-before-run | tail -n 4
 echo
 echo "== CP2: fail closed, broker stopped mid-run"
 python3 -B spikes/b1/cp2_run.py --stop-broker-mid-run | tail -n 4
+
+echo
+echo "== CP3: real Hermes model call through the broker"
+python3 -B spikes/b1/cp3_run.py | tail -n 10
+
+echo
+echo "== CP3: fail closed, broker stopped before the run"
+python3 -B spikes/b1/cp3_run.py --stop-broker-before-run | tail -n 6
+
+# Mid-run takes ~3.5 minutes of real Hermes retries. Opt in separately:
+#   ./scripts/run_tests.sh --full --slow
+if [ "${2:-}" = "--slow" ]; then
+  echo
+  echo "== CP3: fail closed, broker stopped mid-run"
+  python3 -B spikes/b1/cp3_run.py --stop-broker-mid-run | tail -n 6
+fi
