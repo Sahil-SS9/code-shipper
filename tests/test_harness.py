@@ -127,12 +127,32 @@ class SCHEMA_ADV12Tests(unittest.TestCase):
     """T-ADV-12, at the harness boundary."""
 
     def test_a_non_matching_result_is_rejected_and_has_no_output(self) -> None:
+        # the harness itself must reject it, so no caller can act on a bad result
+        argv = [PY, "-c", 'print(\'{"status": "unexpected", "summary": "s"}\')']
+        result = CommandHarness(argv=argv).run(task(), {})
+        self.assertFalse(result.ok)
+        self.assertIsNone(result.output)
+        self.assertIn("does not match the schema", result.error)
+
+    def test_a_missing_required_field_is_rejected(self) -> None:
+        argv = [PY, "-c", 'print(\'{"status": "changed"}\')']
+        result = CommandHarness(argv=argv).run(task(), {})
+        self.assertFalse(result.ok)
+        self.assertIsNone(result.output)
+        self.assertIn("summary", result.error)
+
+    def test_output_that_is_not_json_is_rejected(self) -> None:
+        argv = [PY, "-c", "print('I fixed it, honestly')"]
+        result = CommandHarness(argv=argv).run(task(), {})
+        self.assertFalse(result.ok)
+        self.assertIsNone(result.output)
+
+    def test_a_bypassing_fake_still_fails_the_schema_check(self) -> None:
+        # belt and braces: even a harness that does not validate cannot smuggle a bad result past
+        # a caller that checks, which is why callers check.
         harness = FakeHarness(AgentResult(ok=True, output={"status": "unexpected"}))
         result = harness.run(task(), {})
-        # the fake bypasses validation on purpose; the caller must still gate on the schema
-        errors = validate_against_schema(result.output or {}, FIX_SCHEMA)
-        self.assertTrue(errors)
-        self.assertEqual(result.output.get("status"), "unexpected")
+        self.assertTrue(validate_against_schema(result.output or {}, FIX_SCHEMA))
 
 
 class FakeHarnessTests(unittest.TestCase):
