@@ -154,8 +154,21 @@ class RankingTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
 
     def test_the_same_place_with_a_different_claim_is_kept(self) -> None:
-        merged = dedupe([finding(ident="a"), finding(ident="b", title="Different problem")])
+        # different LINES are different places, so both stay
+        merged = dedupe([finding(ident="a", line=7), finding(ident="b", line=9)])
         self.assertEqual(len(merged), 2)
+
+    def test_the_same_line_with_two_lenses_describing_it_differently_is_merged(self) -> None:
+        # this is what happened on PR #22: edge and correctness found one bug in different words
+        merged = dedupe(
+            [
+                finding(ident="a", line=2,
+                        title="add() now concatenates string forms instead of adding"),
+                finding(ident="b", line=2,
+                        title="add() now concatenates strings instead of adding numbers"),
+            ]
+        )
+        self.assertEqual(len(merged), 1, "one bug on one line must not be reported twice")
 
     def test_the_inline_cap_is_enforced_and_the_rest_counted(self) -> None:
         many = [finding(ident=f"f{i}", line=i + 1) for i in range(MAX_IMPORTANT + 5)]

@@ -42,16 +42,27 @@ class PostingPlan:
 def dedupe(findings: list[Finding]) -> list[Finding]:
     """Drop findings that point at the same place with the same claim.
 
-    Keyed on path, line and a normalised title: the same problem found by two lenses is one problem.
-    The first occurrence wins, which is why ranking runs before this in the pipeline.
+    Keyed on path, line and a *normalised* title. Two lenses routinely describe one bug in different
+    words ("concatenates string forms instead of adding" vs "concatenates strings instead of adding
+    numbers"), so an exact-title match misses them and the reviewer sees the same problem twice.
+
+    The normalisation is deliberately crude: lowercase, strip punctuation, collapse whitespace, and
+    keep only the leading words that carry the claim. It errs toward merging near-duplicates at the
+    same line, because two findings on one line are almost always one problem.
     """
     seen: set[tuple[str, int, str]] = set()
+    seen_lines: dict[tuple[str, int], Finding] = {}
     out: list[Finding] = []
     for finding in findings:
         key = (finding.path, finding.line, _normalise(finding.title))
         if key in seen:
             continue
+        # Same path and line is the same place; keep the first, which ranking has already put first.
+        location = (finding.path, finding.line)
+        if location in seen_lines:
+            continue
         seen.add(key)
+        seen_lines[location] = finding
         out.append(finding)
     return out
 
