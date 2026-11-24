@@ -111,9 +111,24 @@ class RefusesNonInferenceTests(unittest.TestCase):
         messages = [{"role": "user", "content": "hi", "path": "/etc/passwd"}]
         self.assertRefused(encode(messages=messages), "bad_request")
 
-    def test_refuses_tool_role(self) -> None:
-        messages = [{"role": "tool", "content": "hi"}]
+    def test_refuses_an_unknown_role(self) -> None:
+        messages = [{"role": "wizard", "content": "hi"}]
         self.assertRefused(encode(messages=messages), "bad_request")
+
+    def test_accepts_the_tool_role(self) -> None:
+        # A tool result has to come back to the model, or an agent cannot act on what it read.
+        broker = Broker(StaticUpstream("ok"))
+        cap = broker.issue_capability(run_id="r", provider="local", model="m")
+        response = broker.handle(
+            encode(
+                capability=cap.token,
+                messages=[
+                    {"role": "user", "content": "hi"},
+                    {"role": "tool", "content": "file contents"},
+                ],
+            )
+        )
+        self.assertTrue(response["ok"], response)
 
     def test_refuses_missing_capability(self) -> None:
         self.assertRefused(encode(capability=""), "capability_required")

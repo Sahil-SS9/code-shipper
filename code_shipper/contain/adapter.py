@@ -84,17 +84,68 @@ def load_broker_config() -> dict:
     return config
 
 
+def _clean_messages(messages: list) -> list[dict]:
+    """Normalise Hermes's messages to the shapes the broker accepts.
+
+    Hermes sends OpenAI-shaped messages: assistant messages that asked for tools carry
+    ``tool_calls`` and often ``content: null``, and tool results carry ``tool_call_id``. A shape
+    outside the allowed set is dropped to plain text rather than refused here — the broker is the
+    component that refuses, and it should see what was actually sent so its refusal is meaningful.
+    """
+    clean: list[dict] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        content = message.get("content")
+        if not isinstance(content, str):
+            content = "" if content is None else json.dumps(content)
+        entry: dict = {"role": role, "content": content}
+        calls = message.get("tool_calls")
+        if isinstance(calls, list) and calls:
+            entry["tool_calls"] = calls
+            if message.get("content") is None:
+                entry["content"] = None
+        if isinstance(message.get("tool_call_id"), str):
+            entry["tool_call_id"] = message["tool_call_id"]
+        if isinstance(message.get("name"), str):
+            entry["name"] = message["name"]
+        clean.append(entry)
+    return clean
+
+
 def call_broker(config: dict, payload: dict) -> dict:
-    """One request, one response, over the unix socket. Raises on any failure."""
+    """One request, one response, over the unix socket. Raises on any failure.
+
+    Tool definitions are passed through: Hermes sends them, the provider needs them to answer with a
+    tool call, and dropping them silently turns an agent that can edit files into one that can only
+    chat. Only the declared keys are forwarded — the broker refuses unknown fields by design.
+    """
     capability = CAPABILITY_FILE.read_text(encoding="utf-8").strip()
-    request = {
+    request: dict[str, object] = {
         "op": "complete",
         "capability": capability,
         "provider": config["provider"],
         "model": config["model"],
-        "messages": payload["messages"],
+        "messages": _clean_messages(payload["messages"]),
         "max_tokens": payload.get("max_completion_tokens") or payload.get("max_tokens") or 512,
     }
+    tools = payload.get("tools")
+    if tools:
+        request["tools"] = [
+            {
+                "type": tool.get("type", "function"),
+                "function": {
+                    "name": (tool.get("function") or {}).get("name"),
+                    "description": (tool.get("function") or {}).get("description", ""),
+                    "parameters": (tool.get("function") or {}).get("parameters") or {},
+                },
+            }
+            for tool in tools
+            if isinstance(tool, dict) and (tool.get("function") or {}).get("name")
+        ]
+    if payload.get("tool_choice") is not None:
+        request["tool_choice"] = payload["tool_choice"]
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.settimeout(config.get("timeout", 180))
     try:
@@ -177,6 +228,8 @@ def make_handler(config: dict):
             usage = response.get("usage") or {}
             prompt_tokens = usage.get("prompt_chars", 0)
             completion_tokens = usage.get("completion_chars", 0)
+            tool_calls = response.get("tool_calls") or None
+            finish_reason = response.get("finish_reason") or ("tool_calls" if tool_calls else "stop")
 
             if payload.get("stream"):
                 # Hermes uses the OpenAI client with stream=True by default. Answering a streaming
@@ -188,19 +241,20 @@ def make_handler(config: dict):
                     completion_id=f"chatcmpl-broker-{n}",
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
+                    tool_calls=tool_calls,
+                    finish_reason=finish_reason,
                 )
                 return
 
+            message: dict[str, object] = {"role": "assistant", "content": response["text"]}
+            if tool_calls:
+                message["tool_calls"] = tool_calls
             completion = {
                 "id": f"chatcmpl-broker-{n}",
                 "object": "chat.completion",
                 "model": config["model"],
                 "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": response["text"]},
-                        "finish_reason": "stop",
-                    }
+                    {"index": 0, "message": message, "finish_reason": finish_reason}
                 ],
                 "usage": {
                     "prompt_tokens": prompt_tokens,
@@ -218,8 +272,10 @@ def make_handler(config: dict):
             completion_id: str,
             prompt_tokens: int,
             completion_tokens: int,
+            tool_calls: list | None = None,
+            finish_reason: str = "stop",
         ) -> None:
-            """Emit the text as an OpenAI chat.completion.chunk stream, then [DONE]."""
+            """Emit text and/or tool calls as OpenAI chat.completion.chunk events, then [DONE]."""
             def chunk(delta: dict, finish: str | None) -> dict:
                 return {
                     "id": completion_id,
@@ -228,11 +284,23 @@ def make_handler(config: dict):
                     "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
                 }
 
-            events = [
-                chunk({"role": "assistant", "content": ""}, None),
-                chunk({"content": text}, None),
-                chunk({}, "stop"),
-            ]
+            events = [chunk({"role": "assistant", "content": ""}, None)]
+            if text:
+                events.append(chunk({"content": text}, None))
+            if tool_calls:
+                # Tool calls arrive as indexed deltas, which is what the OpenAI client expects.
+                events.append(
+                    chunk(
+                        {
+                            "tool_calls": [
+                                {"index": index, **call}
+                                for index, call in enumerate(tool_calls)
+                            ]
+                        },
+                        None,
+                    )
+                )
+            events.append(chunk({}, finish_reason))
             body = b"".join(
                 f"data: {json.dumps(event)}\n\n".encode() for event in events
             ) + b"data:"

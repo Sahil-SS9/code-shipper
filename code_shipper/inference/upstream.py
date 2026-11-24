@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from typing import Any
 
 from .broker import Completion
 
@@ -56,10 +57,20 @@ class OpenAICompatUpstream:
         messages: list[dict[str, str]],
         max_tokens: int,
         timeout: float,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict | None = None,
     ) -> Completion:
-        body = json.dumps(
-            {"model": model, "messages": messages, "max_tokens": max_tokens, "stream": False}
-        ).encode("utf-8")
+        body_dict: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        if tools:
+            body_dict["tools"] = tools
+        if tool_choice is not None:
+            body_dict["tool_choice"] = tool_choice
+        body = json.dumps(body_dict).encode("utf-8")
         headers = {"Content-Type": "application/json", "User-Agent": "code-shipper-broker/0.0.1"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
@@ -94,18 +105,30 @@ class OpenAICompatUpstream:
             raise UpstreamError("no choices in provider response")
         message = choices[0].get("message") if isinstance(choices[0], dict) else None
         text = message.get("content") if isinstance(message, dict) else None
+        tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+        finish = choices[0].get("finish_reason") if isinstance(choices[0], dict) else None
         if not isinstance(text, str):
-            raise UpstreamError("no text in provider response")
+            text = ""
+        if not isinstance(tool_calls, list):
+            tool_calls = None
+        if not text.strip() and not tool_calls:
+            raise UpstreamError("no text and no tool calls in provider response")
         usage = payload.get("usage")
-        return Completion(text=text, usage=usage if isinstance(usage, dict) else None)
+        return Completion(
+            text=text,
+            usage=usage if isinstance(usage, dict) else None,
+            tool_calls=tool_calls,
+            finish_reason=finish if isinstance(finish, str) else None,
+        )
 
 
 class StaticUpstream:
     """A fixed response. Tests and dry runs only; it holds no credential and reaches no network."""
 
-    def __init__(self, text: str, usage: dict | None = None) -> None:
+    def __init__(self, text: str, usage: dict | None = None, tool_calls: list | None = None) -> None:
         self.text = text
         self.usage = usage
+        self.tool_calls = tool_calls
         self.calls: list[dict] = []
 
     def complete(
@@ -116,11 +139,20 @@ class StaticUpstream:
         messages: list[dict[str, str]],
         max_tokens: int,
         timeout: float,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict | None = None,
     ) -> Completion:
         self.calls.append(
-            {"provider": provider, "model": model, "messages": messages, "max_tokens": max_tokens}
+            {
+                "provider": provider,
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "tools": tools,
+                "tool_choice": tool_choice,
+            }
         )
-        return Completion(text=self.text, usage=self.usage)
+        return Completion(text=self.text, usage=self.usage, tool_calls=self.tool_calls)
 
 
 class FailingUpstream:

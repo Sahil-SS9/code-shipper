@@ -43,8 +43,12 @@ MAX_MESSAGES = 64
 MAX_MESSAGE_CHARS = 16 * 1024
 MAX_OUTPUT_TOKENS_CEILING = 8192
 REQUEST_OP = "complete"
-ALLOWED_ROLES = frozenset({"system", "user", "assistant"})
-TOP_LEVEL_KEYS = frozenset({"op", "capability", "provider", "model", "messages", "max_tokens"})
+ALLOWED_ROLES = frozenset({"system", "user", "assistant", "tool"})
+TOP_LEVEL_KEYS = frozenset(
+    {"op", "capability", "provider", "model", "messages", "max_tokens", "tools", "tool_choice"}
+)
+MAX_TOOLS = 32
+MAX_TOOL_SCHEMA_CHARS = 16 * 1024
 
 
 class Failure(Exception):
@@ -66,6 +70,8 @@ class StartupError(Exception):
 class Completion:
     text: str
     usage: dict[str, Any] | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+    finish_reason: str | None = None
 
 
 class Upstream(Protocol):
@@ -79,6 +85,8 @@ class Upstream(Protocol):
         messages: list[dict[str, str]],
         max_tokens: int,
         timeout: float,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict | None = None,
     ) -> Completion: ...
 
 
@@ -250,7 +258,11 @@ class Broker:
         request = _validate(payload)
         cap = self._authorise(request["capability"])
         self._check_scope(cap, request)
-        prompt_chars = sum(len(m["content"]) for m in request["messages"])
+        prompt_chars = sum(
+            len(m.get("content") or "")
+            + sum(len(c["function"]["arguments"]) for c in (m.get("tool_calls") or []))
+            for m in request["messages"]
+        )
         if prompt_chars > cap.max_prompt_chars:
             raise Failure("prompt_too_large")
         self._reserve(cap, prompt_chars, request["max_tokens"])
@@ -271,19 +283,25 @@ class Broker:
                 messages=request["messages"],
                 max_tokens=request["max_tokens"],
                 timeout=self._default_timeout,
+                tools=request.get("tools"),
+                tool_choice=request.get("tool_choice"),
             )
         except Exception:  # noqa: BLE001 - any upstream failure is a refusal, not a fallback
             self._record(cap, request, prompt_sha, prompt_chars, 0, "refused", "upstream_error")
             raise Failure("upstream_error") from None
 
         text = getattr(completion, "text", None)
-        if not isinstance(text, str) or not text.strip():
-            self._record(cap, request, prompt_sha, prompt_chars, 0, "refused", "empty_completion")
-            raise Failure("upstream_error")
+        tool_calls = getattr(completion, "tool_calls", None)
+        # A tool call legitimately has no text. Text OR a tool call, never neither.
+        if not (isinstance(text, str) and text.strip()):
+            if not isinstance(tool_calls, list) or not tool_calls:
+                self._record(cap, request, prompt_sha, prompt_chars, 0, "refused", "empty_completion")
+                raise Failure("upstream_error")
+            text = ""
 
         elapsed = self._clock() - started
         self._record(cap, request, prompt_sha, prompt_chars, len(text), "confirmed", None)
-        return {
+        response: dict[str, Any] = {
             "ok": True,
             "text": text,
             "usage": {
@@ -293,6 +311,10 @@ class Broker:
                 "provider_usage": getattr(completion, "usage", None),
             },
         }
+        if isinstance(tool_calls, list) and tool_calls:
+            response["tool_calls"] = tool_calls
+            response["finish_reason"] = getattr(completion, "finish_reason", None) or "tool_calls"
+        return response
 
     def _authorise(self, token: str) -> Capability:
         """Validate the capability. Callers then reserve under the same lock (see _reserve),
@@ -572,28 +594,141 @@ def _validate(payload: dict[str, Any]) -> dict[str, Any]:
         raise Failure("bad_request")
     if len(messages) > MAX_MESSAGES:
         raise Failure("too_many_messages")
-    clean: list[dict[str, str]] = []
-    for message in messages:
-        if not isinstance(message, dict) or set(message) != {"role", "content"}:
-            raise Failure("bad_request")
-        role = message["role"]
-        content = message["content"]
-        if role not in ALLOWED_ROLES:
-            # No "tool"/"function" roles: this channel returns text and nothing else.
-            raise Failure("bad_request")
-        if not isinstance(content, str):
-            raise Failure("bad_request")
-        if len(content) > MAX_MESSAGE_CHARS:
-            raise Failure("prompt_too_large")
-        clean.append({"role": role, "content": content})
+    clean = [_validate_message(message) for message in messages]
 
-    return {
+    tools = _validate_tools(payload.get("tools"))
+    tool_choice = payload.get("tool_choice")
+    if tool_choice is not None and not isinstance(tool_choice, (str, dict)):
+        raise Failure("bad_request")
+
+    result = {
         "capability": token,
         "provider": provider,
         "model": model,
         "max_tokens": max_tokens,
         "messages": clean,
     }
+    if tools:
+        result["tools"] = tools
+    if tool_choice is not None:
+        result["tool_choice"] = tool_choice
+    return result
+
+
+def _validate_message(message: object) -> dict[str, Any]:
+    """Validate one chat message, including the shapes a tool round-trip needs.
+
+    Allowed shapes:
+      {role, content}                              system / user / assistant, content a string
+      {role, content=null, tool_calls}             an assistant that asked for tools
+      {role, content, tool_call_id}                a tool result for a specific call
+
+    ``tool_calls`` entries are constrained to id/type/function with string arguments, so a message
+    cannot carry executable structure through to the provider.
+    """
+    if not isinstance(message, dict):
+        raise Failure("bad_request")
+    allowed = {"role", "content", "tool_calls", "tool_call_id", "name"}
+    if set(message) - allowed:
+        raise Failure("bad_request")
+
+    role = message.get("role")
+    if role not in ALLOWED_ROLES:
+        raise Failure("bad_request")
+
+    content = message.get("content")
+    if content is not None and not isinstance(content, str):
+        # Reject content parts: images and audio are not part of this channel.
+        raise Failure("unsupported_content")
+    if isinstance(content, str) and len(content) > MAX_MESSAGE_CHARS:
+        raise Failure("prompt_too_large")
+    if content is None and role != "assistant":
+        raise Failure("bad_request")
+
+    clean: dict[str, Any] = {"role": role, "content": content if content is not None else ""}
+
+    tool_calls = message.get("tool_calls")
+    if tool_calls is not None:
+        if role != "assistant":
+            raise Failure("bad_request")
+        clean["tool_calls"] = _validate_tool_calls(tool_calls)
+        clean["content"] = content  # an assistant tool call legitimately has no text
+
+    tool_call_id = message.get("tool_call_id")
+    if tool_call_id is not None:
+        if role != "tool" or not isinstance(tool_call_id, str) or len(tool_call_id) > 128:
+            raise Failure("bad_request")
+        clean["tool_call_id"] = tool_call_id
+
+    return clean
+
+
+def _validate_tool_calls(raw: object) -> list[dict[str, Any]]:
+    if not isinstance(raw, list) or not raw:
+        raise Failure("bad_request")
+    if len(raw) > MAX_TOOLS:
+        raise Failure("too_many_tools")
+    calls: list[dict[str, Any]] = []
+    for call in raw:
+        if not isinstance(call, dict):
+            raise Failure("bad_request")
+        if set(call) - {"id", "type", "function"}:
+            raise Failure("bad_request")
+        function = call.get("function")
+        if not isinstance(function, dict) or set(function) - {"name", "arguments"}:
+            raise Failure("bad_request")
+        name = function.get("name")
+        arguments = function.get("arguments")
+        if not isinstance(name, str) or not name or len(name) > 64:
+            raise Failure("bad_request")
+        if not isinstance(arguments, str) or len(arguments) > MAX_MESSAGE_CHARS:
+            raise Failure("bad_request")
+        calls.append(
+            {
+                "id": call.get("id") if isinstance(call.get("id"), str) else "",
+                "type": "function",
+                "function": {"name": name, "arguments": arguments},
+            }
+        )
+    return calls
+
+
+def _validate_tools(raw: object) -> list[dict[str, Any]]:
+    """Tool definitions are data, not code. Bounded, named, and restricted to function tools."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise Failure("bad_request")
+    if len(raw) > MAX_TOOLS:
+        raise Failure("too_many_tools")
+    tools: list[dict[str, Any]] = []
+    for tool in raw:
+        if not isinstance(tool, dict) or set(tool) != {"type", "function"}:
+            raise Failure("bad_request")
+        if tool["type"] != "function":
+            # No code interpreter, no retrieval, no provider-hosted tool of any kind.
+            raise Failure("unsupported_tool_type")
+        function = tool["function"]
+        if not isinstance(function, dict):
+            raise Failure("bad_request")
+        if set(function) - {"name", "description", "parameters"}:
+            raise Failure("bad_request")
+        name = function.get("name")
+        if not isinstance(name, str) or not name or len(name) > 64:
+            raise Failure("bad_request")
+        description = function.get("description", "")
+        if not isinstance(description, str) or len(description) > 2048:
+            raise Failure("bad_request")
+        parameters = function.get("parameters") or {}
+        if not isinstance(parameters, dict):
+            raise Failure("bad_request")
+        if len(json.dumps(parameters)) > MAX_TOOL_SCHEMA_CHARS:
+            raise Failure("tool_schema_too_large")
+        tools.append(
+            {"type": "function",
+             "function": {"name": name, "description": description, "parameters": parameters}}
+        )
+    return tools
 
 
 def read_secret_file(path: str | os.PathLike[str]) -> str:
