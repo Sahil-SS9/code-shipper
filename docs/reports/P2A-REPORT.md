@@ -106,7 +106,8 @@ OK
 
 ## CI
 
-Run **45496877281** — all six jobs success:
+Checkpoint run **45501480350** (head `9ac343d`) — all six jobs success. Same matrix as the
+previous green run 45496877281.
 
 | Job | Result |
 |---|---|
