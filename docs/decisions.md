@@ -1,8 +1,9 @@
 # Decisions
 
-Current correction/addendum: `REVISION-2.md`. Owner now requires first-class CLI, interactive
-TUI and Desktop. MIT is accepted (D9). Proposed defaults K4/K7 and authority/policy descriptions
-that conflict with the addendum are superseded; the original build handoff is held.
+Status: current. REVISION-2 is folded into this pack as of 24/11/2026; its body remains in
+`REVISION-2.md` as an audit trail. Owner requires first-class CLI, interactive TUI and Desktop.
+MIT is accepted (D9). The original build handoff is held: spec revision is folded in, UX
+wireframes are pending owner approval.
 
 Owner decisions are binding and win every conflict with any other document in this repo.
 KENSEI defaults are proposals: a builder may proceed on them, but nothing that depends on a
@@ -56,6 +57,29 @@ All verified 24/11/2026. Sources are in `docs/research/`.
   `register_cli_command`, `register_hook`, `ctx.llm`, script-only cron jobs). Verified at
   NousResearch/hermes-agent upstream/main `4f676af2cfee3fb41b2047bccd2dfa39dbd73bd7`.
 
+## Corrections folded in (24/11/2026)
+
+These override the original pack wherever it disagreed. The originals stay in `REVISION-2.md` as
+the audit trail.
+
+- Rootless Docker is available and functional on this host; an earlier "not in the docker group,
+  so Docker is unavailable" diagnosis was wrong. An owner-authorised probe passed twenty controls
+  inside a rootless container (`reports/M0-ROOTLESS.md`). Basic filesystem, process and network
+  separation is MEASURED. A contained Hermes run plus the host inference broker is UNVERIFIED, so
+  secure fixing is not proven.
+- The fixer token CAN merge on an unprotected repository; it merged sandbox PR 2. Human-only
+  merging is a product and broker constraint, never a claim that the token is incapable. The 422
+  self-approval refusal and the untested "merge once an approval exists" case stay as recorded.
+- diaktoros does have a host-side `human_paths` per-path gate and experimental native macOS. The
+  D7 gap is the repository-committed policy with seats, conditions and observe/enforce (F5).
+- Authority is enforced by credentials and the broker allowlist, never by matching command text
+  (ADR 0002).
+- Fixing inside GitHub Actions is an open gap: our direct-API adapter is review-only, and a
+  workflow file is not parity.
+- CLI, interactive TUI and Desktop are all first-class over one shared state, event schema and
+  authenticated action service, with no merge control on any surface.
+- No compliance claim (HIPAA, FERPA, ZDR, CMEK) follows from Claude Ship's plan exclusions.
+
 ## KENSEI defaults (proposed, owner may override)
 
 | ID | Default | Why |
@@ -63,10 +87,10 @@ All verified 24/11/2026. Sources are in `docs/research/`.
 | K1 | Core written in Python 3.11+, standard library only, so one repo is both the Hermes plugin and a pip/pipx-installable CLI. | Hermes plugins are Python; no dependency install step inside Hermes. |
 | K2 | Policy file at `.code-shipper/approvals.yml`. Own format, inspired by Claude Approvals, not compatible with it. | Avoids implying Anthropic compatibility. An importer can come later. |
 | K3 | PR comment command prefix `@code-shipper`; watch label `code-shipper-watching`. | Mirrors the Ship UX. |
-| K4 | Budgets: 3 fix rounds per trigger, 10 pushes per PR per day, 45 minutes wall clock per run, per-day model spend cap set by the user (no default spend). | Fail closed; numbers are tunable. |
+| K4 | Budgets: 3 fix rounds per trigger, 10 pushes per PR per day, 45 minutes wall clock per run, per-day model spend cap set by the user (no default spend). An unknown spend is reported as unknown, never zero, and a run whose cap the adapter cannot enforce or reserve is refused. | Fail closed; numbers are tunable. Subscription wall/turn/token bounds are not a provider billing cap. |
 | K5 | v1 reports the policy verdict as a commit status (`code-shipper/approvals`), not a check run. | Commit statuses work with a personal token; check runs need a GitHub App. |
 | K6 | Superseded by D9 (MIT accepted). | — |
-| K7 | Review levels: Quick = 1 combined lens, no separate verify; Standard = 3 lenses + verify; Deep = 5 lenses + verify + test-run where a test command is configured. | Mirrors Ship's three levels with a concrete meaning. |
+| K7 | Review levels: Quick = 1 combined lens, Standard = 3 lenses, Deep = 5 lenses. Every level runs the verification pass (FR-R2): Quick reduces lenses, never verification. Deep adds a test-run where a test command is configured. | Mirrors Ship's three levels with a concrete meaning, without letting a cheap run post unverified findings. |
 | K8 | Harness adapters in v1: Hermes (native), a generic command adapter with presets for Claude Code, Codex and OpenCode, and an OpenAI-compatible direct-API adapter. Presets are "best effort" until each passes the adapter contract test on a real install. | D3 without promising untested harnesses. |
 
 ## Open questions (with recommendations)

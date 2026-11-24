@@ -1,5 +1,7 @@
 # Revision 2 — research, authority and cross-surface corrections
 
+2026-11-24: consolidated into the canonical docs; body retained as audit trail.
+
 Status: design/specification revision, NOT build approval or proof of confinement.
 Owner authorises a deeper research pass, fixing isolation and revising the spec, with CLI,
 interactive TUI and Desktop required. No additional live deployment or global security weakening.

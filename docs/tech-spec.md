@@ -15,12 +15,15 @@ code-shipper/
     ledger.py                 per-PR append-only JSON-lines state, file lock
     orchestrator.py           state machine, budgets, event intake
     review/                   lenses.py, verify.py, rank.py, post.py
-    steward/                  classify.py, worktree.py, fix.py, scope.py
+    steward/                  classify.py, workspace.py, fix.py, scope.py
     approvals/                policy.py (parse/validate), facts.py, evaluate.py, status.py
     broker/                   broker.py (allowlist, exact head), roles.py
     hosts/                    base.py (CodeHost protocol), github.py
     harness/                  base.py (Harness protocol), hermes.py, command.py, openai_compat.py, presets.toml
     secrets/                  scan.py, redact.py
+    inference/                host adapter + per-run capability (§2.4, Phase 0)
+    contain/                  backend detection, doctor, contained run wrapper (§6.1)
+    surfaces/                 shared event/action service; tui/; desktop/ host plugin page
     hermes_plugin.py          /ship command, CLI subcommand, cron install helper
   templates/github-actions/code-shipper.yml
   tests/ (unit, adversarial, contract, fixtures/)
@@ -58,7 +61,7 @@ Writes are not on CodeHost. They live on the broker (§5).
 class AgentTask:
     kind: Literal["review_lens", "verify", "fix", "reply"]
     prompt: str                  # built by the engine; untrusted text fenced and labelled
-    workdir: Path                # worktree (read-only for review kinds)
+    workdir: Path                # contained workspace (read-only for review kinds)
     output_schema: dict          # JSON Schema the final answer must match
     budget: Budget               # max_seconds, max_tokens (if the harness reports), max_turns
 
@@ -78,24 +81,27 @@ class Harness(Protocol):
 
 Adapters (K8):
 - `hermes`: inside the plugin, review/verify kinds use `ctx.llm.complete_structured` (no tools);
-  fix kinds run `hermes chat --query-file - --oneshot -Q --source tool [-p <profile>]` in the
-  worktree with the scrubbed env (prompt on stdin, so untrusted text is never shell-interpreted).
-  Flags verified in `website/docs/reference/cli-commands.md` at upstream `4f676af`; re-check on
-  the target version (§9).
+  fix kinds run `hermes chat --query-file - --oneshot -Q --source tool [-p <profile>]` inside the
+  contained worker with the scrubbed env (prompt on stdin, so untrusted text is never
+  shell-interpreted). Model calls leave through the host inference adapter (§2.4), not a copied
+  credential. Flags verified in `website/docs/reference/cli-commands.md` at upstream `4f676af`;
+  re-check on the target version (§9).
 - `command`: runs a configured argv with the prompt on stdin, cwd = workdir, parses the last JSON
   object from stdout. Presets in `presets.toml` for `claude -p`, `codex exec`, `opencode run`.
   Each preset is marked `verified = false` until the contract test (T-CONTRACT-01) passes on a
   real install, and `doctor` prints that status.
-- `openai_compat`: direct API, base URL + key from config/env. Review/verify kinds only in v1;
-  fix kinds need a tool loop and are deferred unless Phase 5 has time (it is the GitHub Actions
-  path for review and approvals).
+- `openai_compat`: direct API, base URL + key from config/env. Review/verify kinds only in v1.
+  Fix kinds need a contained provider-neutral tool loop, which is not built: that is an explicit
+  gap in the GitHub Actions fixing path (§2.2 note below), not delivered parity (D3/D5). Either
+  specify and test that loop or record the mode as incomplete for the owner.
 
 Env passed to every harness run: the parent env minus every variable matching
-`(?i)(GH_|GITHUB_|_TOKEN$|_KEY$|SECRET|PASSWORD)` except variables the adapter declares it needs
-for its own model login (e.g. `OPENAI_API_KEY` for `openai_compat`, listed in config), plus
-`HOME` set to a per-run temp dir when `isolation.private_home = true` (default true for fix kinds,
-except the `hermes` and `command` adapters may declare the config dirs they need copied or
-pointed to read-only; see §9).
+`(?i)(GH_|GITHUB_|_TOKEN$|_KEY$|SECRET|PASSWORD)`. Model login material is never passed into the
+worker and never bind-mounted read-only and called safe: adapters that need provider auth call the
+host inference adapter (§2.4) with a per-run capability. `HOME` is set to a per-run temp dir;
+an adapter that needs config directories declares them and they are copied into the workspace,
+never mounted from a host credential store (§9). Environment scrubbing is hygiene, not the control:
+the containment in §6.1 is what carries the boundary.
 
 ### 2.3 Output schemas
 
@@ -116,20 +122,38 @@ Fix result:
  "reply": "string <= 2000 | null", "declined_reason": "string | null"}
 ```
 
+### 2.4 Host inference transport (Phase 0 prerequisite, not an existing feature)
+
+Repository code must not be handed harness credentials, and the worker must not get general
+network egress. Two pieces, both to be built and proven before fixing is called safe:
+
+1. A host-side adapter, outside the worker, that holds the harness/provider auth and makes the
+   model call on the worker's behalf.
+2. A per-run capability: a token or socket scoped to one run, one configured provider/model pair
+   and one budget. It is not a generic HTTP proxy and must not reach GitHub, the host filesystem
+   or any other service.
+
+The worker reaches (1) through a narrow channel (unix socket or a loopback endpoint inside the
+worker's own network namespace). Acceptance to prove: a contained Hermes run completes a review
+and a fix through this adapter; the worker cannot reach GitHub, host files, or any other host
+service; the capability stops working when the run ends or is cancelled; and the run's tokens and
+cost are recorded against the budget. Until this is measured, contained fixing stays UNVERIFIED
+regardless of container isolation results.
+
 ## 3. Operational definitions (exact numbers)
 
 | Name | Value | Notes |
 |------|-------|-------|
 | Lenses per level | Quick 1, Standard 3, Deep 5 | K7; lens order: correctness, security, edge, tests, contract |
-| Verify | Standard and Deep only; one verify call per batch of ≤ 10 findings | FR-R2 |
+| Verify | Every level, Quick included; one verify call per batch of ≤ 10 findings | FR-R2; Quick loses lenses, never verification. An incomplete review is reported as incomplete, not clean |
 | Max posted findings per review | 15 Important + 10 Nit | Over the limit: summary lists the rest |
 | Fix rounds per trigger | 3 | K4; a round = one agent fix run that may push |
 | Pushes per PR per UTC day | 10 | K4 |
 | Wall clock per run | 45 min | K4 |
 | Agent run timeout | 15 min (fix), 5 min (lens/verify) | |
 | Poll interval (watching) | 5 min default, min 2 min | Uses `If-None-Match` ETags to save rate limit |
-| Spend cap | none by default; when the harness reports cost, stop at the configured `budget.daily_usd` | Unknown cost is recorded as unknown, never 0 |
-| Cancel window for `/ship` plan | 5 s, `--yes` skips, `--dry-run` stops after plan | FR-T1 |
+| Spend cap | none by default; when the harness reports cost, stop at the configured `budget.daily_usd` | Unknown cost is recorded as unknown, never 0. Refuse a run whose cap the adapter cannot enforce or reserve; subscription wall/turn/token bounds are not a provider billing cap |
+| `/ship` publish confirmation | explicit confirmation before commit, push or open PR; `--dry-run` stops after the plan | FR-T1. No five-second silence. Non-TTY input without a recorded bounded write authorisation fails with an actionable message rather than hanging |
 | Policy file limits | ≤ 64 KB, ≤ 100 rules, `count` 1–16 | FR-A1 |
 | PR size limit for approvals | ≥ 2,000 changed files → status `failure` "Change too large to evaluate" | |
 | Diff scope for fixes | PR's changed files + paths matching `tests/**`, `test_*`, `*_test.*`, `*.test.*`, `__tests__/**`; repo config may widen | FR-S1 |
@@ -144,20 +168,26 @@ mode: observe            # observe | enforce
 people:                  # named lists; logins in quotes; @org/team allowed
   maintainers: ["alice", "bob", "@acme/core"]
 rules:
-  - purpose: "Docs need one person"
+  - purpose: "Docs and small changes"
     paths: ["docs/**", "*.md"]
-    verdict: {seats: {count: 1, from: [maintainers, authors]}, agent: approves}
+    verdict: {seats: {count: 1, from: [maintainers]}, agent: comments}
+    overrides:                      # ordered; the first matching override in THIS rule wins
+      - when: "pr.files_changed <= 5 AND review.important_open = 0"
+        verdict: {seats: {count: 0}, agent: approves}
   - purpose: "Billing needs two maintainers, never the author"
     paths: ["services/billing/**"]
     verdict: {seats: {count: 2, from: [maintainers, "!authors"]}, agent: comments}
-  - purpose: "Small low-risk changes"
-    paths: ["**"]
-    if: "pr.files_changed <= 5 AND review.important_open = 0"
-    verdict: {seats: {count: 0}, agent: approves}
   - purpose: "Everything else"
     paths: ["**"]
     verdict: {seats: {count: 1, from: [maintainers]}, agent: comments}
 ```
+
+Every rule has a base verdict, so there is no path that a failed condition can leave uncovered.
+Relaxation only ever happens through an ordered override inside one rule. Across rules and paths
+the strictest verdict still wins, which means a catch-all rule stating "one person" cannot be
+relaxed by a narrower rule, and a low-risk relaxation stated as an override cannot escape its own
+rule's paths. A missing or failed classifier result falls back to the base verdict and can never
+relax it.
 
 Rules:
 - Unknown keys, duplicate keys, multiple YAML documents, anchors/aliases/tags → whole file
@@ -168,16 +198,19 @@ Rules:
   Tests run both paths on the same fixtures (T-UNIT-POLICY-PARITY).
 - `paths`: gitignore-style globs (`**` crosses directories, `*` does not). A renamed file counts
   under old and new paths.
-- `if`: facts and operators `= != < <= > >=`, `AND`/`OR` (capitals), parentheses. Facts:
-  `pr.files_changed`, `pr.lines_changed`, `pr.labels CONTAINS 'x'`, `pr.base`,
+- `when` (on an override): facts and operators `= != < <= > >=`, `AND`/`OR` (capitals),
+  parentheses. Facts: `pr.files_changed`, `pr.lines_changed`, `pr.labels CONTAINS 'x'`, `pr.base`,
   `ANY|ALL pr.authors = [...]`, `review.important_open`, `review.status (pass|fail|none)`,
-  `checks.failing`. Unknown fact → policy refused.
-- A rule with an `if` must have a sibling rule without `if` covering the same paths (validator
-  enforces), so a false condition never leaves files uncovered.
-- Combination: for each changed file, collect rules whose paths match and whose `if` is true.
-  The PR verdict is the strictest across all files: `blocks` > `comments` > `approves` for the
-  agent; for seats, every required set must be satisfied (sets from different rules are all
-  required; one person may fill seats in several sets).
+  `checks.failing`. Unknown fact → policy refused. A typo in `when` refuses the file rather than
+  silently skipping the override.
+- Overrides: ordered, first match wins inside one rule; no override is required for validity, and
+  a rule without overrides simply always applies its base verdict. Overrides may narrow seats or
+  relax the agent verdict only within that rule's own paths.
+- Combination: for each changed file, collect each matching rule's effective verdict (base, or the
+  first matching override). The PR verdict is the strictest across all files: `blocks` >
+  `comments` > `approves` for the agent; for seats, every required set must be satisfied (sets
+  from different rules are all required; one person may fill seats in several sets). A rule's base
+  verdict is never dropped because an override did not match somewhere else.
 - `seats.count: 0` is allowed only together with `agent: approves`, and still needs FR-A4.
 - Protected files (FR-A2) add an implicit rule: `{seats: {count: 1, from: [writers, "!agents"]}, agent: comments}`.
   `writers` = accounts with write access. `agents` = the configured fixer and approver logins.
@@ -186,6 +219,9 @@ Rules:
   when `agents` is explicitly listed in a `from` (never by default).
 - Policy is read from the default branch at evaluation time. A policy change inside a PR is
   validated and reported ("policy change will apply after merge"), never applied to that PR.
+- An evaluation is bound to a provenance tuple: head SHA, base SHA, policy blob SHA, review run
+  id, and check state. Any element changing invalidates the previous verdict and any agent
+  approval. v1 reuses no approval across pushes; reuse needs its own proof contract first.
 
 ### 4.2 Evaluation output
 
@@ -211,15 +247,28 @@ target URL optional. In `observe` mode the status is always `success` with descr
 | `fixer` | user or fixer bot | push to the PR's head branch only (fast-forward), comment, reply to review comments, add/remove label `code-shipper-*` | anything else |
 | `approver` | approver bot (distinct login) | set commit status `code-shipper/approvals`; create review `APPROVE` only when FR-A4 holds at the exact head; dismiss its own approval | merge, push |
 
-Every broker call: (1) role allowed? (2) target repo/PR in the config allowlist? (3) re-read PR
-head and compare to the expected SHA (writes that depend on head); (4) write; (5) append receipt
+Every broker call: (1) role allowed? (2) target repo/PR in the config allowlist? (3) re-read PR head
+and compare to the expected SHA (writes that depend on head); (4) revalidate identity of the repo,
+PR eligibility, base and head refs, the policy the write was computed against, current
+authorisation, remaining budget and cancellation generation; (5) write; (6) append receipt
 `{ts, role, op, repo, pr, head, request_hash, response_status, result}` to the ledger. Uncertain
 outcomes (timeout, 5xx) are recorded `uncertain` and never replayed blindly; the next tick reads
 GitHub to settle them.
 
-Pushes: `git push <url> <local_sha>:refs/heads/<head_branch>` with `--force-with-lease` NOT used;
-plain push; refuse if the remote ref is not an ancestor of local_sha. Hooks disabled for the push
-(`-c core.hooksPath=` set to an empty dir) so repo hooks cannot run with credentials.
+Pushes: `git push <url> <local_sha>:refs/heads/<head_branch>` with an expected-old-ref lease
+(`--force-with-lease=refs/heads/<head_branch>:<expected_sha>`), confined to the PR's head branch and
+fast-forward only: refuse unless the expected SHA is the current remote ref and the remote ref is
+an ancestor of `local_sha`. A preflight GET followed by an ordinary push is not enough, because
+the head can move in between. Hooks are disabled for the push (`-c core.hooksPath=` set to an empty
+dir) so repo hooks cannot run with credentials.
+
+Residual race to disclose, never to hide: a Git ref update cannot atomically condition on GitHub's
+PR metadata (open state, base branch). Re-read and reconcile after the write, record what changed
+and report it. Do not claim the race is eliminated.
+
+Uncertain writes (timeout, 5xx, ambiguous transport error) are not replayed. The ledger states
+`planned`, `posting`, `confirmed`, `refused` or `uncertain`, and reconciliation covers a crash both
+before and after sending.
 
 ### 5.2 Identity modes
 
@@ -231,49 +280,93 @@ plain push; refuse if the remote ref is not an ancestor of local_sha. Hooks disa
   stored in the OS keyring or files with mode 0600 referenced by path. Required for
   `allow_agent_approval`.
 
+In both modes, authority comes from what the broker will do, not from what the token is incapable
+of. M0 measured that a Contents-write fixer token CAN merge on an unprotected repository, so a
+repo that enables agent approval needs branch protection or a ruleset as the last layer (§6).
+
 ## 6. Authority boundary (Phase 0 spike decides the exact token setup)
 
-Requirement: the fixer token can push to a PR branch and comment, but cannot approve, merge,
-enable auto-merge, change branch protection, delete branches or push tags. The approver token
-can approve and set statuses but cannot push or merge.
+Requirement: Code-Shipper exposes no merge or auto-merge action on any surface, and the broker's
+allowlist contains no merge operation. The fixer token can push to a PR branch and comment, and
+cannot open a review that approves. What a token can do through other software is a property of
+GitHub's permissions rather than something we may assume: M0 measured that a Contents-write token
+CAN merge on an unprotected repository, and it did merge sandbox PR 2. The approver token can
+approve and set statuses; the broker never asks it to push. Because the token is not the boundary,
+a repository that enables agent approval needs branch protection or a ruleset as the last layer.
 
 Candidate setups the spike must test against real GitHub (results recorded in
 `docs/reports/M0-REPORT.md`):
 
 | ID | Setup | Expected | To prove |
 |----|-------|----------|----------|
-| C1 | Fixer = fine-grained PAT, Contents: write, Issues: write, Pull requests: read, Metadata: read | Push and comment work; approve fails (needs PR write) | Can it still merge? (merge may only need Contents write) |
-| C2 | C1 + ruleset on default branch: require PR, require ≥1 approval, require status `code-shipper/approvals`, no bypass for fixer | Merge refused by GitHub even if C1 allows the API call | Does an approval + green status let the fixer merge? If yes, add "restrict who can merge/update" or merge queue |
-| C3 | Approver = fine-grained PAT, Pull requests: write, Commit statuses: write, Contents: read | Approve + status work; push fails | Can PR write merge without Contents write? |
-| C4 | Agent process with scrubbed env, private HOME, attempts `gh pr merge`, `gh api -X PUT .../merge`, GraphQL `mergePullRequest`, `git push --force` | All fail for lack of credentials | No credential reachable from the agent's process: env, `~/.config/gh` and other files by absolute path, git credential helpers, OS keyring. Expected to FAIL unsandboxed (see §6.1) and pass sandboxed |
+| C1 | Fixer = fine-grained PAT, Contents: write, Issues: write, Pull requests: read, Metadata: read | Push and comment work; approve fails (needs PR write) | Measured in M0: it CAN still merge (merge needs only Contents write), and it merged sandbox PR 2. The token is not the boundary |
+| C2 | C1 + ruleset on default branch: require PR, require ≥1 approval, require status `code-shipper/approvals`, no bypass for fixer | Merge refused by GitHub even if C1 allows the API call | Measured: REST and GraphQL merges were refused and direct pushes to main refused while approval was missing. NOT yet tested: whether an approval plus a green status lets the fixer merge. If it does, require "restrict who can merge/update" or a merge queue |
+| C3 | Approver = fine-grained PAT, Pull requests: write, Commit statuses: write, Contents: read | Approve + status work; push fails | Can PR write merge without Contents write? Untested |
+| C4 | A contained worker with scrubbed env and private HOME attempts `gh pr merge`, `gh api -X PUT .../merge`, GraphQL `mergePullRequest`, `git push --force` | All fail for lack of reachable credentials | Partly measured: a rootless-container probe hid host credential paths, gh config, SSH and known-secret canaries, denied Docker/system sockets and host processes, and denied network (20 controls, `reports/M0-ROOTLESS.md`). NOT yet measured: the same probe with a real Hermes run and the host inference broker. Uncontained, it is expected to FAIL (§6.1) |
 
 ### 6.1 Same-OS-user residual risk (must be stated honestly)
 
-A scrubbed environment and a private `HOME` do not stop an agent with a shell from reading files
-by absolute path as the same OS user: `~/.config/gh/hosts.yml`, `~/.git-credentials`, the OS
-keyring (`gh auth token`, secret-service, macOS Keychain), `~/.hermes/.env` (often holds
-`GITHUB_TOKEN`), CI tokens in other repos. If the developer's own token is admin on the repo, an
-agent that deliberately reads it can act as the developer, including merging once an approval
-exists. Claude's local `/ship` carries the same risk (it acts with the user's gh login).
+Measured state at this revision:
+
+- Rootless Docker is available and functional on the build host: `docker context show` reports
+  rootless, and the daemon's security options include rootless and seccomp. No sudo, docker-group
+  change or global sysctl change was needed to investigate this route. An earlier "no docker
+  group, so no isolation" diagnosis was wrong.
+- An owner-authorised probe inside a rootless container passed twenty controls
+  (`reports/M0-ROOTLESS.md`): host credential paths and fake canaries absent outside the mount,
+  no Docker or system-bus socket, no host process visibility, no GitHub or key auth in the
+  environment, no-new-privileges active, zero effective capabilities, seccomp filtering, a distinct
+  network namespace with no non-loopback route, source and root writes refused; while benign
+  controls still worked (synthetic source readable, workspace and temp writes allowed).
+- Still UNVERIFIED: a contained Hermes run, the host inference broker with zero credential
+  exposure, a dependency toolchain, and broker/cancellation integration. A network-denied shell
+  that can edit files does not prove an agent can call its model safely. Contained fixing is not
+  proven, and nothing in this document should be read as saying it is.
+
+The underlying same-OS-user risk remains: a scrubbed environment and a private `HOME` do not stop
+an agent with a shell from reading files by absolute path as the same OS user when it is not
+contained — `~/.config/gh/hosts.yml`, `~/.git-credentials`, the OS keyring (`gh auth token`,
+secret-service, macOS Keychain), `~/.hermes/.env` (often holds `GITHUB_TOKEN`), CI tokens in other
+repos. If the developer's own token is admin on the repo, an agent that deliberately reads it can
+act as the developer, including merging once an approval exists. Claude's local `/ship` carries
+the same risk (it acts with the user's gh login).
+
+Containment acceptance (negative and benign controls, per backend):
+hide host files including the fixer key, gh config, SSH material, model auth and known-secret
+canaries; deny Docker and system sockets and host process reads; deny arbitrary network and GitHub
+access; permit source read, workspace writes, configured tests and bounded inference; make Stop
+revoke new write capability. Record image ID and digest, the complete mount/env/namespace/network
+policy, effective limits, and the evidence. Use synthetic canaries rather than opening real secrets
+for a repeat probe.
 
 Rules that follow:
-- Fix runs use OS sandboxing where available and hide credential paths: bubblewrap on Linux,
-  Seatbelt (`sandbox-exec`) on macOS, a container on any OS. Windows has no built-in equivalent;
-  there fix runs are unsandboxed unless run in WSL or a container.
-- `allow_agent_approval = true` is refused by the config validator unless fix runs are
-  sandboxed with credential paths hidden (T-ADV-17), because that is when a leaked user token
-  plus an agent approval could produce an unwanted merge.
+- Fix runs execute in a container that gives no host HOME, no gh/git/SSH or model-auth store, no
+  Docker or system-bus socket, no host process namespace, no privileged or host-network mode, and
+  denies network by default. Every fix mode, including single identity, needs this. bubblewrap or
+  Seatbelt count only when `doctor` reports them VERIFIED for the same controls; Windows has no
+  built-in equivalent, so contained fixing there is UNSUPPORTED until measured. Do not install or
+  change AppArmor and do not disable userns restrictions to make a probe pass.
+- Never assume host credentials are unmapped for the container. Test mount visibility, socket
+  access, host process isolation, network policy and credential separation separately, on each
+  backend, and record the result.
+- Dependency fetch happens on the host through a separately scoped path, or comes from a pinned
+  prepared image. Repository code is never given general egress.
+- `allow_agent_approval = true` is refused by the config validator unless `doctor` reports the
+  container backend VERIFIED for the credential-hiding controls (T-ADV-17), because that is the
+  combination where a leaked user token plus an agent approval could produce an unwanted merge.
 - The Hermes fix adapter must run under a dedicated Hermes profile whose `.env` holds no
   GitHub credentials; `doctor` checks for `GH_`/`GITHUB_` keys in that profile's env and fails.
-- The README states the residual risk in plain words for unsandboxed runs.
+- The README states the residual risk in plain words for uncontained runs.
 - GitHub rulesets (required approval from someone other than the last pusher, required
   `code-shipper/approvals` status, no admin bypass) are the last layer and recommended for every
   repo that enables agent approval.
 
-Exit criterion: a setup where T-SPIKE-01..05 pass, written into this section as the v1 default.
-If no setup prevents the fixer from merging once an approval exists, the spec changes: agent
-approval (D1 flag) must then require the ruleset "restrict merges to listed humans", and the
-README must say so. The owner reviews M0 before Phase 1 starts.
+Exit criterion: T-SPIKE-01..05 pass, the containment acceptance above passes for the chosen
+backend, and the §2.4 inference transport is measured. Then write the setup into this section as the
+v1 default. Because the fixer token can merge on an unprotected repo once an approval exists, agent
+approval (D1 flag) additionally requires the ruleset "restrict merges to listed humans" unless a
+tested setup proves otherwise, and the README must say so. The owner reviews M0 before Phase 1
+starts.
 
 ## 7. Prompts and untrusted content
 
@@ -299,7 +392,7 @@ README must say so. The owner reviews M0 before Phase 1 starts.
 | Whether `ctx.llm.complete_structured` honours a per-call model choice | Plugin LLM doc lists options; confirm on target version | Read `website/docs/developer-guide/plugin-llm-access.md` at the pinned upstream; one real call |
 | Claude Code / Codex / OpenCode headless flags and whether their subscription logins may be used for automation | Vendor flags and terms change | Current vendor docs + one contract-test run each; record terms links per preset |
 | Which GitHub fine-grained permissions allow merge vs approve | §6 | Phase 0 spike |
-| Whether harness logins survive a private HOME | Some CLIs keep auth under HOME | Contract test; adapters declare needed dirs (read-only bind or copy) |
+| Whether harness logins survive a private HOME | Some CLIs keep auth under HOME | Contract test; adapters declare the config files they need, which are copied into the workspace. Never mount an auth directory read-only and call it contained |
 | Commit status write with fine-grained PAT (Commit statuses: write) | Permission naming | Phase 0 spike |
 | Hermes catalog rules for plugins with a CLI + cron | Catalog rules evolve | `plugin-catalog/README.md` and `hermes plugins validate` at the pinned upstream |
 
@@ -316,7 +409,8 @@ scenario (scripted PRs on a disposable repo, Phase 3+), evaluation (seeded bugs,
 
 Unit
 - T-UNIT-POLICY-01..20: grammar acceptance/refusal (unknown key, duplicate key, anchors, bad
-  glob, `if` without sibling, unknown fact, count bounds, `seats: 0` without approves).
+  glob, `when` typo or unknown fact, override without a matching base verdict ordering rule,
+  count bounds, `seats: 0` without approves).
 - T-UNIT-POLICY-PARITY: stdlib parser and `hermes_yaml` path produce identical results on all
   fixtures.
 - T-UNIT-EVAL-01..15: strictest-wins, multi-file, rename counts both paths, protected files,
@@ -342,17 +436,25 @@ Adversarial (each has a benign twin that must NOT be blocked; false-block budget
 - T-ADV-14 head moved between plan and push → push aborted.
 - T-ADV-15 broker asked to push to a non-head branch → refused.
 - T-ADV-16 `allow_agent_approval = true` in `single` identity mode → config refused.
-- T-ADV-17 `allow_agent_approval = true` without a sandbox that hides credential paths (or on
-  plain Windows) → config refused; with the sandbox, a fix run cannot read `~/.config/gh`,
-  `~/.git-credentials`, the keyring or `~/.hermes/.env`.
+- T-ADV-17 `allow_agent_approval = true` without a container backend that `doctor` reports VERIFIED
+  for the credential-hiding controls (or on plain Windows) → config refused; with a verified
+  container, a fix run cannot read `~/.config/gh`, `~/.git-credentials`, the keyring,
+  `~/.hermes/.env`, or reach the Docker socket, host processes or non-loopback network.
 
 Spike (real GitHub, Phase 0)
 - T-SPIKE-01 fixer token pushes to PR branch: allowed.
-- T-SPIKE-02 fixer token approves: refused by GitHub.
-- T-SPIKE-03 fixer token merges (REST, GraphQL, auto-merge) with and without an existing approval: refused.
+- T-SPIKE-02 fixer token approves: refused by GitHub (422 self-approval where author; permission
+  refusal otherwise).
+- T-SPIKE-03 fixer token merges: recorded as REFUSED only where branch protection requires an
+  approval. M0 measured the token merging an unprotected PR (it merged sandbox PR 2), so this test
+  asserts the protection, not token incapability. The case "approval present + checks green, then
+  fixer merges" is UNTESTED and must be recorded either way.
 - T-SPIKE-04 approver token pushes: refused.
-- T-SPIKE-05 agent process attempts every path in C4, unsandboxed and sandboxed (bubblewrap on
-  the build machine): record which credentials it could reach in each case.
+- T-SPIKE-05 agent process attempts every path in C4 inside and outside the container (rootless
+  Docker per `reports/M0-ROOTLESS.md`): record which credentials it could reach in each case.
+- T-SPIKE-06 contained Hermes run plus host inference broker: review and a fix complete through
+  the per-run capability; worker cannot reach GitHub, host files or other host services; the
+  capability dies on run end and on cancel (§2.4). UNVERIFIED until run.
 
 Contract
 - T-CONTRACT-01 per harness adapter: given a fixed review task, returns schema-valid output; given
@@ -389,6 +491,8 @@ Evaluation (Phase 7)
 | NFR-3 | T-ADV-14 |
 | NFR-4 | T-UNIT-LEDGER |
 | NFR-7 | T-UNIT-SECRETS-* |
+| FR-P1 | Surface parity check per action (CLI, TUI, Desktop), no merge control on any surface |
+| NFR-8 | `doctor` matrix test: VERIFIED / UNVERIFIED / UNSUPPORTED per backend, and unattended fixing refused when unverified |
 
 ## 11. Data model (ledger)
 
