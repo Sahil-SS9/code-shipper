@@ -1,5 +1,9 @@
 # HANDOFF — building Code-Shipper
 
+BUILD HOLD: this is the original handoff, not ready to execute. Read `REVISION-2.md` first.
+Research, security corrections and CLI/TUI/Desktop scope changed the design. Do not start
+Phase 0 or later phases from this file until a newly pinned build handoff is issued.
+
 You are a coding agent building Code-Shipper from this spec pack. Read this file first, then in
 order: `docs/decisions.md` (binding), `docs/prd.md`, `docs/architecture.md`,
 `docs/tech-spec.md`, `docs/build-plan.md`, `docs/research/`, `docs/adr/`.

@@ -2,7 +2,10 @@
 
 Review, fix and get pull requests ready to merge, with any agent harness. Hermes Agent first.
 
-Status: **spec pack only — nothing is built yet.** Humans always merge.
+Status: **spec pack and feasibility spikes only — the plugin is not built.**
+Build handoff is on hold. Read `docs/REVISION-2.md` for current safety limitations and the
+expanded CLI, interactive TUI and Hermes Desktop scope. Legacy capability descriptions below
+are design goals, not verified guarantees. Code-Shipper will expose no merge action.
 
 Code-Shipper is an open-source take on the workflow Anthropic calls Claude Ship, built to work
 across agent harnesses (Hermes, Claude Code, Codex, OpenCode, or a direct model API):

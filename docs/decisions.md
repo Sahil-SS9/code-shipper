@@ -1,5 +1,9 @@
 # Decisions
 
+Current correction/addendum: `REVISION-2.md`. Owner now requires first-class CLI, interactive
+TUI and Desktop. MIT is accepted (D9). Proposed defaults K4/K7 and authority/policy descriptions
+that conflict with the addendum are superseded; the original build handoff is held.
+
 Owner decisions are binding and win every conflict with any other document in this repo.
 KENSEI defaults are proposals: a builder may proceed on them, but nothing that depends on a
 default may be published until the owner accepts it.
