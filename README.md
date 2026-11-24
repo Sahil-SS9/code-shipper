@@ -3,7 +3,8 @@
 Review, fix and get pull requests ready to merge, with any agent harness. Hermes Agent first.
 
 Status: **spec pack and feasibility spikes only — the plugin is not built.**
-Build handoff is held: spec revision folded in, pending UX wireframe approval. The canonical
+Build approved 24/11/2026: spec revision folded in and CLI/TUI/Desktop wireframes approved
+(`docs/ux/`). Implementation starts with Phase 0 (`docs/HANDOFF.md`). The canonical
 documents below are consistent with `docs/REVISION-2.md`, whose body remains as the audit trail.
 Anything described here is a design goal, not a verified guarantee. Code-Shipper will expose no
 merge action on any surface.
@@ -37,7 +38,7 @@ the platform doctor reports that container VERIFIED. What is measured is the con
 broker is UNVERIFIED, so secure fixing is not yet proven. Details: `docs/tech-spec.md` §2.4, §6.1.
 
 Surfaces: a scriptable CLI, an interactive TUI inbox and a Hermes Desktop page share one state and
-action service. Wireframes are in owner review; no UI code is written before they are approved.
+action service. The owner approved the wireframes on 24/11/2026 (`docs/ux/gallery.html`); UI code follows them.
 
 Related work: Claude Ship (Anthropic, Claude-only) and
 [diaktoros](https://github.com/coe0718/diaktoros) (Hermes-only review loop whose broker design

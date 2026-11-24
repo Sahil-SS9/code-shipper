@@ -1,8 +1,8 @@
 # Code-Shipper — Build Plan
 
-Status: spec revision folded in; pending UX wireframe approval. No phase below is authorised to
-start until the owner approves the CLI, TUI and Desktop wireframes (R3) and issues a new pinned
-build handoff (R4). This file is the plan for that handoff, not the handoff itself.
+Status: owner approved the CLI, TUI and Desktop wireframes on 24/11/2026 (R3, `docs/ux/`), and
+`docs/HANDOFF.md` is the pinned build handoff (R4). Phase 0 is authorised; each later phase still
+needs a GO after its report.
 
 Rules for every phase:
 - Do ONE phase, then stop and write `docs/reports/M<n>-REPORT.md` (template at the end).
@@ -22,8 +22,10 @@ Rules for every phase:
 - R1 Contained worker plus host inference proof, broker authority and expected-head tests with
   negative controls — this is Phase 0 below. No real secret mounts, no global security change.
 - R2 TUI widget and Desktop backend transport feasibility, isolated, with no live plugin install.
-- R3 CLI, TUI and Desktop wireframes plus the parity decision packet for owner sign-off.
+- R3 CLI, TUI and Desktop wireframes plus the parity decision packet for owner sign-off. DONE:
+  wireframes approved 24/11/2026 (`docs/ux/`), parity matrix `docs/research/parity-matrix.md`.
 - R4 New pinned handoff with phases, acceptance tests and release holds. Only then implementation.
+  DONE: `docs/HANDOFF.md`, issued 24/11/2026.
 
 ## Phase 0 — Falsification spike (authority boundary, containment and one fix loop)
 

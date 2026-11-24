@@ -1,10 +1,9 @@
 # HANDOFF — building Code-Shipper
 
-BUILD HOLD: spec revision folded in, pending UX wireframe approval. This is the original handoff
-and is not yet ready to execute. REVISION-2 is consolidated into the canonical docs, so read them
-rather than the addendum; `REVISION-2.md` stays as the audit trail. Do not start Phase 0 or later
-phases from this file until the owner approves the CLI/TUI/Desktop wireframes and a newly pinned
-build handoff is issued.
+BUILD APPROVED 24/11/2026. The owner approved the CLI/TUI/Desktop wireframes (`docs/ux/`), and
+this file is the pinned handoff. Start with Phase 0; its first task and checkpoints are in
+`/home/kensei/handoffs/code-shipper/container-hermes-proof.md`. REVISION-2 is consolidated into the
+canonical docs, so read them rather than the addendum; `REVISION-2.md` stays as the audit trail.
 
 You are a coding agent building Code-Shipper from this spec pack. Read this file first, then in
 order: `docs/decisions.md` (binding), `docs/prd.md`, `docs/architecture.md`,

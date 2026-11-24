@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Code-Shipper — UX wireframe proposals (CLI · TUI · Desktop)</title>
+<style>
+  :root{
+    --bg:#0e1113;
+    --panel:#13181b;
+    --panel2:#0a0d0f;
+    --line:#252d31;
+    --line-soft:#1c2226;
+    --text:#d4dad5;
+    --mut:#8b968f;
+    --faint:#5d6a63;
+    --acc:#e0a458;   /* attention / action */
+    --ok:#7fbf7a;    /* pass / done — never used alone */
+    --err:#d96a5f;   /* fail / refused / important */
+    --run:#7ba7bc;   /* running / in-flight */
+    --chip:#1b2226;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--text);
+    font:15px/1.55 -apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    padding:32px 24px 96px;
+  }
+  .wrap{max-width:1240px;margin:0 auto}
+  code,pre,.mono{font-family:ui-monospace,"JetBrains Mono","Cascadia Mono",Menlo,Consolas,"Liberation Mono",monospace}
+
+  /* ---------- gallery chrome ---------- */
+  header.masthead{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:8px}
+  h1{font-size:22px;font-weight:650;letter-spacing:.2px}
+  .sub{color:var(--mut);margin-top:6px;max-width:72ch}
+  .statusline{
+    margin-top:14px;display:inline-block;border:1px solid var(--acc);color:var(--acc);
+    padding:4px 10px;border-radius:4px;font-size:12.5px;letter-spacing:.4px;text-transform:uppercase;
+  }
+  nav.toc{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 40px}
+  nav.toc a{
+    color:var(--mut);text-decoration:none;border:1px solid var(--line);border-radius:4px;
+    padding:5px 11px;font-size:13px;
+  }
+  nav.toc a:hover{color:var(--text);border-color:var(--mut)}
+  section{margin:56px 0}
+  h2{font-size:17px;font-weight:650;margin-bottom:6px}
+  h2 .num{color:var(--faint);font-weight:500;margin-right:10px}
+  .lede{color:var(--mut);max-width:78ch;margin-bottom:20px}
+  h3{font-size:14px;font-weight:600;margin:28px 0 8px;color:var(--text)}
+  .note{color:var(--mut);font-size:13px;margin:6px 0 14px;max-width:78ch}
+  .note b,.lede b{color:var(--text);font-weight:600}
+
+  /* ---------- lifecycle strip ---------- */
+  .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:14px 0 6px}
+  .flow .step{
+    border:1px solid var(--line);background:var(--chip);border-radius:4px;
+    padding:5px 10px;font-size:12.5px;white-space:nowrap;
+  }
+  .flow .arrow{color:var(--faint);font-size:12px}
+  .flow .step.opt{border-style:dashed;color:var(--mut)}
+  .flow .step.human{border-color:var(--acc);color:var(--acc)}
+
+  /* ---------- terminal / TUI blocks ---------- */
+  .term{
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    margin:14px 0 26px;overflow:hidden;
+  }
+  .term-bar{
+    display:flex;align-items:center;gap:10px;
+    border-bottom:1px solid var(--line-soft);padding:7px 12px;
+    color:var(--faint);font-size:12px;
+  }
+  .term-bar .dot{width:9px;height:9px;border-radius:50%;background:#2c353a;flex:none}
+  .term pre{
+    padding:14px 16px;font-size:12.8px;line-height:1.5;overflow-x:auto;color:var(--text);
+  }
+  .c-mut{color:var(--mut)} .c-dim{color:var(--faint)}
+  .c-ok{color:var(--ok)} .c-err{color:var(--err)}
+  .c-acc{color:var(--acc)} .c-run{color:var(--run)}
+
+  /* ---------- command table ---------- */
+  table.cmds{width:100%;border-collapse:collapse;font-size:13.5px;margin:8px 0 6px}
+  table.cmds th,table.cmds td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+  table.cmds th{background:var(--chip);font-weight:600;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  table.cmds td:first-child{white-space:nowrap}
+
+  /* ---------- desktop mock ---------- */
+  .frame{
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel);
+    margin:16px 0 30px;
+  }
+  .frame-cap{color:var(--faint);font-size:12px;margin:-18px 0 26px}
+  .dtopbar{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel2);
+    font-size:13px;
+  }
+  .dtopbar .brand{font-weight:650}
+  .dtopbar .ctx{color:var(--mut)}
+  .dtopbar .sync{color:var(--faint);margin-left:auto}
+  .dfilters{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+  .fchip{
+    font-size:12px;border:1px solid var(--line);border-radius:99px;padding:3px 10px;color:var(--mut);
+    background:var(--chip);
+  }
+  .fchip.on{border-color:var(--acc);color:var(--acc)}
+  .dgrid{display:grid;grid-template-columns:270px 1fr 290px;min-height:560px}
+  @media (max-width:1080px){.dgrid{grid-template-columns:230px 1fr}.drail{grid-column:1/-1;border-left:none;border-top:1px solid var(--line)}}
+
+  /* inbox */
+  .dinbox{border-right:1px solid var(--line);background:var(--panel2)}
+  .dinbox h4{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);padding:12px 14px 6px}
+  .pri{padding:10px 14px;border-bottom:1px solid var(--line-soft);cursor:default}
+  .pri.sel{background:var(--chip);border-left:2px solid var(--acc);padding-left:12px}
+  .pri .l1{display:flex;gap:8px;align-items:baseline;font-size:13px}
+  .pri .l1 .pr{font-weight:650}
+  .pri .l1 .age{margin-left:auto;color:var(--faint);font-size:11.5px}
+  .pri .l2{font-size:12px;color:var(--mut);margin-top:2px}
+  .pri .reason{font-size:12px;margin-top:4px}
+
+  /* state chips — text + colour, never colour alone */
+  .st{display:inline-block;font-size:11px;font-weight:650;letter-spacing:.4px;border-radius:3px;padding:1px 7px;border:1px solid}
+  .st-err{color:var(--err);border-color:var(--err)}
+  .st-run{color:var(--run);border-color:var(--run)}
+  .st-ok{color:var(--ok);border-color:var(--ok)}
+  .st-acc{color:var(--acc);border-color:var(--acc)}
+  .st-mut{color:var(--mut);border-color:var(--line)}
+
+  /* detail */
+  .ddetail{padding:14px 18px}
+  .ddetail .ttl{font-size:15px;font-weight:650}
+  .ddetail .head-line{color:var(--mut);font-size:12.5px;margin-top:3px}
+  .dtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:14px 0 14px;flex-wrap:wrap}
+  .dtabs span{padding:7px 13px;font-size:13px;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .dtabs span.on{color:var(--text);border-bottom-color:var(--acc);font-weight:600}
+  .verdictbar{
+    border:1px solid var(--line);border-left:3px solid var(--err);border-radius:4px;
+    background:var(--chip);padding:10px 14px;margin-bottom:14px;font-size:13.5px;
+  }
+  .verdictbar.ok{border-left-color:var(--ok)}
+  .verdictbar.warn{border-left-color:var(--acc)}
+  .verdictbar .vb-sub{color:var(--mut);font-size:12.5px;margin-top:3px}
+  .finding{border:1px solid var(--line);border-radius:6px;margin-bottom:10px;background:var(--panel2)}
+  .finding .f-head{display:flex;gap:10px;align-items:baseline;padding:9px 12px;font-size:13px}
+  .finding .f-loc{color:var(--run);font-size:12.5px}
+  .finding .f-body{padding:0 12px 10px;font-size:13px;color:var(--text)}
+  .finding .f-why{padding:0 12px 10px;font-size:12.5px;color:var(--mut)}
+  .finding .f-why b{color:var(--text);font-weight:600}
+  .finding .f-foot{padding:8px 12px;border-top:1px solid var(--line-soft);font-size:12px;color:var(--faint);display:flex;gap:14px;flex-wrap:wrap}
+
+  /* right rail */
+  .drail{border-left:1px solid var(--line);background:var(--panel2);padding:14px}
+  .rbox{border:1px solid var(--line);border-radius:6px;padding:11px 12px;margin-bottom:12px;background:var(--panel)}
+  .rbox h5{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:8px}
+  .kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:2.5px 0}
+  .kv .k{color:var(--mut)}
+  .kv .v{text-align:right}
+  .meter{height:5px;border-radius:3px;background:var(--line-soft);margin:4px 0 8px;overflow:hidden}
+  .meter i{display:block;height:100%;background:var(--run)}
+  .meter.warn i{background:var(--acc)}
+  .btn{
+    display:block;width:100%;text-align:center;font-size:13px;font-weight:600;
+    border:1px solid var(--mut);color:var(--text);border-radius:5px;padding:8px 10px;margin-top:8px;
+    background:transparent;
+  }
+  .btn.pri{border-color:var(--acc);color:var(--acc)}
+  .btn.danger{border-color:var(--err);color:var(--err)}
+  .btn.dis{border-color:var(--line);color:var(--faint)}
+  .btn-why{font-size:11.5px;color:var(--faint);text-align:center;margin-top:4px}
+  .rail-note{font-size:11.5px;color:var(--faint);margin-top:10px;line-height:1.5}
+
+  /* policy mock */
+  .pgrid{display:grid;grid-template-columns:1fr 1fr;min-height:340px}
+  @media (max-width:980px){.pgrid{grid-template-columns:1fr}}
+  .pcol{padding:14px 16px}
+  .pcol+.pcol{border-left:1px solid var(--line)}
+  .pcol h5{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pbadge{font-size:10.5px;border:1px solid var(--ok);color:var(--ok);border-radius:3px;padding:1px 6px;letter-spacing:.4px}
+  .pbadge.prop{border-color:var(--acc);color:var(--acc)}
+  .pcol pre{
+    background:var(--panel2);border:1px solid var(--line-soft);border-radius:6px;
+    padding:12px;font-size:12.3px;line-height:1.5;overflow-x:auto;
+  }
+  .pexplain{border-top:1px solid var(--line);padding:12px 16px;font-size:13px}
+  .pexplain h5{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:8px}
+  .pexplain table{width:100%;border-collapse:collapse;font-size:12.8px}
+  .pexplain th,.pexplain td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+  .pexplain th{background:var(--chip);color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+
+  /* audit mock */
+  .agrid{padding:0}
+  table.audit{width:100%;border-collapse:collapse;font-size:12.8px}
+  table.audit th,table.audit td{border-bottom:1px solid var(--line-soft);padding:8px 12px;text-align:left;vertical-align:top}
+  table.audit th{background:var(--panel2);color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0}
+  table.audit td.mono{font-size:12px}
+
+  footer.end{border-top:1px solid var(--line);margin-top:64px;padding-top:18px;color:var(--faint);font-size:12.5px;max-width:80ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <h1>Code-Shipper — operator surface wireframes</h1>
+  <p class="sub">
+    Proposals for the three operator surfaces: scriptable CLI, interactive TUI (<code>/ship-ui</code>),
+    and the Hermes Desktop plugin page. One shared lifecycle, one shared state vocabulary, one rule:
+    <b>humans merge</b> — no surface presents “merge” as an agent action.
+  </p>
+  <span class="statusline">Proposal for approval — not implemented</span>
+  <nav class="toc">
+    <a href="#lifecycle">Lifecycle</a>
+    <a href="#cli">1 · CLI</a>
+    <a href="#tui">2 · TUI</a>
+    <a href="#desktop">3 · Desktop</a>
+    <a href="#desktop-policy">3b · Policy editor</a>
+    <a href="#desktop-audit">3c · Audit trail</a>
+  </nav>
+</header>
+
+<!-- ============================================================ -->
+<section id="lifecycle">
+  <h2><span class="num">0</span>Shared lifecycle and state vocabulary</h2>
+  <p class="lede">
+    Every surface renders the same projection. The seven states below are the whole story;
+    colour is always paired with text. Review verdict, CI, policy and approval are
+    <b>four independent signals</b> — no single green badge compresses them into “safe”.
+  </p>
+  <div class="flow">
+    <span class="step">PR found</span><span class="arrow">→</span>
+    <span class="step">review running</span><span class="arrow">→</span>
+    <span class="step">verdict: approve / approve-with-issues / needs-fix</span><span class="arrow">→</span>
+    <span class="step opt">fix loop (optional): patch → push → CI rerun</span><span class="arrow">→</span>
+    <span class="step">approval requested</span><span class="arrow">→</span>
+    <span class="step">approval granted</span><span class="arrow">→</span>
+    <span class="step human">ready for human merge — on GitHub, by you</span>
+  </div>
+  <p class="note">
+    The fix loop returns to <b>review running</b> after every push (a fix can start another review).
+    “Ready for human merge” is a terminal state for Code-Shipper: the only action offered is
+    <i>Open PR on GitHub</i>. Approval is granted either by a person, or by the agent only where the
+    repo policy allows it <b>and</b> the off-by-default authority flag (D1) is on.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="cli">
+  <h2><span class="num">1</span>CLI — concise receipts, deeper on demand</h2>
+  <p class="lede">
+    Plain output leads with the result or the blocker, then PR/head, next action, run ownership and
+    the stop command. Every command also takes <code>--json</code> (one envelope on stdout, progress on
+    stderr, unknown cost is <code>null</code> — never <code>$0</code>). There is no <code>ship merge</code>.
+  </p>
+
+  <table class="cmds">
+    <tr><th>Command</th><th>What it does</th><th>Ends with</th></tr>
+    <tr><td class="mono">ship status</td><td>Inbox of watched PRs, sorted needs-you-first, with the reason in words.</td><td>Next action per PR.</td></tr>
+    <tr><td class="mono">ship review &lt;pr&gt;</td><td>Reviews the PR at its current head: find → verify → rank → post. Never approves or blocks.</td><td>Verdict + receipt.</td></tr>
+    <tr><td class="mono">ship watch &lt;pr&gt;</td><td>Starts (or <code>--stop</code>s) the fix loop: failing checks, conflicts, review comments, Important findings.</td><td>Budgets + stop command.</td></tr>
+    <tr><td class="mono">ship approve &lt;pr&gt;</td><td>Evaluates the repo approval policy at the exact head; records the agent approval only where every condition holds. Refuses with a reason code otherwise.</td><td>Granted / refused + who is still needed.</td></tr>
+    <tr><td class="mono">ship policy &lt;pr&gt;</td><td>Explains the effective policy: which rule governs each changed file, strictest wins, who must approve.</td><td>Counted approvals at head.</td></tr>
+  </table>
+
+  <h3>Transcript 1 — happy path: clean review, approval requested, ready for human merge</h3>
+  <div class="term">
+    <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>~/work/web-app — zsh</span></div>
+<pre><span class="c-acc">$</span> ship status
+<span class="c-dim">code-shipper 0.1.0 · connection: local · profile: default · synced just now</span>
+
+PRs watched: 1
+  #483 acme/web-app  retry-logic  head a1b2c3d  <span class="c-mut">no review yet</span>
+
+<span class="c-acc">$</span> ship review acme/web-app#483
+pr found: acme/web-app#483 <span class="c-mut">"Retry with backoff on 5xx"</span> · base main · head <span class="c-run">a1b2c3d</span>
+level: standard (3 lenses + verify) · instructions: REVIEW.md @ main <span class="c-dim">(protected base ✓)</span>
+
+find    correctness · security · edge-cases … 2 candidates
+verify  refutation pass at a1b2c3d … <span class="c-mut">2 refuted, 0 confirmed</span>
+rank    0 Important · 0 Nit · 0 Pre-existing
+post    summary comment only · receipt r-8701
+
+verdict: <span class="c-ok">APPROVE</span> — no findings at a1b2c3d
+policy:  approvals.yml @ main 4d5e6f7 · rule default (src/**): 1 person from [writers] or agent
+         agent approval: <span class="c-acc">off (default)</span> → needs 1 person from [writers]
+
+<span class="c-acc">approval requested → @sahil (writers)</span> · status code-shipper/approvals: pending
+next: a person approves and merges on GitHub. <span class="c-mut">Code-Shipper never merges.</span></pre>
+  </div>
+
+  <h3>Transcript 2 — fix loop: steward patches, CI reruns, verdict at the new head</h3>
+  <div class="term">
+    <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>~/work/web-app — zsh</span></div>
+<pre><span class="c-acc">$</span> ship watch acme/web-app#487
+watch started · label <span class="c-run">code-shipper-watching</span> · runtime: hermes scheduler
+budgets: 3 rounds/trigger · 10 pushes/day · 45 min/run · spend cap: <span class="c-acc">not set — harness does not report cost</span>
+
+tick 14:02 · head 7c04aa9
+  check fail: lint (ruff) · job 812 attempt 1 · log redacted (2 tokens masked)
+  steward round 1/3: classified ci-failure, cause in PR scope
+  agent patch: 2 files (src/api/retry.py, tests/test_retry.py) · diff scope ok · no protected files
+  broker: head unchanged 7c04aa9 → push <span class="c-run">9f31c2e</span> · receipt r-8812
+  undo: <span class="c-mut">git revert 9f31c2e</span>  <span class="c-dim">(stop the watch first, or it may re-make the fix)</span>
+  CI rerunning…
+
+tick 14:09 · head 9f31c2e
+  checks: 4/4 pass
+  re-review at 9f31c2e: 0 Important · 2 Nit <span class="c-dim">(1 further nit withheld — outside re-review scope)</span>
+  verdict: <span class="c-acc">APPROVE-WITH-ISSUES</span> — 2 Nit at 9f31c2e
+  policy: needs 1 person from [writers] · agent approval off
+  approval requested → @sahil · watch continues until stopped
+
+stop: <span class="c-mut">ship watch acme/web-app#487 --stop</span>  <span class="c-dim">(stops new rounds; the current round settles first)</span></pre>
+  </div>
+
+  <h3>Transcript 3 — needs-human: protected path, approval refused with a reason</h3>
+  <div class="term">
+    <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>~/work/web-app — zsh</span></div>
+<pre><span class="c-acc">$</span> ship review acme/web-app#491
+pr found: acme/web-app#491 <span class="c-mut">"Cache deploy manifests"</span> · base main · head <span class="c-run">55de21b</span>
+
+find    5 candidates
+verify  4 confirmed · 1 refuted <span class="c-dim">(src/api/sleep.ts:3 already clamps the interval)</span>
+rank    1 Important · 2 Nit · 1 Pre-existing
+post    4 inline comments + summary · receipt r-8820
+
+verdict: <span class="c-err">NEEDS-FIX</span> — 1 Important at 55de21b
+  F1 [security] .github/workflows/deploy.yml:14 — new job runs on pull_request_target with secrets
+     why:          the workflow grants repo secrets to code from the PR head
+     verification: confirmed — job checks out the PR head (actions/checkout, ref: pull_request.head.sha)
+     fix:          <span class="c-acc">steward declined — .github/** is a protected path; a person must change it</span>
+
+<span class="c-acc">$</span> ship approve acme/web-app#491
+<span class="c-err">refused: protected-path</span> — .github/workflows/deploy.yml is a protected file (FR-A2)
+         no agent approval is possible on this PR, in either authority mode
+         needed: 1 person from [writers], after F1 is resolved
+
+authority: mode = reviews/fixes (default) · agent approval flag: off
+           boundary: <span class="c-acc">advisory — broker/sandbox proof not yet verified (M0 open)</span>
+next: resolve or dismiss F1, then re-run <span class="c-mut">ship review acme/web-app#491</span>
+
+<span class="c-acc">$</span> ship policy acme/web-app#491
+policy: .code-shipper/approvals.yml @ main 4d5e6f7 · mode: enforce · <span class="c-ok">valid</span>
+
+files changed: 3
+  src/cache/manifest.ts         rule: default    applies ✓  → 1 person [writers] or agent
+  src/cache/manifest.test.ts    rule: default    applies ✓  → 1 person [writers] or agent
+  .github/workflows/deploy.yml  rule: protected  applies ✓  → 1 person [writers], <span class="c-err">never the agent</span>
+
+strictest wins → <span class="c-acc">1 person from [writers]; agent approval excluded for the whole PR</span>
+counted at 55de21b: none yet · requested: @sahil</pre>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="tui">
+  <h2><span class="num">2</span>TUI — keyboard review workbench (<code>/ship-ui</code>)</h2>
+  <p class="lede">
+    A modal widget that owns the keys while open, distinct from the <code>/ship</code> action command.
+    Arrow keys / <code>j</code><code>k</code> move, <code>Enter</code> opens, single-key confirms for the
+    common actions — with <b>Back as the default</b> on every consequential prompt. Escape only ever
+    closes the view; <code>s</code> (stop watching) and <code>x</code> (cancel run) are separate, labelled
+    actions. There is no merge key.
+  </p>
+
+  <h3>Board — live inbox, log pane, keymap footer (≥ 120 × 35)</h3>
+  <div class="term">
+    <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>/ship-ui — modal widget</span></div>
+<pre>┌─ Code-Shipper · /ship-ui ─────────────────────────────────────────────────────────────────────────────────────┐
+│ connection: local · profile: default · runtime: hermes scheduler · synced 4s ago · 3 PRs watched              │
+├────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────┤
+│ PRs — needs you first                  │ #487 acme/web-app · fix/lint-ci · head 9f31c2e · watch: on (2/3)     │
+│                                        │                                                                      │
+│ ▸ #491 cache-manifests  NEEDS-HUMAN 12m│ [Overview]  Findings  Checks  Policy  History                        │
+│     1 Important · protected path       │ ──────────────────────────────────────────────────────────────────── │
+│                                        │ live log                                                             │
+│   #487 fix/lint-ci      REVIEWING  run │  14:02:11  check fail: lint (ruff) · job 812 · attempt 1             │
+│     steward round 2 · CI rerunning     │  14:02:14  steward: ci-failure, cause in PR scope                    │
+│                                        │  14:02:31  agent patch: 2 files · diff scope ok                      │
+│   #483 retry-logic      READY      2h  │  14:02:33  broker: pushed 9f31c2e · receipt r-8812                   │
+│     approved · waiting on human merge  │  14:02:35  CI rerunning…                                             │
+│                                        │  14:09:02  checks 4/4 pass · re-review at 9f31c2e                    │
+│                                        │  14:09:20  verdict: approve-with-issues (2 nit)                      │
+│                                        │  14:09:20  approval requested → @sahil                               │
+│                                        │                                                                      │
+│                                        │ ── paused · press f to follow ────────────────────────────────────── │
+├────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────┤
+│ ↑↓/jk move · enter open · tab pane · / filter · a approve · w watch · s stop watch · x cancel run · ? · q     │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────┘</pre>
+  </div>
+  <p class="note">
+    The inbox default sorts <b>actionable human blockers before background updates</b>, and each row
+    carries its reason in words — colour is never the only signal. The log pane is pausable; new
+    events never steal focus or reorder the row under the cursor.
+  </p>
+
+  <h3>Approval prompt — single-key confirm, safe default, exact head</h3>
+  <div class="term">
+    <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>/ship-ui — dialog (focus contained)</span></div>
+<pre>              ┌─ approval — acme/web-app #483 ─ head a1b2c3d ──────────────────────────┐
+              │ policy: .code-shipper/approvals.yml @ main 4d5e6f7 · enforce           │
+              │ rule:   default (src/**) → 1 person from [writers] or agent            │
+              │ review @ a1b2c3d: no findings · CI: 4/4 pass                           │
+              │                                                                        │
+              │ agent approval: <span class="c-acc">unavailable — off by default (D1); boundary unverified</span> │
+              │                                                                        │
+              │   <span class="c-acc">[r]</span> request human approval → @sahil                                  │
+              │   <span class="c-dim">[a] agent approve — disabled: authority flag off</span>                     │
+              │   <span class="c-dim">[esc] back (default — nothing is written)</span>                            │
+              │                                                                        │
+              │ Code-Shipper never merges. Merging stays with you, on GitHub.          │
+              └────────────────────────────────────────────────────────────────────────┘</pre>
+  </div>
+  <p class="note">
+    The prompt names the policy revision, the evaluated head, and <b>why</b> the agent option is
+    unavailable — a disabled control always carries its reason next to it, not behind a hover.
+    Enter never lands on a dangerous default; Back is preselected.
+  </p>
+
+  <h3>Compact fallback (80 × 24) — one region, nothing clipped</h3>
+  <div class="term">
+    <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>/ship-ui — 80-col</span></div>
+<pre>┌─ Code-Shipper ─────────────────────────────────────────────────────────┐
+│ #487 acme/web-app · head 9f31c2e · watch on (2/3) · synced 4s ago      │
+├────────────────────────────────────────────────────────────────────────┤
+│  ▸ #491  NEEDS-HUMAN  1 Important · protected path               12m   │
+│    #487  REVIEWING    steward round 2 · CI rerunning               run │
+│    #483  READY        approved · waiting on human merge             2h │
+│                                                                        │
+│  enter: open · tab: detail · below 80×24 falls back to /ship text      │
+├────────────────────────────────────────────────────────────────────────┤
+│ ↑↓ move · enter open · a approve · s stop · x cancel · ? help · q quit │
+└────────────────────────────────────────────────────────────────────────┘</pre>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="desktop">
+  <h2><span class="num">3</span>Desktop — Hermes plugin page: attention inbox + review workspace</h2>
+  <p class="lede">
+    A full <code>/code-shipper</code> page in Hermes Desktop (route + sidebar nav), inheriting the host
+    theme. Three regions at wide width: an attention-first inbox, the selected PR’s working tabs, and a
+    context rail with run ownership, budgets and the authority boundary. No merge button anywhere —
+    the terminal state links out to GitHub.
+  </p>
+
+  <h3>Main page — PR queue + per-PR detail (Review tab)</h3>
+  <div class="frame">
+    <div class="dtopbar">
+      <span class="brand">Code-Shipper</span>
+      <span class="ctx">connection: local · profile: default · runtime: hermes scheduler</span>
+      <span class="sync">synced 8s ago · 3 PRs watched</span>
+    </div>
+    <div class="dfilters">
+      <span class="fchip on">needs you (1)</span>
+      <span class="fchip">running (1)</span>
+      <span class="fchip">ready (1)</span>
+      <span class="fchip">all repos ▾</span>
+    </div>
+    <div class="dgrid">
+      <div class="dinbox">
+        <h4>PRs — needs you first</h4>
+        <div class="pri sel">
+          <div class="l1"><span class="pr mono">#491</span><span class="st st-err">NEEDS-HUMAN</span><span class="age">12m</span></div>
+          <div class="l2 mono">cache-manifests · acme/web-app</div>
+          <div class="reason" style="color:var(--err)">1 Important finding on a protected path — the steward can’t touch it</div>
+        </div>
+        <div class="pri">
+          <div class="l1"><span class="pr mono">#487</span><span class="st st-run">REVIEWING</span><span class="age">run</span></div>
+          <div class="l2 mono">fix/lint-ci · acme/web-app</div>
+          <div class="reason" style="color:var(--mut)">steward round 2 of 3 · CI rerunning after push 9f31c2e</div>
+        </div>
+        <div class="pri">
+          <div class="l1"><span class="pr mono">#483</span><span class="st st-ok">READY</span><span class="age">2h</span></div>
+          <div class="l2 mono">retry-logic · acme/web-app</div>
+          <div class="reason" style="color:var(--mut)">approved by @sahil · waiting on you to merge on GitHub</div>
+        </div>
+      </div>
+      <div class="ddetail">
+        <div class="ttl">#491 — Cache deploy manifests</div>
+        <div class="head-line mono">acme/web-app · base main · head <span style="color:var(--run)">55de21b</span> · reviewed 55de21b · watch: on (round 1/3)</div>
+        <div class="dtabs">
+          <span>Overview</span><span class="on">Review</span><span>Checks</span><span>Policy</span><span>History</span>
+        </div>
+        <div class="verdictbar">
+          <span class="st st-err">NEEDS-FIX</span> &nbsp;1 Important · 2 Nit · 1 Pre-existing — at head 55de21b
+          <div class="vb-sub">Review ran find → verify → rank → post (standard, 3 lenses + verify) · 1 candidate refuted and withheld · receipt r-8820</div>
+        </div>
+
+        <div class="finding">
+          <div class="f-head"><span class="st st-err">IMPORTANT</span><span class="f-loc mono">.github/workflows/deploy.yml:14</span><span style="margin-left:auto" class="mono c-dim">F1 · confirmed</span></div>
+          <div class="f-body">New job runs on <code>pull_request_target</code> and checks out the PR head while repo secrets are in scope.</div>
+          <div class="f-why"><b>Why flagged:</b> the job grants repository secrets to code coming from the PR head.<br>
+          <b>Verification:</b> confirmed — <code>actions/checkout</code> with <code>ref: pull_request.head.sha</code>; evidence read from the diff, not executed. <b>Fix:</b> steward declined — <code>.github/**</code> is a protected path; a person must change it.</div>
+          <div class="f-foot"><span>evidence: code-read refutation</span><span>receipt r-8820</span><span>resolve on GitHub ↗</span></div>
+        </div>
+        <div class="finding">
+          <div class="f-head"><span class="st st-acc">NIT</span><span class="f-loc mono">src/cache/manifest.ts:88</span><span style="margin-left:auto" class="mono c-dim">F2 · confirmed</span></div>
+          <div class="f-body">Cache key omits the manifest schema version; a format change would silently hit stale entries.</div>
+          <div class="f-foot"><span>evidence: code-read refutation</span><span>receipt r-8820</span></div>
+        </div>
+        <div class="finding">
+          <div class="f-head"><span class="st st-mut">PRE-EXISTING</span><span class="f-loc mono">src/cache/store.ts:31</span><span style="margin-left:auto" class="mono c-dim">F3 · confirmed</span></div>
+          <div class="f-body">Unbounded map growth; predates this PR, not introduced here.</div>
+          <div class="f-foot"><span>evidence: code-read refutation</span><span>receipt r-8820</span></div>
+        </div>
+      </div>
+      <div class="drail">
+        <div class="rbox">
+          <h5>Run</h5>
+          <div class="kv"><span class="k">watch</span><span class="v" style="color:var(--run)">on · round 1/3</span></div>
+          <div class="kv"><span class="k">owner</span><span class="v">hermes scheduler (local)</span></div>
+          <div class="kv"><span class="k">pushes today</span><span class="v">1/10</span></div>
+          <div class="meter"><i style="width:10%"></i></div>
+          <div class="kv"><span class="k">wall clock</span><span class="v">12:40 / 45:00</span></div>
+          <div class="meter"><i style="width:28%"></i></div>
+          <div class="kv"><span class="k">spend</span><span class="v" style="color:var(--acc)">unknown — harness doesn’t meter</span></div>
+        </div>
+        <div class="rbox">
+          <h5>Authority</h5>
+          <div class="kv"><span class="k">mode</span><span class="v">reviews/fixes (default)</span></div>
+          <div class="kv"><span class="k">agent approval</span><span class="v" style="color:var(--acc)">off (D1)</span></div>
+          <div class="kv"><span class="k">boundary</span><span class="v" style="color:var(--acc)">advisory — unverified</span></div>
+          <div class="rail-note">The agent holds no credential that can approve or merge. Proof of the broker/sandbox boundary is open (M0); treat the boundary as advisory until verified.</div>
+        </div>
+        <div class="rbox">
+          <h5>Actions</h5>
+          <button class="btn">Stop watching</button>
+          <span class="btn-why">stops new rounds; the current round settles</span>
+          <button class="btn danger">Cancel current run</button>
+          <span class="btn-why">revokes unissued writes; in-flight receipts settle first</span>
+          <button class="btn pri">Open PR on GitHub ↗</button>
+          <span class="btn-why">approving and merging happen there, by a person</span>
+          <button class="btn dis" disabled>Merge — not available</button>
+          <span class="btn-why">Code-Shipper never merges, in either authority mode</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 id="desktop-policy">Policy editor — effective vs proposed, never self-applied</h3>
+  <p class="note">
+    The effective policy is read from the <b>default branch only</b> and is read-only here. Edits are a
+    proposed overlay: validated live, applied to nothing, and clearly labelled “not effective until
+    merged”. A PR that changes the policy is never judged by its own new rules.
+  </p>
+  <div class="frame">
+    <div class="dtopbar">
+      <span class="brand">Code-Shipper</span><span class="ctx">policy — acme/web-app</span>
+      <span class="sync">effective: main @ 4d5e6f7</span>
+    </div>
+    <div class="pgrid">
+      <div class="pcol">
+        <h5>Effective <span class="pbadge">read-only · default branch</span></h5>
+<pre><span class="c-dim"># .code-shipper/approvals.yml @ main 4d5e6f7</span>
+mode: enforce
+rules:
+  - purpose: default review bar
+    paths: ["src/**"]
+    verdict: { seats: 1, from: [writers], agent: approves }
+  - purpose: protected files always need a person
+    paths: [".github/**", "CODEOWNERS",
+            ".gitattributes", ".code-shipper/**"]
+    verdict: { seats: 1, from: [writers], agent: never }</pre>
+      </div>
+      <div class="pcol">
+        <h5>Proposed <span class="pbadge prop">PR #490 — not effective</span></h5>
+<pre>mode: enforce
+rules:
+  - purpose: default review bar
+    paths: ["src/**"]
+    verdict: { seats: 1, from: [writers], agent: approves }
+<span class="c-acc">+ - purpose: generated code is low risk</span>
+<span class="c-acc">+   paths: ["src/gen/**"]</span>
+<span class="c-acc">+   verdict: { seats: 0, agent: approves }</span>
+  - purpose: protected files always need a person
+    paths: [".github/**", "CODEOWNERS",
+            ".gitattributes", ".code-shipper/**"]
+    verdict: { seats: 1, from: [writers], agent: never }</pre>
+        <p class="note" style="margin-top:10px"><span class="c-ok">valid</span> — 4 rules, no unknown keys · applies after merge to main · open PRs re-evaluate at their next event</p>
+      </div>
+    </div>
+    <div class="pexplain">
+      <h5>How the rules led to this verdict — #491 at 55de21b</h5>
+      <table>
+        <tr><th>Changed file</th><th>Rule</th><th>Applies?</th><th>Verdict required</th></tr>
+        <tr><td class="mono">src/cache/manifest.ts</td><td>default review bar</td><td>yes</td><td>1 person from [writers], or agent</td></tr>
+        <tr><td class="mono">src/cache/manifest.test.ts</td><td>default review bar</td><td>yes</td><td>1 person from [writers], or agent</td></tr>
+        <tr><td class="mono">.github/workflows/deploy.yml</td><td>protected files</td><td>yes</td><td style="color:var(--err)">1 person from [writers] — never the agent</td></tr>
+        <tr><td colspan="4" style="color:var(--acc)">strictest wins → 1 person from [writers]; agent approval excluded for the whole PR · counted at 55de21b: none yet</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h3 id="desktop-audit">Audit trail — every write, refusal and uncertain outcome</h3>
+  <p class="note">
+    Append-only receipts with the exact head each action was computed for. Refusals are first-class
+    rows — an agent that was stopped is as auditable as one that acted. Uncertain writes stay open
+    until read-back settles them; nothing is silently retried.
+  </p>
+  <div class="frame">
+    <div class="dtopbar">
+      <span class="brand">Code-Shipper</span><span class="ctx">history — acme/web-app</span>
+      <span class="sync">ledger: local · 214 events</span>
+    </div>
+    <div class="agrid">
+      <table class="audit">
+        <tr><th>Time</th><th>PR</th><th>Actor</th><th>Action</th><th>Head</th><th>Receipt</th><th>Outcome</th></tr>
+        <tr><td class="mono">14:11:02</td><td class="mono">#491</td><td>agent</td><td>approve</td><td class="mono">55de21b</td><td class="mono">—</td><td><span class="st st-err">refused</span> protected-path</td></tr>
+        <tr><td class="mono">14:09:20</td><td class="mono">#487</td><td>system</td><td>approval requested → @sahil</td><td class="mono">9f31c2e</td><td class="mono">r-8821</td><td><span class="st st-mut">ok</span></td></tr>
+        <tr><td class="mono">14:02:33</td><td class="mono">#487</td><td>agent</td><td>push fix (round 1)</td><td class="mono">7c04aa9→9f31c2e</td><td class="mono">r-8812</td><td><span class="st st-ok">ok</span> read-back verified · undo: git revert 9f31c2e</td></tr>
+        <tr><td class="mono">13:58:44</td><td class="mono">#483</td><td>agent</td><td>post review (0 findings)</td><td class="mono">a1b2c3d</td><td class="mono">r-8701</td><td><span class="st st-ok">ok</span></td></tr>
+        <tr><td class="mono">13:41:17</td><td class="mono">#483</td><td>human @sahil</td><td>approval granted (GitHub review)</td><td class="mono">a1b2c3d</td><td class="mono">gh-99213</td><td><span class="st st-ok">ok</span> · ready for human merge</td></tr>
+        <tr><td class="mono">12:22:31</td><td class="mono">#482</td><td>system</td><td>settled by read-back — comment landed once, no duplicate</td><td class="mono">77aa019</td><td class="mono">r-8799</td><td><span class="st st-mut">settled</span></td></tr>
+        <tr><td class="mono">12:22:08</td><td class="mono">#482</td><td>agent</td><td>post comment — response lost (network)</td><td class="mono">77aa019</td><td class="mono">r-8799</td><td><span class="st st-acc">uncertain</span> duplicate intent blocked</td></tr>
+        <tr><td class="mono">11:03:52</td><td class="mono">#480</td><td>human @sahil</td><td>stop watching</td><td class="mono">—</td><td class="mono">r-8770</td><td><span class="st st-mut">acknowledged</span> · fence persisted, label removed</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<footer class="end">
+  Wireframe proposals for owner sign-off. Fictional SHAs, receipts and timestamps. Surfaces render one
+  shared backend projection; disabled controls are explanations, never the enforcement layer.
+  Companion rationale: <code>design-notes.md</code> in this directory.
+</footer>
+
+</div>
+</body>
+</html>
