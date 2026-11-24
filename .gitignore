@@ -13,3 +13,6 @@ tokens/
 spikes/**/out/
 docs/reports/evidence/**/raw/
 .staging/
+
+# uv writes this when it is used to run the spike tooling; not a project lockfile.
+uv.lock
