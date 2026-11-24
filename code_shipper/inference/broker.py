@@ -31,6 +31,7 @@ import json
 import os
 import secrets
 import socket
+import stat
 import threading
 import time
 from dataclasses import dataclass, field
@@ -294,17 +295,19 @@ class Broker:
         }
 
     def _authorise(self, token: str) -> Capability:
+        """Validate the capability. Callers then reserve under the same lock (see _reserve),
+        so a revoke cannot slip between the check and the send."""
         with self._lock:
             cap = self._capabilities.get(token)
-        if cap is None:
-            raise Failure("capability_unknown")
-        if cap.revoked:
-            raise Failure("capability_revoked")
-        if self._clock() >= cap.expires_at:
-            raise Failure("capability_expired")
-        if cap.requests_used >= cap.max_requests:
-            raise Failure("capability_exhausted")
-        return cap
+            if cap is None:
+                raise Failure("capability_unknown")
+            if cap.revoked:
+                raise Failure("capability_revoked")
+            if self._clock() >= cap.expires_at:
+                raise Failure("capability_expired")
+            if cap.requests_used >= cap.max_requests:
+                raise Failure("capability_exhausted")
+            return cap
 
     def _check_scope(self, cap: Capability, request: dict[str, Any]) -> None:
         if request["provider"] != cap.provider or request["model"] != cap.model:
@@ -313,8 +316,16 @@ class Broker:
             raise Failure("token_limit_exceeded")
 
     def _reserve(self, cap: Capability, prompt_chars: int, max_tokens: int) -> None:
-        """Count the request before it is sent, so a crash cannot grant a free retry loop."""
+        """Re-check and count the request in one critical section.
+
+        The state can change between _authorise and here, so the guards are repeated: that is
+        what makes a revoke or expiry win over an in-flight request rather than racing it.
+        """
         with self._lock:
+            if cap.revoked:
+                raise Failure("capability_revoked")
+            if self._clock() >= cap.expires_at:
+                raise Failure("capability_expired")
             if cap.requests_used >= cap.max_requests:
                 raise Failure("capability_exhausted")
             cap.requests_used += 1
@@ -379,14 +390,14 @@ class SocketServer:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._slots = threading.BoundedSemaphore(max_connections)
+        self._count_lock = threading.Lock()
         self.served = 0
 
     def start(self) -> "SocketServer":
         if len(str(self.path)) > 100:
             raise StartupError("socket path too long for AF_UNIX")
-        if self.path.exists():
-            self.path.unlink()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        _clear_stale_socket(self.path)
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.bind(str(self.path))
         os.chmod(self.path, self.mode)
@@ -408,22 +419,29 @@ class SocketServer:
                 break
             if not self._slots.acquire(blocking=False):
                 _send(conn, {"ok": False, "error": "busy"})
+                _close(conn)
                 continue
             threading.Thread(target=self._handle_conn, args=(conn,), daemon=True).start()
 
     def _handle_conn(self, conn: socket.socket) -> None:
         try:
             conn.settimeout(30.0)
-            raw = _read_request(conn)
-            response = self.broker.handle(raw)
-            with threading.Lock():
-                self.served += 1
+            raw, oversized = _read_request(conn)
+            response = (
+                {"ok": False, "error": "request_too_large"}
+                if oversized
+                else self.broker.handle(raw)
+            )
+            if oversized:
+                # The caller is still sending. Drain before replying so the close does not reset
+                # the connection and discard the refusal we just wrote.
+                _drain(conn)
             _send(conn, response)
+            with self._count_lock:
+                self.served += 1
         finally:
-            try:
-                conn.close()
-            finally:
-                self._slots.release()
+            _close(conn)
+            self._slots.release()
 
     def stop(self) -> None:
         self._stop.set()
@@ -443,7 +461,12 @@ class SocketServer:
         self.stop()
 
 
-def _read_request(conn: socket.socket) -> bytes:
+def _read_request(conn: socket.socket) -> tuple[bytes, bool]:
+    """Read one newline-terminated request. Returns (payload, oversized).
+
+    Never returns more than the cap: the caller is told ``request_too_large`` over a live
+    connection rather than seeing it dropped as a reset.
+    """
     chunks: list[bytes] = []
     total = 0
     while True:
@@ -452,12 +475,54 @@ def _read_request(conn: socket.socket) -> bytes:
             break
         total += len(chunk)
         if total > MAX_REQUEST_BYTES:
-            return b"\x00" * (MAX_REQUEST_BYTES + 1)  # forces request_too_large
+            return b"", True
         chunks.append(chunk)
         if b"\n" in chunk:
             break
     data = b"".join(chunks)
-    return data.split(b"\n", 1)[0]
+    return data.split(b"\n", 1)[0], False
+
+
+def _drain(conn: socket.socket, *, seconds: float = 5.0) -> None:
+    """Read and discard what the peer is still sending, so our refusal is delivered not reset.
+
+    Bounded by time rather than by bytes: the caller may legitimately have a multi-megabyte
+    buffer in flight, and cutting it off is what produces the reset we are trying to avoid.
+    """
+    deadline = time.monotonic() + seconds
+    try:
+        conn.settimeout(min(1.0, seconds))
+        while time.monotonic() < deadline:
+            chunk = conn.recv(65536)
+            if not chunk:
+                return
+            if b"\n" in chunk:
+                return
+    except OSError:
+        pass
+
+
+def _close(conn: socket.socket) -> None:
+    try:
+        conn.close()
+    except OSError:
+        pass
+
+
+def _clear_stale_socket(path: Path) -> None:
+    """Remove a leftover socket file, but never delete a plain file somebody else placed here.
+
+    A stale socket is safe to unlink: nothing is listening on it. Anything else at this path is
+    either a mistake or an attempt to make us remove something, so refuse and let the operator
+    deal with it.
+    """
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISSOCK(info.st_mode):
+        raise StartupError(f"refusing to replace a non-socket file at {path}")
+    path.unlink()
 
 
 def _send(conn: socket.socket, response: dict[str, Any]) -> None:
