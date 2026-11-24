@@ -44,6 +44,14 @@ def main() -> int:
     prompt = task.get("prompt", PROMPT)
     result: dict[str, object] = {"prompt": prompt}
 
+    # Only used by the fail-closed probe: hold here after the canaries and before Hermes starts, so
+    # the host has time to stop the broker while this run is genuinely in flight.
+    delay = task.get("delay_s")
+    if delay:
+        import time
+
+        time.sleep(float(delay))
+
     # A fresh HERMES_HOME. On tmpfs, because Hermes writes skills, caches, sessions and sqlite
     # state; on the bind-mounted workspace those files would be owned by uid 65534 and the host
     # user could not remove them afterwards.
