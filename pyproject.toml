@@ -15,6 +15,9 @@ dependencies = []
 [project.urls]
 Homepage = "https://github.com/Sahil-SS9/code-shipper"
 
+[project.scripts]
+code-shipper = "code_shipper.main:run"
+
 [project.optional-dependencies]
 # Test-only. The runtime is standard library only (K1).
 dev = ["pytest>=8"]
