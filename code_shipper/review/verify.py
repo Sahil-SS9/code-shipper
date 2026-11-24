@@ -63,12 +63,16 @@ def batch(findings: list[Finding], size: int = BATCH_SIZE) -> list[list[Finding]
     return [findings[i : i + size] for i in range(0, len(findings), size)]
 
 
-def build_prompt(findings: list[Finding], diff_text: str) -> str:
+def build_prompt(findings: list[Finding], diff_text: str, *, intent: str = "") -> str:
     """Ask the verifier to refute, not to agree.
 
     The framing matters: a prompt that asks "is this finding correct?" invites agreement, while one
     that asks "show why this is wrong" surfaces the findings that do not survive contact with the
     code.
+
+    ``intent`` is the PR author's own description, already framed as untrusted by the caller. It is
+    useful here because a finding that contradicts the stated intent is worth re-reading, and a
+    finding the description quietly admits is worth confirming.
     """
     lines = [
         "You are verifying code-review findings against the actual change. Your job is to REFUTE "
@@ -84,6 +88,10 @@ def build_prompt(findings: list[Finding], diff_text: str) -> str:
         "Reply with JSON only: {\"verdicts\": [{\"id\": \"...\", \"verdict\": "
         "\"confirmed|refuted|unsure\", \"reason\": \"...\"}]}",
         "",
+    ]
+    if intent:
+        lines += [intent, ""]
+    lines += [
         "<untrusted source=\"diff\">",
         diff_text,
         "</untrusted>",

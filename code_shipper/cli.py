@@ -93,6 +93,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     from .harness.adapters import HermesHarness
     from .harness.adapters import scrubbed_env
     from .hosts.github import GitHubHost
+    from .review.engine import intent_block
     from .review.engine import review as run_review
 
     if not args.dry_run:
@@ -131,6 +132,7 @@ def cmd_review(args: argparse.Namespace) -> int:
         level=args.level,
         workdir=args.workdir,
         env=scrubbed_env(),
+        intent=intent_block(pr.title, pr.body),
     )
     outcome_dict = outcome.as_dict()
     outcome_dict["pr"] = args.pr

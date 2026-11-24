@@ -269,6 +269,7 @@ def _to_pr(data: Any) -> PullRequest:
             if isinstance(label, dict)
         ),
         state=str(data.get("state", "open")),
+        body=str(data.get("body") or ""),
     )
 
 

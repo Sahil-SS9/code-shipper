@@ -1,0 +1,30 @@
+{
+  "level": "standard",
+  "lenses_run": [
+    "correctness",
+    "security",
+    "edge"
+  ],
+  "raw_findings": 2,
+  "confirmed": 2,
+  "dropped_unverified": 0,
+  "posted": 1,
+  "omitted": 0,
+  "complete": true,
+  "errors": [],
+  "findings": [
+    {
+      "id": "correctness-3c52992fc5",
+      "path": "calc/__init__.py",
+      "line": 6,
+      "severity": "important",
+      "title": "divide() guard widened from b == 0 to b <= 0, so negative divisors now raise ZeroDivisionError",
+      "body": "The description says the behaviour should be unchanged and that the zero check was extracted. Neither is true. Nothing was extracted, and the condition changed from `b == 0` to `b <= 0`. Any negative divisor now takes the zero branch. For example, divide(6, -2) used to return -3.0 and now raises ZeroDivisionError(\"b must not be zero\"). Dividing by a negative number is valid. The exception type and message still say only zero is meant to be rejected, so the new operator contradicts the code's own intent and will mislead anyone debugging a call with a negative divisor. Change the condition back to `if b == 0:`. If negative divisors really should be rejected, that is a new rule and needs its own ValueError and message, not a silent change inside a refactor.",
+      "evidence": "-    if b == 0:\n+    if b <= 0:\n         raise ZeroDivisionError(\"b must not be zero\")",
+      "lens": "correctness"
+    }
+  ],
+  "pr": 18,
+  "repo": "Sahil-SS9/code-shipper-sandbox",
+  "head_sha": "e2967a8c4faebe85e24de1df0d77f943a5a30280"
+}

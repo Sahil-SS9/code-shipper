@@ -25,6 +25,8 @@ class PullRequest:
     from_fork: bool = False
     labels: tuple[str, ...] = ()
     state: str = "open"
+    # The author's own description. Untrusted: it is written by the person who made the change.
+    body: str = ""
 
 
 @dataclass(frozen=True)
