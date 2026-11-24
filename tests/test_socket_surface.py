@@ -13,6 +13,7 @@ import socket
 import tempfile
 import threading
 import time
+import sys
 import unittest
 from pathlib import Path
 
@@ -23,6 +24,10 @@ from code_shipper.inference.broker import (
     StartupError,
 )
 from code_shipper.inference.upstream import StaticUpstream
+# Unix-domain sockets and POSIX file modes do not exist on Windows. These tests are
+# skipped there rather than allowed to fail, so the CI matrix reports real coverage.
+posix_only = unittest.skipIf(sys.platform.startswith("win"), "POSIX-only test")
+
 
 
 def request(capability: str, **over: object) -> bytes:
@@ -38,6 +43,7 @@ def request(capability: str, **over: object) -> bytes:
     return json.dumps(payload).encode()
 
 
+@posix_only
 class ServerCase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -129,6 +135,7 @@ class ServedCounterTests(ServerCase):
             small.stop()
 
 
+@posix_only
 class SocketPathSafetyTests(unittest.TestCase):
     def test_refuses_to_replace_a_regular_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -171,6 +178,7 @@ class SocketPathSafetyTests(unittest.TestCase):
                 server.stop()
 
 
+@posix_only
 class RevokeRaceTests(unittest.TestCase):
     def test_revoke_between_authorise_and_reserve_wins(self) -> None:
         broker = Broker(StaticUpstream("ok"))

@@ -16,6 +16,7 @@ import json
 import os
 import tempfile
 import threading
+import sys
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -24,6 +25,10 @@ from code_shipper.inference.broker import Broker
 from code_shipper.inference.upstream import FailingUpstream, OpenAICompatUpstream, StaticUpstream
 
 FAKE_KEY = "sk-FAKE-regression-test-key"
+# Unix-domain sockets and POSIX file modes do not exist on Windows. These tests are
+# skipped there rather than allowed to fail, so the CI matrix reports real coverage.
+posix_only = unittest.skipIf(sys.platform.startswith("win"), "POSIX-only test")
+
 
 
 class _Recorder:
@@ -77,6 +82,7 @@ def _answer(handler: BaseHTTPRequestHandler, _recorder: _Recorder) -> None:
     handler.wfile.write(body)
 
 
+@posix_only
 class RedirectLeakTests(unittest.TestCase):
     """Finding 1: a 3xx must not forward the bearer token anywhere."""
 
@@ -174,6 +180,7 @@ class RedirectLeakTests(unittest.TestCase):
             self.assertEqual(upstream_server.hits[0]["authorization"], f"Bearer {FAKE_KEY}")
 
 
+@posix_only
 class SocketModeDefaultTests(unittest.TestCase):
     """Finding 2: the library default must be owner-only."""
 
@@ -198,6 +205,7 @@ class SocketModeDefaultTests(unittest.TestCase):
                 server.stop()
 
 
+@posix_only
 class UnchangedFailurePathsTests(unittest.TestCase):
     """Guard against the redirect fix swallowing real upstream failures."""
 

@@ -141,7 +141,9 @@ def check_containment_controls() -> list[Check]:
             return [Check("platform", UNVERIFIED, "sandbox-exec present but this build is unmeasured")]
         return [Check("platform", UNSUPPORTED, "sandbox-exec not available")]
     if sys.platform.startswith("linux"):
-        if os.geteuid() == 0:
+        # os.geteuid does not exist on Windows, so this branch must stay behind the platform check.
+        geteuid = getattr(os, "geteuid", None)
+        if geteuid is not None and geteuid() == 0:
             return [Check("platform", UNVERIFIED,
                           "running as root, so the rootless control cannot be assessed")]
         return [Check("platform", VERIFIED, "linux with rootless containers available")]

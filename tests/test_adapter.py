@@ -15,6 +15,7 @@ import os
 import socket
 import tempfile
 import threading
+import sys
 import unittest
 import urllib.error
 import urllib.request
@@ -22,6 +23,10 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from code_shipper.contain import adapter
+# Unix-domain sockets and POSIX file modes do not exist on Windows. These tests are
+# skipped there rather than allowed to fail, so the CI matrix reports real coverage.
+posix_only = unittest.skipIf(sys.platform.startswith("win"), "POSIX-only test")
+
 
 
 class FakeBroker:
@@ -79,6 +84,7 @@ class FakeBroker:
             pass
 
 
+@posix_only
 class AdapterCase(unittest.TestCase):
     broker_ok = True
 
@@ -364,6 +370,7 @@ class DeadBrokerRefusalTests(AdapterCase):
         self.assertEqual(refused, 1)
 
 
+@posix_only
 class CredentialFreeTests(unittest.TestCase):
     def test_adapter_source_contains_no_credential_or_provider_url(self) -> None:
         source = Path(adapter.__file__).read_text(encoding="utf-8")

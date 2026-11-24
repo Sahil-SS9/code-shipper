@@ -22,6 +22,10 @@ from pathlib import Path
 from code_shipper.contain import fixloop
 
 FAKE_TOKEN = "ghp_FAKEtokenvalueforTestsOnly0123456789"
+# Unix-domain sockets and POSIX file modes do not exist on Windows. These tests are
+# skipped there rather than allowed to fail, so the CI matrix reports real coverage.
+posix_only = unittest.skipIf(sys.platform.startswith("win"), "POSIX-only test")
+
 
 
 def run(cmd: list[str], cwd: Path, **kw) -> subprocess.CompletedProcess:
@@ -113,6 +117,7 @@ def push_with_observer(worktree: Path, bare: Path, *, expected_sha: str, token: 
     return receipt, samples
 
 
+@posix_only
 class TokenNotInArgvTests(unittest.TestCase):
     def setUp(self) -> None:
         self.repo = PushRepo()
@@ -164,6 +169,7 @@ class TokenNotInArgvTests(unittest.TestCase):
         self.assertNotIn(FAKE_TOKEN, str(receipt))
 
 
+@posix_only
 class ScopeRuleTests(unittest.TestCase):
     """The path rules are hard-coded for the sandbox; these pin their current behaviour."""
 
@@ -189,6 +195,7 @@ class ScopeRuleTests(unittest.TestCase):
                 self.assertFalse(fixloop._allowed(path))
 
 
+@posix_only
 class BasicAuthTests(unittest.TestCase):
     def test_basic_auth_encodes_as_expected(self) -> None:
         import base64

@@ -12,6 +12,7 @@ import os
 import shutil
 import stat
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
@@ -26,8 +27,13 @@ from code_shipper.contain.staging import (
 )
 
 REPO = Path(__file__).resolve().parent.parent
+# Unix-domain sockets and POSIX file modes do not exist on Windows. These tests are
+# skipped there rather than allowed to fail, so the CI matrix reports real coverage.
+posix_only = unittest.skipIf(sys.platform.startswith("win"), "POSIX-only test")
 
 
+
+@posix_only
 class RunDirTests(unittest.TestCase):
     def setUp(self) -> None:
         self.root = new_run_dir(REPO, prefix="test-perm-")
@@ -86,6 +92,7 @@ class RunDirTests(unittest.TestCase):
             require_private_run_dir(self.root)  # caught before the broker starts
 
 
+@posix_only
 class StagingRootTests(unittest.TestCase):
     """CS_STAGING_ROOT may move the parent, but cannot weaken the per-run guarantee."""
 
@@ -140,6 +147,7 @@ class StagingRootTests(unittest.TestCase):
         self.assertTrue(path.is_dir())
 
 
+@posix_only
 class DiscardTests(unittest.TestCase):
     def test_refuses_to_remove_outside_the_root(self) -> None:
         root = Path(tempfile.mkdtemp(prefix="test-root-"))

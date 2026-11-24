@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,6 +32,9 @@ from code_shipper.harness.base import (
     validate_against_schema,
     which,
 )
+
+# The interpreter name differs on Windows, and these tests spawn a real command.
+PY = sys.executable
 
 FIX_SCHEMA = {
     "type": "object",
@@ -201,18 +205,18 @@ class CommandAdapterTests(unittest.TestCase):
             CommandHarness(preset="nope")
 
     def test_it_runs_a_real_command_and_parses_its_json(self) -> None:
-        argv = ["python3", "-c", 'print(\'{"status": "changed", "summary": "ok"}\')']
+        argv = [PY, "-c", 'print(\'{"status": "changed", "summary": "ok"}\')']
         result = CommandHarness(argv=argv).run(task(), {})
         self.assertTrue(result.ok, result.error)
         self.assertEqual(result.output["status"], "changed")
 
     def test_a_failing_command_is_reported(self) -> None:
-        result = CommandHarness(argv=["python3", "-c", "raise SystemExit(3)"]).run(task(), {})
+        result = CommandHarness(argv=[PY, "-c", "raise SystemExit(3)"]).run(task(), {})
         self.assertFalse(result.ok)
         self.assertIn("exited 3", result.error)
 
     def test_non_json_output_is_rejected(self) -> None:
-        result = CommandHarness(argv=["python3", "-c", "print('no json here')"]).run(task(), {})
+        result = CommandHarness(argv=[PY, "-c", "print('no json here')"]).run(task(), {})
         self.assertFalse(result.ok)
         self.assertIsNone(result.output)
 

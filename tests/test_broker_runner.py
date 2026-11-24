@@ -13,6 +13,10 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+# Unix-domain sockets and POSIX file modes do not exist on Windows. These tests are
+# skipped there rather than allowed to fail, so the CI matrix reports real coverage.
+posix_only = unittest.skipIf(sys.platform.startswith("win"), "POSIX-only test")
+
 
 
 def run_broker(*args: str) -> subprocess.CompletedProcess[str]:
@@ -26,6 +30,7 @@ def run_broker(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+@posix_only
 class RefusesToStartTests(unittest.TestCase):
     def test_refuses_with_no_upstream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -69,6 +74,7 @@ class RefusesToStartTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
 
 
+@posix_only
 class ServesAndStopsTests(unittest.TestCase):
     def test_starts_serves_one_request_and_stops(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

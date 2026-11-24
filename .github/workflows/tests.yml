@@ -1,0 +1,30 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      # The runtime is standard library only (K1), so there is nothing to install. The suite is
+      # stdlib unittest, which is deliberate: it must run on a bare interpreter.
+      - name: run unit tests
+        run: python -m unittest discover -s tests -t . -v
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
