@@ -107,6 +107,31 @@ agent:
     # adapter ignores it and the broker never sees it.
     (HERMES_HOME / ".env").write_text("CS_PLACEHOLDER_KEY=placeholder-not-a-credential\n", encoding="utf-8")
     os.chmod(HERMES_HOME / ".env", 0o600)
+    disable_all_tools()
+
+
+# Every built-in toolset. `-t ""` does NOT mean "none": Hermes treats an empty value as unset and
+# still sends ~20 tool definitions, which is both a wider surface than intended and enough schema to
+# overflow a small local model's context. This is the reliable way to send none.
+ALL_TOOLSETS = (
+    "web", "browser", "terminal", "file", "code_execution", "vision", "image_gen", "tts",
+    "skills", "todo", "memory", "session_search", "connections", "clarify", "delegation",
+    "cronjob", "computer_use",
+)
+
+
+def disable_all_tools() -> None:
+    """Turn every toolset off in this run's HERMES_HOME, so a text-only session really is text-only."""
+    subprocess.run(
+        ["hermes", "tools", "disable", *ALL_TOOLSETS],
+        capture_output=True, text=True, timeout=120,
+        env={
+            "PATH": "/opt/hermes/bin:/opt/hermes/.venv/bin:/usr/bin:/bin",
+            "HOME": str(HERMES_HOME),
+            "HERMES_HOME": str(HERMES_HOME),
+            "NO_COLOR": "1",
+        },
+    )
 
 
 def start_adapter() -> subprocess.Popen:

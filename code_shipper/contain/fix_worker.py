@@ -129,6 +129,30 @@ agent:
         "CS_PLACEHOLDER_KEY=placeholder-not-a-credential\n", encoding="utf-8"
     )
     os.chmod(HERMES_HOME / ".env", 0o600)
+    disable_tools_except_file()
+
+
+# Everything except `file`. `-t file` alone does not achieve that: Hermes adds its default toolsets
+# on top, which hands the worker a terminal, a browser and a network surface it must not have.
+TOOLSETS_EXCEPT_FILE = (
+    "web", "browser", "terminal", "code_execution", "vision", "image_gen", "tts",
+    "skills", "todo", "memory", "session_search", "connections", "clarify", "delegation",
+    "cronjob", "computer_use",
+)
+
+
+def disable_tools_except_file() -> None:
+    """Leave only the file toolset enabled, so the worker can edit but not reach anything else."""
+    subprocess.run(
+        ["hermes", "tools", "disable", *TOOLSETS_EXCEPT_FILE],
+        capture_output=True, text=True, timeout=120,
+        env={
+            "PATH": "/opt/hermes/bin:/opt/hermes/.venv/bin:/usr/bin:/bin",
+            "HOME": str(HERMES_HOME),
+            "HERMES_HOME": str(HERMES_HOME),
+            "NO_COLOR": "1",
+        },
+    )
 
 
 def start_adapter() -> subprocess.Popen:

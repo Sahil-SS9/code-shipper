@@ -165,7 +165,17 @@ def call_broker(config: dict, payload: dict) -> dict:
         raise BrokerRefused("broker closed the connection without a response")
     response = json.loads(raw.split(b"\n", 1)[0])
     if not response.get("ok"):
-        raise BrokerRefused(f"broker refused: {response.get('error')}")
+        # Record which message shapes were rejected. Without this a refusal is undiagnosable.
+        shapes = [
+            {key: type(value).__name__ for key, value in message.items()}
+            for message in request.get("messages", [])
+            if isinstance(message, dict)
+        ]
+        raise BrokerRefused(
+            f"broker refused: {response.get('error')} keys={shapes} "
+            f"top={sorted(request)} tools={len(request.get('tools') or [])} "
+            f"tool_shape={[sorted(t.get('function', {})) for t in (request.get('tools') or [])][:2]}"
+        )
     return response
 
 

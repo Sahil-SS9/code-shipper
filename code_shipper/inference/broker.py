@@ -38,7 +38,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-MAX_REQUEST_BYTES = 64 * 1024
+# A request now carries tool schemas, and real ones are large: Hermes sends 21 definitions, ~60 KB
+# on their own. The bound that matters is per message (MAX_MESSAGE_CHARS) and per capability
+# (max_prompt_chars), so this is a transport ceiling, not the security control.
+MAX_REQUEST_BYTES = 512 * 1024
 MAX_MESSAGES = 64
 MAX_MESSAGE_CHARS = 16 * 1024
 MAX_OUTPUT_TOKENS_CEILING = 8192
