@@ -140,3 +140,25 @@ gh api repos/Sahil-SS9/code-shipper-sandbox/pulls/18/reviews
 ```
 
 Receipts: `docs/reports/evidence/P2/posted-review-pr18.json`, `posted-reviews.jsonl`.
+
+## CI
+
+Checkpoint run **45507115383** (head `e2cf87c`) — all six jobs success:
+
+| Job | Result |
+|---|---|
+| ubuntu-latest, py3.11 | success |
+| ubuntu-latest, py3.12 | success |
+| macos-latest, py3.11 | success |
+| macos-latest, py3.12 | success |
+| windows-latest, py3.11 | success |
+| windows-latest, py3.12 | success |
+
+## Owner decision after this checkpoint
+
+The after-approval merge test was dropped by owner decision and recorded in the same round:
+`docs/tech-spec.md` §6 and `M0-GATE.md` now say **ASSUMED: a write-capable token can merge once
+approvals and checks pass (GitHub branch protection gates the PR, not who merges). Not measured.**
+The controls that carry the boundary instead are listed in `M0-GATE.md`, the README gained a
+"Protect your default branch" section, and `spikes/b1/after_approval_merge.py` is marked optional and
+refuses to run without an explicit flag. It was not run.
