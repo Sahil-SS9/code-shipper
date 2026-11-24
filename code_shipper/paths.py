@@ -62,9 +62,15 @@ def ensure_dir(path: Path, *, mode: int = 0o700) -> Path:
 
     State contains PR numbers, heads and run history; another local user has no business reading it.
     The mode is set explicitly because mkdir's mode argument is masked by the umask.
+
+    Windows: mode bits do not express directory ACLs there, so this cannot be enforced or verified.
+    It is created and accepted, and the limitation is the same one that makes contained runs
+    UNSUPPORTED on that platform (see contain/staging.py) rather than a silent pretend-success.
     """
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        return path
     os.chmod(path, mode)
     actual = path.stat().st_mode & 0o777
     if actual != mode:

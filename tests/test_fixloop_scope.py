@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from code_shipper.contain import fixloop
 from code_shipper.contain.fixloop import check_scope, snapshot, test_weakening
 
 GOOD_SOURCE = """def add(a, b):
@@ -201,6 +202,52 @@ class SnapshotTests(FixCase):
         path = self.ws.work / "calc" / "__init__.py"
         path.write_text(path.read_text() + "\n# trailing\n")
         self.assertNotEqual(before["calc/__init__.py"], snapshot(self.ws.work)["calc/__init__.py"])
+
+
+class PathSeparatorTests(unittest.TestCase):
+    """Rules must work on native separators. This was a real hole, not a cosmetic issue.
+
+    On Windows a relative path comes back with backslashes. Before normalisation, 'calc\\\\__init__.py'
+    did not match the allowed patterns (so a genuine fix looked out of scope) and, worse,
+    'calc\\\\conftest.py' did not match the forbidden ones either, so a file that can rewrite test
+    collection would have been accepted.
+    """
+
+    def test_allowed_paths_match_with_backslashes(self) -> None:
+        self.assertTrue(fixloop._allowed("calc\\__init__.py"), "a Windows path must be in scope")
+        self.assertTrue(fixloop._allowed("tests\\test_calc.py"))
+
+    def test_forbidden_paths_are_caught_with_backslashes(self) -> None:
+        for path in (
+            "calc\\conftest.py",
+            "conftest.py",
+            ".github\\workflows\\tests.yml",
+            "calc\\.code-shipper\\approvals.yml",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(fixloop._allowed(path), f"{path} must be refused on any platform")
+
+    def test_snapshot_keys_are_posix(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="cs-snap-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
+        (root / "calc").mkdir()
+        (root / "calc" / "a.py").write_text("x = 1\n")
+        digests = fixloop.snapshot(root)
+        self.assertIn("calc/a.py", digests)
+        self.assertFalse(any("\\" in key for key in digests), "keys must be POSIX regardless of OS")
+
+    def test_scope_check_accepts_a_fix_on_windows_style_paths(self) -> None:
+        # the whole path from snapshot to _allowed, using the native form for this platform
+        root = Path(tempfile.mkdtemp(prefix="cs-scope-sep-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
+        (root / "calc").mkdir()
+        source = root / "calc" / "__init__.py"
+        source.write_text("return a * b\n")
+        before = fixloop.snapshot(root)
+        source.write_text("return a / b\n")
+        verdict = fixloop.check_scope(before, root)
+        self.assertTrue(verdict.ok, verdict.problems)
+        self.assertIn("calc/__init__.py", verdict.changed)
 
 
 if __name__ == "__main__":

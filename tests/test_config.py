@@ -46,7 +46,7 @@ class HappyPathTests(unittest.TestCase):
         self.assertEqual(config.harness, "command")
         self.assertEqual(config.repos[0].slug, "o/r")
         self.assertEqual(config.review_level, "deep")
-        self.assertEqual(str(config.state_dir), "/tmp/state")
+        self.assertEqual(config.state_dir, Path("/tmp/state"))
 
     def test_validate_is_chainable(self) -> None:
         self.assertIsInstance(Config().validate(), Config)

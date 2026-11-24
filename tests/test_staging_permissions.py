@@ -189,9 +189,11 @@ class WindowsCapabilityTests(unittest.TestCase):
 
         from code_shipper.contain import staging
 
+        # Path("...") resolves to WindowsPath when os.name is patched to "nt", so the argument must
+        # be built after the patch or the test fails for the wrong reason.
         with mock.patch.object(staging.os, "name", "nt"):
             with self.assertRaises(staging.StagingPermissionError) as caught:
-                staging.require_private_run_dir(Path("/anywhere"))
+                staging.require_private_run_dir("T:\\anywhere")
         message = str(caught.exception)
         self.assertIn("Windows", message)
         self.assertIn("UNSUPPORTED", message)

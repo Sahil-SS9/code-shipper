@@ -17,10 +17,15 @@ import sys
 import tempfile
 import textwrap
 import time
+import sys
 import unittest
 from pathlib import Path
 
 from code_shipper.ledger import Ledger, LedgerError
+# The ledger lock uses fcntl (POSIX advisory locks) and the state-dir test asserts POSIX
+# mode bits. Both are skipped on Windows rather than failing there.
+posix_only = unittest.skipIf(sys.platform.startswith("win"), "POSIX-only test")
+
 
 
 class LedgerCase(unittest.TestCase):
@@ -162,6 +167,7 @@ class HeadAndBudgetTests(LedgerCase):
         self.assertEqual(totals["unknown_cost_runs"], 1)
 
 
+@posix_only
 class LockTests(unittest.TestCase):
     """A real second process, because an in-process lock would prove nothing."""
 
@@ -214,6 +220,7 @@ class LockTests(unittest.TestCase):
                 pass
 
 
+@posix_only
 class PathPermissionTests(unittest.TestCase):
     def test_state_directory_is_owner_only(self) -> None:
         from code_shipper.paths import ensure_dir

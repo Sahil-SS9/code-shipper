@@ -45,24 +45,40 @@ class ScopeVerdict:
 
 
 def snapshot(root: Path) -> dict[str, str]:
-    """sha256 per file, excluding .git. The worker's own report is not consulted."""
+    """sha256 per file, excluding .git. The worker's own report is not consulted.
+
+    Keys are POSIX relative paths regardless of platform, matching what the rules and GitHub use.
+    """
     digests: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
         if not path.is_file() or ".git" in path.parts:
             continue
         try:
-            digests[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+            relative = path.relative_to(root).as_posix()
+            digests[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
         except OSError:
             continue
     return digests
 
 
+def _posix(path: str) -> str:
+    """Normalise a path to forward slashes before any rule is applied.
+
+    The rules are written with '/' because GitHub reports POSIX paths. On Windows a relative path
+    comes back with backslashes, so without this every rule silently stops matching: allowed paths
+    look out of scope, and a forbidden file such as calc\\conftest.py slips through. Normalising here
+    means there is one form for the rules to reason about.
+    """
+    return path.replace("\\", "/")
+
+
 def _allowed(path: str) -> bool:
+    normalised = _posix(path)
     # search(), not match(): the forbidden patterns are anchored on a path *component*, and match()
     # only anchors at the start of the string, so "calc/conftest.py" would slip through.
-    if any(pattern.search(path) for pattern in FORBIDDEN_PATTERNS):
+    if any(pattern.search(normalised) for pattern in FORBIDDEN_PATTERNS):
         return False
-    return any(pattern.match(path) for pattern in ALLOWED_PATTERNS)
+    return any(pattern.match(normalised) for pattern in ALLOWED_PATTERNS)
 
 
 def _tests_only_tightened(before: bytes, after: bytes) -> list[str]:
