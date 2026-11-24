@@ -1,0 +1,218 @@
+{
+  "scratch": "/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc",
+  "container": "cs-b1-ea8c0f6789",
+  "agent": "standin",
+  "upstream": {
+    "kind": "fake-loopback",
+    "url": "http://127.0.0.1:39899"
+  },
+  "broker": {
+    "socket": "/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/broker/broker.sock",
+    "capability_public": {
+      "run_id": "cp2-c5187ca8",
+      "provider": "local",
+      "model": "auto",
+      "max_requests": 2,
+      "requests_used": 0,
+      "max_output_tokens": 256,
+      "expires_at": 1795538623.6986732,
+      "revoked": false
+    }
+  },
+  "spec": {
+    "image": "slopsearx-kensei:local",
+    "network": "none",
+    "root_filesystem": "read-only",
+    "user": "65534:65534",
+    "capabilities": "ALL dropped",
+    "no_new_privileges": true,
+    "pids_limit": 64,
+    "memory": "512m",
+    "cpus": "1",
+    "tmpfs": [
+      "/tmp:rw,noexec,nosuid,size=64m"
+    ],
+    "mounts": {
+      "/source": {
+        "src": "/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/source",
+        "mode": "ro"
+      },
+      "/work": {
+        "src": "/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/work",
+        "mode": "rw"
+      },
+      "/app": {
+        "src": "/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/work/app",
+        "mode": "ro"
+      },
+      "/run/cs": {
+        "src": "/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/broker",
+        "mode": "ro"
+      }
+    },
+    "host_home": null,
+    "docker_socket": null
+  },
+  "image_id": "sha256:9a0a6ac529b67b004461d4f7753a4f9f331a49c52e44b89aa7268e8f8709cfda",
+  "broker_stopped_mid_run": true,
+  "broker_receipts": [],
+  "run": {
+    "returncode": 2,
+    "seconds": 6.38,
+    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=785870]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\n",
+    "stderr_tail": "worker: broker unreachable: [Errno 2] No such file or directory\n"
+  },
+  "container_removed": true,
+  "canary": {
+    "checks": [
+      {
+        "name": "source mounted read-only and readable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "source file content readable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "workspace writable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "tmp writable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "positive control: mounted canary readable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.hermes/.env",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.config/gh/hosts.yml",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.git-credentials",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.ssh/id_rsa",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.config/code-shipper/tokens/fixer",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/outside/out-of-container-canary)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/outside/fake-gh-hosts.yml)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/b1-_9bn_cwc/outside/fake-fixer-token)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "no credential-shaped environment variables",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "environment carries no host paths",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "no docker socket",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "no system bus socket",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "host process is not visible",
+        "ok": true,
+        "detail": "host_pid=785870"
+      },
+      {
+        "name": "root filesystem not writable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "source not writable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "uid is not root",
+        "ok": true,
+        "detail": "uid=65534"
+      },
+      {
+        "name": "no-new-privileges effective",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "capabilities empty",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "network namespace is not the host's",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "no non-loopback route",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "broker socket present",
+        "ok": true,
+        "detail": "/run/cs/broker.sock"
+      },
+      {
+        "name": "no credential file beside the socket",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "passed": 27,
+    "failed": []
+  },
+  "result": null,
+  "capability_file_in_workspace": true,
+  "ledger_text_has_key": false,
+  "ledger_has_prompt_text": false,
+  "fake_provider": {
+    "hits": 0,
+    "saw_authorization": false,
+    "model_requested": null
+  },
+  "broker_reachable_from_container": false,
+  "verdict": "PASS"
+}
