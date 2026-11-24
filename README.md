@@ -37,6 +37,28 @@ the platform doctor reports that container VERIFIED. What is measured is the con
 (twenty controls, `docs/reports/M0-ROOTLESS.md`); a contained harness run with the host inference
 broker is UNVERIFIED, so secure fixing is not yet proven. Details: `docs/tech-spec.md` §2.4, §6.1.
 
+## Protect your default branch
+
+**Do this before you let Code-Shipper fix anything on a repository you care about.**
+
+A token that can write contents can reach the merge endpoint. GitHub's branch protection gates the
+*PR* — its approvals and its required checks — not the identity of whoever presses merge. So if the
+PR is eligible, a write-capable token can merge it, and Code-Shipper assumes exactly that rather than
+hoping otherwise.
+
+Two rules:
+
+1. **Protect your default branch.** Require a pull request, require at least one approval from
+   someone other than the author, require the checks you rely on, and do not leave an admin bypass in
+   place for the account whose token Code-Shipper uses.
+2. **Never give the agent a merge-capable token.** Code-Shipper is built so it cannot leak one — the
+   broker holds the token outside the container, the agent never sees it, and there is no merge
+   operation anywhere in the product. Do not undo that by exporting a token into the environment the
+   agent runs in, or by mounting one into its container.
+
+The defence does not rely on a token being unable to merge. It relies on the token never reaching the
+agent, and on your branch rules deciding what happens if one ever did.
+
 Surfaces: a scriptable CLI, an interactive TUI inbox and a Hermes Desktop page share one state and
 action service. The owner approved the wireframes on 24/11/2026 (`docs/ux/gallery.html`); UI code follows them.
 

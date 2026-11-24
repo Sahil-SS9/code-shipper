@@ -1,8 +1,10 @@
 # M0 gate report — Phase 0
 
-Verdict: **READY FOR REVIEW**, with one item open by owner decision (after-approval merge).
+Verdict: **READY FOR REVIEW**. One item is closed by owner decision as an assumption rather than a
+measurement (after-approval merge).
 Commit: `1fd47aa` (Phase 0 code; this report follows in its own commit).
-Phase 0 is complete apart from T-SPIKE-03's after-approval case, which needs the approver token.
+Phase 0 is complete. T-SPIKE-03's after-approval case and T-SPIKE-04 are **ASSUMED, not measured** —
+owner decision, recorded below.
 
 ## Gate items
 
@@ -13,13 +15,16 @@ Phase 0 is complete apart from T-SPIKE-03's after-approval case, which needs the
   `docs/reports/evidence/B1/receipt-cp4.json` (`push.ok: true`, `expected_sha`/`new_sha` recorded).
 - **T-SPIKE-02 fixer token approves: VERIFIED (refused).** GitHub refuses with 422 where the token's
   account is the PR author, and with a permission error otherwise. Unchanged from M0.
-- **T-SPIKE-03 fixer token merges: PARTIAL.** Refused where branch protection requires an approval
-  (M0 measured REST and GraphQL merges refused, and direct pushes to `main` refused, while approval
-  was missing). The token **can** merge an unprotected PR — it merged sandbox PR 2 — so this asserts
-  the protection, not token incapability. **OPEN: approval present + checks green, then the fixer
-  merges.** Needs a second GitHub account so someone other than the author can approve. The approver
-  token is not yet in place; the test runs as soon as it is.
-- **T-SPIKE-04 approver token pushes: NOT DONE.** Same dependency.
+- **T-SPIKE-03 fixer token merges: PARTIAL, with the remaining case ASSUMED.** Refused where branch
+  protection requires an approval (M0 measured REST and GraphQL merges refused, and direct pushes to
+  `main` refused, while approval was missing). The token **can** merge an unprotected PR — it merged
+  sandbox PR 2 — so this asserts the protection, not token incapability. **The case "approval present
+  + checks green, then the fixer merges" is ASSUMED: a write-capable token can merge once approvals
+  and checks pass (GitHub branch protection gates the PR, not who merges). Not measured; owner
+  decision.** Measuring it needs a second GitHub identity, and the owner closed the question by
+  assumption instead. The defence does not rest on that assumption — see "Controls that hold" below.
+- **T-SPIKE-04 approver token pushes: ASSUMED, not measured.** Same owner decision and same reason:
+  it needs a second identity. Treated as unproven rather than passed.
 - **T-SPIKE-05 agent credentials, contained vs not: VERIFIED for the contained case.**
   Contained: 27/27 canaries pass, every host credential path absent, no docker or system-bus socket,
   no host process visible, no non-loopback route. Uncontained: expected to fail, as documented in
@@ -111,11 +116,29 @@ Evidence: `docs/reports/evidence/B1/receipt-cp4.json`, `docs/reports/B1-CP4-REPO
   owner updated the probe independently; the oversize path is covered by four unit tests at the real
   limit including a multi-megabyte body.
 
+## Controls that hold whatever a token can do
+
+The after-approval case is assumed, not measured, so the defence deliberately does not rest on it.
+Three controls carry the boundary instead:
+
+1. **The broker holds the token, outside the container.** The agent never has it in its environment,
+   its mounts or its argv. It receives a per-run inference capability scoped to one provider, one
+   model, a request count and an expiry, and nothing else.
+2. **The agent never sees the token.** Every repository write goes through the broker, which enforces
+   a role allowlist per operation.
+3. **Code-Shipper exposes no merge operation.** There is no merge method in the broker — not a
+   rejected one, an absent one — and no surface offers a merge control. A human merges.
+
+Because a merge-capable token is assumed able to merge, `allow_agent_approval` additionally requires
+a ruleset that restricts merging to listed humans, and the README tells users to protect their
+default branch.
+
 ## Open risks
 
-- **T-SPIKE-03 after-approval merge is unresolved.** Until it runs, the safe assumption is that a
-  Contents-write token can merge once an approval exists, so agent approval must require a ruleset
-  that restricts merging to listed humans. The README already says so.
+- **T-SPIKE-03's after-approval merge is assumed, not measured.** The safe reading holds: a
+  Contents-write token can merge once an approval and the required checks pass, so agent approval
+  requires a ruleset restricting merges to listed humans. This is an owner decision to close by
+  assumption, and it is recorded as an assumption everywhere it appears rather than as a result.
 - **Only local inference has been proven.** All real calls went to Turbofit on loopback with a
   synthetic credential. Hosted-provider authentication through the broker is untested.
 - **Containment is not fixing safety.** A shell that cannot see credentials is not an agent that

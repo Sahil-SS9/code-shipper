@@ -399,11 +399,25 @@ report. In Phase 0 the allowed and forbidden paths are hard-coded for the sandbo
 them from the policy file, and the test-weakening check moves to an AST (Phase 3 limits in
 `reports/M0-GATE.md`).
 
-**Still open.** Whether a Contents-write fixer token can merge once an approval exists, and whether
-an approver token can push. Both need a second GitHub account. Until measured, the documented
-assumption is that it can merge, so `allow_agent_approval` requires a ruleset restricting merges to
-listed humans. Hosted-provider authentication through the broker is also unmeasured; only local
-loopback inference has been proven.
+**ASSUMED, not open.** A write-capable token can reach the merge endpoint once approvals and checks
+pass: GitHub branch protection gates the PR, not who presses merge. This is **not measured** — an
+owner decision closed the question by assumption rather than by test, because measuring it needs a
+second GitHub identity for the approval. T-SPIKE-04 (approver token pushes) is closed the same way.
+
+The defence does not depend on that assumption being wrong. It rests on three controls that hold
+whatever a token can do:
+
+1. **The broker holds the token, outside the container.** The agent never has it in its environment,
+   its mounts or its argv; it gets a per-run inference capability and nothing else.
+2. **The agent never sees the token.** Every repository write goes through the broker, which enforces
+   a role allowlist.
+3. **Code-Shipper exposes no merge operation.** There is no merge method in the broker at all — not a
+   rejected one, an absent one — and no surface offers a merge control. A human merges.
+
+Because a merge-capable token is assumed able to merge, `allow_agent_approval` additionally requires
+a ruleset restricting merges to listed humans, and the README tells users to protect their default
+branch. Hosted-provider authentication through the broker is also unmeasured; only local loopback
+inference has been proven.
 
 ## 7. Prompts and untrusted content
 
@@ -485,7 +499,8 @@ Spike (real GitHub, Phase 0)
 - T-SPIKE-03 fixer token merges: recorded as REFUSED only where branch protection requires an
   approval. M0 measured the token merging an unprotected PR (it merged sandbox PR 2), so this test
   asserts the protection, not token incapability. The case "approval present + checks green, then
-  fixer merges" is UNTESTED and must be recorded either way.
+  fixer merges" is **ASSUMED: a write-capable token can merge once approvals and checks pass
+  (GitHub branch protection gates the PR, not who merges). Not measured; owner decision.**
 - T-SPIKE-04 approver token pushes: refused.
 - T-SPIKE-05 agent process attempts every path in C4 inside and outside the container (rootless
   Docker per `reports/M0-ROOTLESS.md`): record which credentials it could reach in each case.

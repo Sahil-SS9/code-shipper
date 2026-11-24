@@ -1,19 +1,25 @@
-"""The after-approval merge case: can the fixer token merge once a PR has an approval?
+"""OPTIONAL AND UNRUN. The after-approval merge question is closed by owner decision, not by this test.
 
-This is the one Phase 0 item left open. It needs a second GitHub account, because GitHub will not let
-an account approve its own pull request and the fixer token belongs to the repo owner.
+**Status: optional, never run.** The owner closed T-SPIKE-03's after-approval case as an assumption:
+a write-capable token can merge once approvals and checks pass, because GitHub branch protection gates
+the PR rather than the identity of whoever merges. See `docs/tech-spec.md` §6 and
+`docs/reports/M0-GATE.md`: *"ASSUMED: a write-capable token can merge once approvals and checks pass
+(GitHub branch protection gates the PR, not who merges). Not measured; owner decision."*
 
-What it does, in order:
+It is kept because it is the shortest path to a real answer if that assumption is ever doubted, and
+because deleting a test that was never run hides the gap rather than recording it. It needs a second
+GitHub account with write access to the sandbox, which does not exist.
+
+**Do not run this as part of any phase or checkpoint.** If it is ever run, record the result whichever
+way it lands — including a merge that went through.
+
+What it would do, in order:
   1. find or open a PR on the sandbox branch with green checks and no approval
-  2. record that the fixer cannot merge it yet (that half is already measured, but re-recorded)
+  2. record that the fixer cannot merge it yet
   3. the APPROVER approves it
   4. the fixer attempts a merge by REST and by GraphQL, and both results are recorded
   5. if either merge went through, say so immediately and loudly
-  6. clean up: if a merge went through, the PR is left merged and reported, never quietly undone
-
-Run when the token exists:
-    python3 spikes/b1/after_approval_merge.py            # full run
-    python3 spikes/b1/after_approval_merge.py --json
+  6. leave a merge in place and report it, never quietly undoing it
 
 Never prints, logs or commits a token. Both are read by path.
 """
@@ -128,7 +134,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pr", type=int, default=0, help="PR number to use; default: find or open one")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--i-understand-this-is-optional-and-unrun",
+        action="store_true",
+        help="required: this test is optional and is not part of any phase or checkpoint",
+    )
     args = parser.parse_args(argv)
+
+    if not args.i_understand_this_is_optional_and_unrun:
+        print(
+            "This test is OPTIONAL and UNRUN by owner decision. The after-approval merge case is "
+            "recorded as an assumption, not a measurement, in docs/tech-spec.md §6 and "
+            "docs/reports/M0-GATE.md.\n\n"
+            "Nothing was attempted. If you genuinely want to measure it, re-run with "
+            "--i-understand-this-is-optional-and-unrun.",
+            file=sys.stderr,
+        )
+        return 2
 
     fixer = read_token(FIXER_TOKEN, "fixer")
     approver = read_token(APPROVER_TOKEN, "approver")
