@@ -1,0 +1,24 @@
+{
+  "outcome": "pass final configured probe",
+  "passed_checks": 20,
+  "failed_attempts": [
+    {
+      "reason": "non-root could not read mounted probe script",
+      "scope": "synthetic file mode"
+    },
+    {
+      "reason": "host could not read worker-owned result due inherited ACL",
+      "scope": "receipt file mode, twice"
+    },
+    {
+      "reason": "/bin/awk missing; use cached image busybox applet",
+      "scope": "probe portability"
+    }
+  ],
+  "limitations": [
+    "No model or host inference broker exercised",
+    "No production worker or networked inference transport",
+    "No kernel-escape proof",
+    "Limits requested, not stress-tested"
+  ]
+}

@@ -24,9 +24,11 @@ this document. A builder must reconcile it into the original documents before im
 - The initial 'no docker group' diagnosis missed an existing rootless Docker daemon. Parent
   verified `docker context show` = rootless and security options include rootless and seccomp.
   No sudo, docker-group change or global sysctl change is needed to INVESTIGATE this route.
-  Container confinement remains UNVERIFIED: a child probe approval was withdrawn, so do not
-  retry that action without new explicit permission. Rootless Docker being available is not
-  proof that the chosen mount/network/process policy is secure.
+  Container confinement was UNVERIFIED at revision-2 authoring. Owner subsequently explicitly
+  reauthorised the probe: `reports/M0-ROOTLESS.md` records twenty passing controls on a cached
+  Linux rootless container. Basic filesystem/process/network separation now has bounded evidence,
+  but contained Hermes + host inference broker integration remains UNVERIFIED. Rootless Docker
+  availability alone is not evidence of the full product boundary.
 - Rootless Docker root commonly maps to the daemon owner's host UID; never rely on 'all host
   credentials are unmapped' as the boundary. Mount visibility, process isolation, socket access,
   network policy and credential separation must each be tested.
@@ -163,5 +165,6 @@ R4: issue a new pinned build handoff with phases, acceptance tests and explicit 
 Only then start implementation phases. Never hand the old pack to another builder as ready.
 
 No new sudo change, paid service, credential creation or live deployment authorised by this
-revision. Container probe authorisation must be renewed explicitly because the earlier approval
-was withdrawn. Code-Shipper product source remains unbuilt.
+revision. The withdrawn container probe was later explicitly reauthorised and its bounded
+result is recorded in `reports/M0-ROOTLESS.md`; further tests remain within that synthetic,
+no-download/no-system-change scope. Code-Shipper product source remains unbuilt.
