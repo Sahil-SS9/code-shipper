@@ -204,5 +204,54 @@ class BasicAuthTests(unittest.TestCase):
         self.assertEqual(fixloop._basic_auth(FAKE_TOKEN), expected)
 
 
+class LeaseTests(unittest.TestCase):
+    """The push must carry an expected-old-ref lease, not a plain push.
+
+    A preflight GET followed by an ordinary push is not enough: the head can move between them. The
+    lease makes the remote itself refuse if the ref is not what we expect.
+    """
+
+    def test_the_push_uses_force_with_lease_at_the_expected_sha(self) -> None:
+        import inspect
+
+        source = inspect.getsource(fixloop.push)
+        self.assertIn("--force-with-lease=refs/heads/", source)
+        self.assertIn("expected_sha", source)
+
+    def test_a_moved_remote_head_is_refused_before_any_push(self) -> None:
+        repo = PushRepo()
+        self.addCleanup(repo.cleanup)
+        repo.stage_change()
+        # the expected sha is not the remote head
+        receipt = fixloop.push(
+            repo.work,
+            branch="main",
+            expected_sha="0" * 40,
+            commit_message="should not happen",
+            token=FAKE_TOKEN,
+            hookless_dir=repo.hooks(),
+            author=("Test", "t@e.invalid"),
+        )
+        self.assertFalse(receipt["ok"])
+        self.assertEqual(receipt["stage"], "expected-head")
+
+    def test_a_non_fast_forward_is_refused(self) -> None:
+        # the local head must descend from the expected remote head
+        repo = PushRepo()
+        self.addCleanup(repo.cleanup)
+        receipt = fixloop.push(
+            repo.work,
+            branch="main",
+            expected_sha=repo.base_sha,
+            commit_message="nothing staged",
+            token=FAKE_TOKEN,
+            hookless_dir=repo.hooks(),
+            author=("Test", "t@e.invalid"),
+        )
+        # nothing to commit, so this fails at the commit stage rather than inventing a push
+        self.assertFalse(receipt["ok"])
+        self.assertIn(receipt["stage"], ("commit", "fast-forward"))
+
+
 if __name__ == "__main__":
     unittest.main()

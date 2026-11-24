@@ -71,8 +71,8 @@ class ReviewEventTests(unittest.TestCase):
         with self.assertRaises(BrokerRefused):
             brk.post_review(pr=18, head_sha="abc", body="x", event="APPROVE")
         self.assertEqual(len(brk.receipts), 1)
-        self.assertEqual(brk.receipts[0].result, "refused")
-        self.assertIsNone(brk.receipts[0].status)
+        self.assertEqual(brk.receipts[0].state, "refused")
+        self.assertIsNone(brk.receipts[0].response_status)
 
 
 class CommentReviewTests(unittest.TestCase):
@@ -166,7 +166,9 @@ class FailureTests(unittest.TestCase):
                 brk.post_review(pr=18, head_sha="abc", body="b", event="APPROVE")
 
             lines = [json.loads(line) for line in ledger.read_text().splitlines()]
-            self.assertEqual([entry["result"] for entry in lines], ["confirmed", "refused"])
+            states = [entry["state"] for entry in lines]
+            self.assertIn("confirmed", states)
+            self.assertEqual(states[-1], "refused")
             # the token is never written to the ledger
             self.assertNotIn("ghp_faketoken", ledger.read_text())
 

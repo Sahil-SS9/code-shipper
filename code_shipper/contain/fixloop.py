@@ -186,11 +186,21 @@ def push(
     token: str,
     hookless_dir: Path,
     author: tuple[str, str],
+    head_branch: str | None = None,
 ) -> dict:
     """Commit in the worktree and push fast-forward only, at the exact expected head.
 
+    ``head_branch`` is the PR's head branch. When given, a push to any other branch is refused before
+    anything reaches the network: a CI log or a model cannot redirect a fix onto ``main``.
+
     Returns a receipt. Nothing here can merge: there is no merge operation in this module.
     """
+    if head_branch is not None and branch != head_branch:
+        return {
+            "ok": False,
+            "stage": "branch-scope",
+            "detail": f"refusing to push {branch!r}: only the PR head branch {head_branch!r}",
+        }
     remote = _git(worktree, "ls-remote", "origin", f"refs/heads/{branch}")
     if remote.returncode != 0:
         return {"ok": False, "stage": "ls-remote", "detail": remote.stderr[-500:]}
