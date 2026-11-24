@@ -18,6 +18,19 @@ class UpstreamError(Exception):
     """The provider refused or failed. The broker turns this into ``upstream_error``."""
 
 
+class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    """Any 3xx is a refusal, not a hop.
+
+    urllib's default handler follows redirects and resends the original headers, including
+    ``Authorization``, to whatever host the redirect names. A provider that answers 302 would
+    therefore hand our key to an arbitrary host. Refusing every redirect keeps the credential
+    pinned to the configured base URL.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
+        raise UpstreamError(f"provider redirect refused: {code}")
+
+
 class OpenAICompatUpstream:
     """POST /v1/chat/completions with a bearer token the broker holds in memory."""
 
@@ -28,6 +41,9 @@ class OpenAICompatUpstream:
         self.base_url = base
         self._api_key = api_key
         self._required = required
+        # An opener with no redirect handler at all: build_opener() adds only the defaults it is
+        # not given, so supplying this one replaces the following behaviour outright.
+        self._opener = urllib.request.build_opener(_RefuseRedirects)
 
     def __repr__(self) -> str:  # never leak the key through a repr in a traceback
         return f"OpenAICompatUpstream(base_url={self.base_url!r}, api_key=<redacted>)"
@@ -54,8 +70,11 @@ class OpenAICompatUpstream:
             f"{self.base_url}/v1/chat/completions", data=body, headers=headers, method="POST"
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with self._opener.open(request, timeout=timeout) as response:
                 payload = json.loads(response.read().decode("utf-8", "replace"))
+        except UpstreamError:
+            # Raised by the redirect handler. Never followed, so the key never travels.
+            raise
         except urllib.error.HTTPError as exc:
             detail = ""
             try:

@@ -360,8 +360,10 @@ class Broker:
     # -- socket server -----------------------------------------------------
 
     def serve_socket(
-        self, path: str | os.PathLike[str], *, mode: int = 0o666, max_connections: int = 64
+        self, path: str | os.PathLike[str], *, mode: int = 0o600, max_connections: int = 64
     ) -> "SocketServer":
+        """``mode`` defaults to owner-only. Callers who need another UID to connect must widen it
+        deliberately, and that choice is then visible at the call site."""
         return SocketServer(self, path, mode=mode, max_connections=max_connections)
 
 
