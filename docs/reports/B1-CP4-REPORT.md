@@ -24,10 +24,10 @@ Local only, unpushed, authored as the repository's configured identity.
 
 | | |
 |---|---|
-| PR | #13 on `Sahil-SS9/code-shipper-sandbox` |
-| Branch | `cp4/fix-15fabd8c` |
-| Broken head | `79c84b6dafa6` |
-| Fixed head | `c85ae5c3deb6` |
+| PR | #14 on `Sahil-SS9/code-shipper-sandbox` |
+| Branch | `cp4/fix-45dfb71b` |
+| Broken head | `5607c1addd48` |
+| Fixed head | `3f35c4e32e2d` |
 | CI before | failure |
 | CI after | success |
 | Canaries | 27/27 in the pinned Hermes image |
@@ -106,6 +106,13 @@ which this task does not have. The fix is `-c safe.directory=<path>` on each git
 git honours where repository-local config is deliberately ignored for that setting — narrower than a
 global entry and needing no privileges.
 
+**4. The review probe caught me loosening the protocol.** Adding tool support, I let a message carry
+a `name` field and accepted a bare `tool` message with no `tool_call_id`. The independent probe
+failed on both — correctly. `name` is not needed for a tool round-trip, and a tool result with no
+call id is malformed, not a tool result. Both are refused again. The probe's other three failures
+(the `tool` role, "refusals made zero upstream calls" and the request-count check) were downstream
+of those two and cleared with them: **38/38 again**.
+
 ## Bounds, as required
 
 - our own wall clock: `run_hermes` uses `Popen` with our timeout and kills the process itself. In the
@@ -134,7 +141,7 @@ global entry and needing no privileges.
 ```
 cd /home/kensei/repos/code-shipper
 
-./scripts/run_tests.sh                 # 161 unit tests
+./scripts/run_tests.sh                 # 162 unit tests
 
 # the full CP4 loop: creates a branch and PR on the sandbox, fixes it, pushes, waits for CI
 python3 -B spikes/b1/cp4_run.py        # ~5 minutes; --json for the receipt
@@ -149,7 +156,7 @@ the machine.
 ```
 $ ./scripts/run_tests.sh
 ----------------------------------------------------------------------
-Ran 161 tests in 22.783s
+Ran 162 tests in 22.787s
 
 OK
 ```

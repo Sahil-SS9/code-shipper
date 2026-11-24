@@ -115,8 +115,9 @@ class RefusesNonInferenceTests(unittest.TestCase):
         messages = [{"role": "wizard", "content": "hi"}]
         self.assertRefused(encode(messages=messages), "bad_request")
 
-    def test_accepts_the_tool_role(self) -> None:
-        # A tool result has to come back to the model, or an agent cannot act on what it read.
+    def test_accepts_the_tool_role_with_a_call_id(self) -> None:
+        # A tool result has to come back to the model, or an agent cannot act on what it read. It is
+        # only valid as the answer to a specific call, so the id is required.
         broker = Broker(StaticUpstream("ok"))
         cap = broker.issue_capability(run_id="r", provider="local", model="m")
         response = broker.handle(
@@ -124,11 +125,19 @@ class RefusesNonInferenceTests(unittest.TestCase):
                 capability=cap.token,
                 messages=[
                     {"role": "user", "content": "hi"},
-                    {"role": "tool", "content": "file contents"},
+                    {"role": "tool", "content": "file contents", "tool_call_id": "call_1"},
                 ],
             )
         )
         self.assertTrue(response["ok"], response)
+
+    def test_refuses_a_tool_message_without_a_call_id(self) -> None:
+        broker = Broker(StaticUpstream("ok"))
+        cap = broker.issue_capability(run_id="r", provider="local", model="m")
+        response = broker.handle(
+            encode(capability=cap.token, messages=[{"role": "tool", "content": "x"}])
+        )
+        self.assertEqual(response, {"ok": False, "error": "bad_request"})
 
     def test_refuses_missing_capability(self) -> None:
         self.assertRefused(encode(capability=""), "capability_required")

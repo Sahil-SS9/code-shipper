@@ -628,7 +628,9 @@ def _validate_message(message: object) -> dict[str, Any]:
     """
     if not isinstance(message, dict):
         raise Failure("bad_request")
-    allowed = {"role", "content", "tool_calls", "tool_call_id", "name"}
+    # Strict on purpose. Only the fields a validated tool round-trip needs; "name" is not one,
+    # and the probe correctly flags it as an unknown key.
+    allowed = {"role", "content", "tool_calls", "tool_call_id"}
     if set(message) - allowed:
         raise Failure("bad_request")
 
@@ -655,10 +657,14 @@ def _validate_message(message: object) -> dict[str, Any]:
         clean["content"] = content  # an assistant tool call legitimately has no text
 
     tool_call_id = message.get("tool_call_id")
-    if tool_call_id is not None:
-        if role != "tool" or not isinstance(tool_call_id, str) or len(tool_call_id) > 128:
+    if role == "tool":
+        # A tool result is only meaningful as the answer to a specific call. Without the id it is
+        # not a tool result, it is a malformed message, so refuse rather than pass it upstream.
+        if not isinstance(tool_call_id, str) or not tool_call_id or len(tool_call_id) > 128:
             raise Failure("bad_request")
         clean["tool_call_id"] = tool_call_id
+    elif tool_call_id is not None:
+        raise Failure("bad_request")
 
     return clean
 

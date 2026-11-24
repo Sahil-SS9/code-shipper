@@ -108,8 +108,6 @@ def _clean_messages(messages: list) -> list[dict]:
                 entry["content"] = None
         if isinstance(message.get("tool_call_id"), str):
             entry["tool_call_id"] = message["tool_call_id"]
-        if isinstance(message.get("name"), str):
-            entry["name"] = message["name"]
         clean.append(entry)
     return clean
 
