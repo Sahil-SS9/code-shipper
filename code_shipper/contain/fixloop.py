@@ -27,6 +27,8 @@ FORBIDDEN_PATTERNS = (
     re.compile(r"^\.github/"),
     re.compile(r"(^|/)setup\.cfg$"),
     re.compile(r"(^|/)pyproject\.toml$"),
+    # A conftest.py anywhere can rewrite collection, fixtures or assertions, so it is never a fix.
+    # Matched on the basename at any depth, not just the repository root.
     re.compile(r"(^|/)conftest\.py$"),
     re.compile(r"(^|/)\.code-shipper/"),
 )
@@ -56,7 +58,9 @@ def snapshot(root: Path) -> dict[str, str]:
 
 
 def _allowed(path: str) -> bool:
-    if any(pattern.match(path) for pattern in FORBIDDEN_PATTERNS):
+    # search(), not match(): the forbidden patterns are anchored on a path *component*, and match()
+    # only anchors at the start of the string, so "calc/conftest.py" would slip through.
+    if any(pattern.search(path) for pattern in FORBIDDEN_PATTERNS):
         return False
     return any(pattern.match(path) for pattern in ALLOWED_PATTERNS)
 
@@ -209,16 +213,23 @@ def push(
     if ancestor.returncode != 0:
         return {"ok": False, "stage": "fast-forward", "detail": "local head is not a descendant"}
 
-    # Token for this call only, never written to a file or to the git config.
+    # The auth header must never be in argv: /proc/<pid>/cmdline is world-readable on a machine
+    # without hidepid, so any local user could read the token mid-push. It goes through the
+    # environment instead, which is owner-only, using git's GIT_CONFIG_* mechanism.
     basic = _basic_auth(token)
+    auth_env = {
+        **env,
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {basic}",
+    }
     result = _git(
         worktree,
-        "-c", f"http.https://github.com/.extraheader=AUTHORIZATION: basic {basic}",
         "-c", f"core.hooksPath={hookless_dir}",
         "push",
         f"--force-with-lease=refs/heads/{branch}:{expected_sha}",
         "origin", f"{new_sha}:refs/heads/{branch}",
-        env=env,
+        env=auth_env,
     )
     return {
         "ok": result.returncode == 0,
