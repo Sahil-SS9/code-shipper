@@ -368,6 +368,43 @@ approval (D1 flag) additionally requires the ruleset "restrict merges to listed 
 tested setup proves otherwise, and the README must say so. The owner reviews M0 before Phase 1
 starts.
 
+### 6.2 Chosen v1 default (measured in Phase 0)
+
+Recorded from `reports/M0-GATE.md`. This is the configuration the product builds against.
+
+**Contained fix runs.** Rootless Docker on the host, image pinned by digest, `--pull never`,
+`--network none`, read-only root, `--user 65534:65534`, all capabilities dropped,
+no-new-privileges, `/tmp` tmpfs noexec, and a disposable `HERMES_HOME` on tmpfs. Four explicit
+mounts: the source read-only, the workspace writable, the worker code read-only, and one directory
+holding the broker socket read-only. No host HOME and no docker or system-bus socket. Verified by
+27 canaries that check both what must work and what must not.
+
+**Inference.** The worker never holds a provider credential. It reaches a host-side broker over a
+unix socket in a read-only mount, presenting a per-run capability bounded by request count, prompt
+size, output tokens and expiry. The socket is `0o666`; the enforcing control is the `0700` run
+directory, owned by the broker's user and re-verified immediately before the broker binds, so no
+other host user can traverse to it. A dedicated bridge network was rejected: it needs an endpoint, a
+listener bound to it and an egress rule, where the socket mount needs none and still leaves no route.
+
+**Toolsets.** Set explicitly per run with `hermes tools disable`; `-t ""` does not mean "none".
+Text-only runs disable every builtin toolset; fix runs disable everything except `file`.
+
+**Push.** The broker commits and pushes; the agent never runs git. Fast-forward only, with
+`--force-with-lease` at the exact expected head, hooks disabled, and the remote ref re-read and
+compared immediately before. The auth header travels in `GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0`
+because `/proc/<pid>/cmdline` is world-readable; it must never be in argv.
+
+**Scope.** The diff is re-derived from the filesystem on the host, never taken from the agent's
+report. In Phase 0 the allowed and forbidden paths are hard-coded for the sandbox; the product reads
+them from the policy file, and the test-weakening check moves to an AST (Phase 3 limits in
+`reports/M0-GATE.md`).
+
+**Still open.** Whether a Contents-write fixer token can merge once an approval exists, and whether
+an approver token can push. Both need a second GitHub account. Until measured, the documented
+assumption is that it can merge, so `allow_agent_approval` requires a ruleset restricting merges to
+listed humans. Hosted-provider authentication through the broker is also unmeasured; only local
+loopback inference has been proven.
+
 ## 7. Prompts and untrusted content
 
 - Every untrusted block is fenced: `<untrusted source="pr_comment" author="x">…</untrusted>`,
