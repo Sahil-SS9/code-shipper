@@ -24,10 +24,10 @@ Local only, unpushed, authored as the repository's configured identity.
 
 | | |
 |---|---|
-| PR | #14 on `Sahil-SS9/code-shipper-sandbox` |
-| Branch | `cp4/fix-45dfb71b` |
-| Broken head | `5607c1addd48` |
-| Fixed head | `3f35c4e32e2d` |
+| PR | #15 on `Sahil-SS9/code-shipper-sandbox` |
+| Branch | `cp4/fix-e55913b9` |
+| Broken head | `38b217c6834d` |
+| Fixed head | `d61763349914` |
 | CI before | failure |
 | CI after | success |
 | Canaries | 27/27 in the pinned Hermes image |
@@ -113,6 +113,25 @@ call id is malformed, not a tool result. Both are refused again. The probe's oth
 (the `tool` role, "refusals made zero upstream calls" and the request-count check) were downstream
 of those two and cleared with them: **38/38 again**.
 
+**5. `-t ""` does not mean "no tools".** This is the one worth carrying into the product. Hermes
+treats an empty `--toolsets` value as *unset* and adds every default toolset, so the CP3 session we
+described as text-only was in fact sending about twenty tool definitions. Two consequences:
+
+- a wider surface than the containment claim allows — a "text-only" run still had schema for a
+  terminal and a browser;
+- enough schema to overflow a small local model. That is what actually broke CP3 on re-run:
+  Turbofit rejected the request as too large, and Hermes reported it as a context problem.
+
+Both workers now disable toolsets explicitly through `hermes tools disable` in their fresh
+HERMES_HOME: the text-only worker disables all of them, the fix worker disables everything except
+`file`. Tests pin both lists and that they partition the built-in set with only `file` left on.
+Verified in-container: a session configured this way sends **0** tools, and CP4's fix run sends
+only the file tools.
+
+`MAX_REQUEST_BYTES` also went from 64 KB to 512 KB: a request now carries tool schemas, and 21 of
+them exceed 64 KB on their own. The bounds that matter are per message and per capability; this is a
+transport ceiling, not the control.
+
 ## Bounds, as required
 
 - our own wall clock: `run_hermes` uses `Popen` with our timeout and kills the process itself. In the
@@ -141,7 +160,7 @@ of those two and cleared with them: **38/38 again**.
 ```
 cd /home/kensei/repos/code-shipper
 
-./scripts/run_tests.sh                 # 162 unit tests
+./scripts/run_tests.sh                 # 167 unit tests
 
 # the full CP4 loop: creates a branch and PR on the sandbox, fixes it, pushes, waits for CI
 python3 -B spikes/b1/cp4_run.py        # ~5 minutes; --json for the receipt
@@ -156,7 +175,7 @@ the machine.
 ```
 $ ./scripts/run_tests.sh
 ----------------------------------------------------------------------
-Ran 162 tests in 22.787s
+Ran 167 tests in 22.494s
 
 OK
 ```

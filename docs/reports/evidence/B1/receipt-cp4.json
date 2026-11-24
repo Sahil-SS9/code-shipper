@@ -1,25 +1,25 @@
 {
-  "branch": "cp4/fix-45dfb71b",
-  "pr": 14,
-  "broken_head": "5607c1addd48026339ff3cbadbd164f167d02636",
+  "branch": "cp4/fix-e55913b9",
+  "pr": 15,
+  "broken_head": "38b217c6834db56b7bf17a13e803bbb032f3db70",
   "ci_before": {
     "conclusion": "failure",
-    "databaseId": 45467150621,
+    "databaseId": 45471735923,
     "name": "tests",
     "status": "completed"
   },
-  "ci_before_log_tail": "dtoolcache/Python/3.12.16/x64\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.1123729Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.1124049Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.1124346Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.1124634Z ##[endgroup]\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4580328Z .F.                                                                      [100%]\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4581169Z =================================== FAILURES ===================================\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4581813Z _________________________________ test_divide __________________________________\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4582353Z \npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4582719Z     def test_divide():\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4583017Z >       assert divide(6, 3) == 2\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4583343Z E       assert 18 == 2\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4583625Z E        +  where 18 = divide(6, 3)\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4583997Z \npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4586958Z tests/test_calc.py:11: AssertionError\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4588030Z =========================== short test summary info ============================\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4588733Z FAILED tests/test_calc.py::test_divide - assert 18 == 2\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4589137Z  +  where 18 = divide(6, 3)\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4589444Z 1 failed, 2 passed in 0.02s\npytest\tRun python -m pytest -q\t2026-11-24T19:09:15.4811279Z ##[error]Process completed with exit code 1.",
+  "ci_before_log_tail": "dtoolcache/Python/3.12.16/x64\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.4454248Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.4454655Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.4455040Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.4455402Z ##[endgroup]\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7424879Z .F.                                                                      [100%]\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7425844Z =================================== FAILURES ===================================\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7426650Z _________________________________ test_divide __________________________________\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7427322Z \npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7427898Z     def test_divide():\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7428297Z >       assert divide(6, 3) == 2\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7428718Z E       assert 18 == 2\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7429096Z E        +  where 18 = divide(6, 3)\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7429393Z \npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7429584Z tests/test_calc.py:11: AssertionError\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7430188Z =========================== short test summary info ============================\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7431132Z FAILED tests/test_calc.py::test_divide - assert 18 == 2\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7431660Z  +  where 18 = divide(6, 3)\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7432108Z 1 failed, 2 passed in 0.03s\npytest\tRun python -m pytest -q\t2026-11-24T19:35:07.7667775Z ##[error]Process completed with exit code 1.",
   "run_dir_mode": "0o700",
   "broker": {
     "max_requests": 40,
     "capability_public": {
-      "run_id": "cp4-58c0fedc",
+      "run_id": "cp4-dfb0ce5a",
       "provider": "local",
       "model": "auto",
       "max_requests": 40,
       "requests_used": 0,
       "max_output_tokens": 2048,
-      "expires_at": 1795550966.841243,
+      "expires_at": 1795552521.1744184,
       "revoked": false
     }
   },
@@ -39,19 +39,19 @@
     ],
     "mounts": {
       "/source": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/source",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/source",
         "mode": "ro"
       },
       "/work": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/work",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/work",
         "mode": "rw"
       },
       "/app": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/app",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/app",
         "mode": "ro"
       },
       "/run/cs": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/broker",
+        "src": "/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/broker",
         "mode": "ro"
       }
     },
@@ -60,10 +60,10 @@
   },
   "image_id": "sha256:4ffb7a8b30543d148d8ec92bdc8b7ecc50d4a9a051cdba9c15ea8c7189356433",
   "container": {
-    "name": "cs-cp4-f317753b90",
+    "name": "cs-cp4-212efdc43b",
     "returncode": 0,
-    "seconds": 45.28,
-    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=2614754]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\nfix-run: exit 0, changed 1, completions 6, refused 0\n",
+    "seconds": 29.74,
+    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=2839210]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\nfix-run: exit 0, changed 1, completions 6, refused 0\n",
     "stderr_tail": ""
   },
   "container_removed": true,
@@ -120,17 +120,17 @@
         "detail": ""
       },
       {
-        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/outside/out-of-container-canary)",
+        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/outside/out-of-container-canary)",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/outside/fake-gh-hosts.yml)",
+        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/outside/fake-gh-hosts.yml)",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp4-zbkydwpj/outside/fake-fixer-token)",
+        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp4-kfl0jnqz/outside/fake-fixer-token)",
         "ok": true,
         "detail": ""
       },
@@ -157,7 +157,7 @@
       {
         "name": "host process is not visible",
         "ok": true,
-        "detail": "host_pid=2614754"
+        "detail": "host_pid=2839210"
       },
       {
         "name": "root filesystem not writable",
@@ -231,11 +231,11 @@
         "tool"
       ],
       "returncode": 0,
-      "seconds": 44.37,
+      "seconds": 26.2,
       "timed_out": false,
       "timeout_s": 420,
-      "stdout": "\u2502 calc/__init__.py\n\u2502 @@ -5,4 +5,4 @@\n\u2502  def divide(a, b):\n\u2502      if b == 0:\n\u2502          raise ZeroDivisionError(\"b must not be zero\")\n\u2502 -    return a * b  # deliberate bug\n\u2502 +    return a / b\n\u2502 /work/hermes-home/home/cache/scratch/verify.py\n\u2502 @@ -0,0 +1,11 @@\n\u2502 +import sys\n\u2502 +sys.path.insert(0, \"/work/repo\")\n\u2502 +import calc\n\u2502 +assert calc.divide(6, 3) == 2\n\u2502 +assert calc.add(2, 3) == 5\n\u2502 +try:\n\u2502 +    calc.divide(1, 0)\n\u2502 +    raise SystemExit(\"no error raised\")\n\u2502 +except ZeroDivisionError:\n\u2502 +    pass\n\u2502 +print(\"OK\")\n{\"status\": \"changed\", \"summary\": \"Fixed divide() in calc/__init__.py to return a / b instead of a * b, so divide(6, 3) == 2 as the test expects.\"}\n",
-      "stderr": "\nsession_id: local-2c7eb0b6f58465230b423c37d508a4b51d5e56551f8a8edaf5cc02b738421c53\n"
+      "stdout": "\u2502 calc/__init__.py\n\u2502 @@ -5,4 +5,4 @@\n\u2502  def divide(a, b):\n\u2502      if b == 0:\n\u2502          raise ZeroDivisionError(\"b must not be zero\")\n\u2502 -    return a * b  # deliberate bug\n\u2502 +    return a / b\n{\"status\": \"changed\", \"summary\": \"Fixed divide() in calc/__init__.py to return a / b instead of a * b, so divide(6, 3) == 2 as the test expects.\"}\n",
+      "stderr": "\nsession_id: local-cf27c0d1a946347b144fac2014114252e3b6808efeaa9f8b28e13baf67c66554\n"
     },
     "changed": [
       "calc/__init__.py"
@@ -243,10 +243,10 @@
     "removed": [],
     "adapter_calls": 6,
     "adapter_refused": 0,
-    "adapter_log_tail": "python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"GET /v1/models HTTP/1.1\" 200 -\nadapter: \"POST /api/show HTTP/1.1\" 404 -\nadapter: code 400, message Bad request syntax ('{\"name\":\"auto\"}')\nadapter: \"{\"name\":\"auto\"}\" 400 -\n----------------------------------------\nException occurred during processing of request from ('127.0.0.1', 42842)\nTraceback (most recent call last):\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\n"
+    "adapter_log_tail": " process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"GET /v1/models HTTP/1.1\" 200 -\nadapter: \"POST /api/show HTTP/1.1\" 404 -\nadapter: code 400, message Bad request syntax ('{\"name\":\"auto\"}')\nadapter: \"{\"name\":\"auto\"}\" 400 -\n----------------------------------------\nException occurred during processing of request from ('127.0.0.1', 41104)\nTraceback (most recent call last):\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"GET /v1/models HTTP/1.1\" 200 -\n"
   },
   "adapter_calls": 6,
-  "adapter_log_tail": "ols/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\n",
+  "adapter_log_tail": "python3.14/socketserver.py\", line 697, in process_request_thread\n    self.finish_request(request, client_address)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 362, in finish_request\n    self.RequestHandlerClass(request, client_address, self)\n    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 766, in __init__\n    self.handle()\n    ~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 502, in handle\n    self.handle_one_request()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 478, in handle_one_request\n    if not self.parse_request():\n           ~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 380, in parse_request\n    self.send_error(\n    ~~~~~~~~~~~~~~~^\n        HTTPStatus.BAD_REQUEST,\n        ^^^^^^^^^^^^^^^^^^^^^^^\n        \"Bad request syntax (%r)\" % requestline)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/http/server.py\", line 555, in send_error\n    self.wfile.write(body)\n    ~~~~~~~~~~~~~~~~^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/socketserver.py\", line 845, in write\n    self._sock.sendall(b)\n    ~~~~~~~~~~~~~~~~~~^^^\nBrokenPipeError: [Errno 32] Broken pipe\n----------------------------------------\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"POST /v1/chat/completions HTTP/1.1\" 200 -\nadapter: \"GET /v1/models HTTP/1.1\" 200 -\n",
   "scope": {
     "ok": true,
     "changed": [
@@ -263,14 +263,14 @@
   "push": {
     "ok": true,
     "stage": "push",
-    "expected_sha": "5607c1addd48026339ff3cbadbd164f167d02636",
-    "new_sha": "3f35c4e32e2db9a1494ecdcc5ef249667234da25",
+    "expected_sha": "38b217c6834db56b7bf17a13e803bbb032f3db70",
+    "new_sha": "d61763349914aadbf182003c9eb629fae22578da",
     "returncode": 0,
-    "detail": "To https://github.com/Sahil-SS9/code-shipper-sandbox.git\n   5607c1a..3f35c4e  3f35c4e32e2db9a1494ecdcc5ef249667234da25 -> cp4/fix-45dfb71b\n"
+    "detail": "To https://github.com/Sahil-SS9/code-shipper-sandbox.git\n   38b217c..d617633  d61763349914aadbf182003c9eb629fae22578da -> cp4/fix-e55913b9\n"
   },
   "ci_after": {
     "conclusion": "success",
-    "databaseId": 45467371290,
+    "databaseId": 45471921502,
     "name": "tests",
     "status": "completed"
   },
