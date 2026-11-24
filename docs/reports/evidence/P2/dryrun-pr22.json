@@ -1,0 +1,30 @@
+{
+  "level": "standard",
+  "lenses_run": [
+    "correctness",
+    "security",
+    "edge"
+  ],
+  "raw_findings": 2,
+  "confirmed": 2,
+  "dropped_unverified": 0,
+  "posted": 1,
+  "omitted": 0,
+  "complete": true,
+  "errors": [],
+  "findings": [
+    {
+      "id": "correctness-109a6dbba3",
+      "path": "calc/__init__.py",
+      "line": 2,
+      "severity": "important",
+      "title": "add() now concatenates strings instead of adding numbers",
+      "body": "The function used to return the numeric sum. Now it converts both arguments to strings and joins them, so add(2, 3) returns the string '23' instead of 5, and add(1.5, 2) returns '1.52'. Every numeric caller gets the wrong value and the wrong type (str instead of int or float). A caller that does arithmetic on the result will either raise TypeError, as in add(1, 2) + 1, or quietly keep building strings. The comment says the goal is to normalise mixed input types, but str() does not normalise numbers. It turns addition into concatenation, which goes against the function's name and its earlier behaviour. If mixed inputs such as numeric strings need handling, convert them to a number type (for example float() or Decimal) before adding, and keep returning a number.",
+      "evidence": "-    return a + b\n+    return str(a) + str(b)  # normalise mixed input types",
+      "lens": "correctness"
+    }
+  ],
+  "pr": 22,
+  "repo": "Sahil-SS9/code-shipper-sandbox",
+  "head_sha": "120beb1eb31a0f14e7fb820ef991c3f0bd18064d"
+}

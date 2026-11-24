@@ -1,0 +1,30 @@
+{
+  "level": "standard",
+  "lenses_run": [
+    "correctness",
+    "security",
+    "edge"
+  ],
+  "raw_findings": 2,
+  "confirmed": 2,
+  "dropped_unverified": 0,
+  "posted": 1,
+  "omitted": 0,
+  "complete": true,
+  "errors": [],
+  "findings": [
+    {
+      "id": "correctness-2320c5d8e1",
+      "path": "calc/__init__.py",
+      "line": 2,
+      "severity": "important",
+      "title": "add() now subtracts: the + operator was changed to -, so add(2, 3) returns -1 instead of 5",
+      "body": "The return expression changed from `a + b` to `a - b`, so add() now returns the difference of its arguments, not the sum. add(2, 3) returns -1 instead of 5, add(5, 5) returns 0 instead of 10, and add(1, -1) returns 2 instead of 0. The result only matches the old behaviour when b == 0. The return type is still a number, so callers will not see a TypeError. They will quietly get wrong values, which is harder to catch than a crash. Nothing in the change suggests this was intended: the function is still called add and its signature is unchanged. Restore `return a + b` and add a test that would catch this, such as add(2, 3) == 5.",
+      "evidence": "-    return a + b\n+    return a - b",
+      "lens": "correctness"
+    }
+  ],
+  "pr": 21,
+  "repo": "Sahil-SS9/code-shipper-sandbox",
+  "head_sha": "ed968139bb5e55b6c7399235ab0a068133428d80"
+}

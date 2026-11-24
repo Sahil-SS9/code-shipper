@@ -1,0 +1,30 @@
+{
+  "level": "standard",
+  "lenses_run": [
+    "correctness",
+    "security",
+    "edge"
+  ],
+  "raw_findings": 3,
+  "confirmed": 2,
+  "dropped_unverified": 1,
+  "posted": 1,
+  "omitted": 0,
+  "complete": true,
+  "errors": [],
+  "findings": [
+    {
+      "id": "correctness-843d6a3f8c",
+      "path": "calc/__init__.py",
+      "line": 7,
+      "severity": "important",
+      "title": "divide() now returns 0 for a zero denominator instead of raising ZeroDivisionError",
+      "body": "Before this change, divide(a, 0) raised ZeroDivisionError with a clear message. Now it returns 0, which is a wrong answer: dividing by zero has no defined result, and 0 is a valid quotient that callers cannot tell apart from a real one. For example, divide(5, 0) returns 0 and looks just like divide(0, 5). Any caller that relied on the exception to catch bad input, whether through try/except or by letting it surface, will now carry on silently with a wrong value. The error message string removed here (\"b must not be zero\") shows the guard was meant to reject this input. The comment calls this treating the denominator as zero, but the code makes the result zero, not the denominator, so it does not match its own stated intent either. The return type is now mixed as well: the normal path gives a float (a / b), but this branch gives the int 0. Restore the raise, or if a sentinel value is really wanted, have callers ask for it explicitly, for example with a default parameter.",
+      "evidence": "     if b == 0:\n-        raise ZeroDivisionError(\"b must not be zero\")\n+        return 0  # a zero denominator is treated as zero\n     return a / b",
+      "lens": "correctness"
+    }
+  ],
+  "pr": 20,
+  "repo": "Sahil-SS9/code-shipper-sandbox",
+  "head_sha": "213a07170ce8c79ab08f5d3c9e7d6db82576afd6"
+}

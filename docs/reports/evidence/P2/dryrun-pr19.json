@@ -1,0 +1,30 @@
+{
+  "level": "standard",
+  "lenses_run": [
+    "correctness",
+    "security",
+    "edge"
+  ],
+  "raw_findings": 2,
+  "confirmed": 2,
+  "dropped_unverified": 0,
+  "posted": 1,
+  "omitted": 0,
+  "complete": true,
+  "errors": [],
+  "findings": [
+    {
+      "id": "correctness-e30d1de27f",
+      "path": "calc/__init__.py",
+      "line": 8,
+      "severity": "important",
+      "title": "divide() now multiplies: returns a * b instead of a / b",
+      "body": "The function is named divide, and before this change it returned the quotient. It now returns a * b, so every caller gets a product instead of a quotient. For example, divide(6, 3) now returns 18 instead of 2, and divide(1, 4) returns 4 instead of 0.25. The only time the result is still right is when b is 1 or -1. The zero-denominator guard just above is still there and still raises ZeroDivisionError for b == 0, which only makes sense for division. That shows the function is still meant to divide, and the operator change is a mistake. Multiplication by zero is safe, so with this change the guard now rejects an input that would not fail. Change the operator back to /.",
+      "evidence": "     if b == 0:\n         raise ZeroDivisionError(\"b must not be zero\")\n-    return a / b\n+    return a * b",
+      "lens": "correctness"
+    }
+  ],
+  "pr": 19,
+  "repo": "Sahil-SS9/code-shipper-sandbox",
+  "head_sha": "ad06af7f111511b76f3d263491ee1193c5bb5899"
+}
