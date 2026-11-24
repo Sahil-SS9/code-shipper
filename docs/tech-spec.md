@@ -421,9 +421,30 @@ inference has been proven.
 
 ## 7. Prompts and untrusted content
 
-- Every untrusted block is fenced: `<untrusted source="pr_comment" author="x">…</untrusted>`,
-  with an instruction that its content is data. Fencing is a quality aid, not a control; controls
-  are §5 and §6.
+**Framing is a mitigation, not a boundary.** This matters more than any wording below: a `<untrusted>`
+block reduces the chance a model treats author-controlled text as instructions. It does not stop it,
+because a model can be persuaded by prose regardless of the wrapper. The boundaries that actually
+hold are:
+
+- **COMMENT-only posting.** The broker refuses any other review event before a request is built
+  (§5.1), so a steered model cannot approve or request changes.
+- **Schema-validated output.** A harness result that does not match its schema is rejected and
+  produces no writes (§2.3, T-ADV-12), so a steered model cannot smuggle a different shape of answer
+  into the pipeline.
+- **Scope and budget checks on the host** (§5, §6), which do not consult the model's opinion.
+
+Everything else in this section is hygiene layered on top of those.
+
+- Every untrusted block is built by one helper (`review/framing.py`) and fenced as
+  `<untrusted source="…">…</untrusted>`, with an instruction that its content is data.
+- The helper neutralises **every case and whitespace variant** of the opening and closing tag
+  (`</UNTRUSTED>`, `</untrusted >`, `</ untrusted>`, `<untrusted source="system">`, …) by escaping the
+  `<`. Neutralising only the lowercase form is not enough: the diff is author-written code, so a
+  comment can carry a closing tag and put whatever follows outside the framing.
+- This applies to every block: the diff, the PR description, the CI log, and the finding text quoted
+  back to the verifier. Finding text is framed too, because it quotes model output that quoted
+  author-controlled code.
+- A source label is validated so a caller cannot inject a tag through it.
 - CI logs are truncated to the last 200 lines per failing job and redacted (§8) before prompting.
 - Review instructions only from the base branch (FR-R5).
 

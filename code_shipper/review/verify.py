@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .framing import untrusted_block
 from .lenses import VERIFY_SCHEMA
 
 BATCH_SIZE = 10
@@ -91,20 +92,18 @@ def build_prompt(findings: list[Finding], diff_text: str, *, intent: str = "") -
     ]
     if intent:
         lines += [intent, ""]
-    lines += [
-        "<untrusted source=\"diff\">",
-        diff_text,
-        "</untrusted>",
-        "",
-        "<untrusted source=\"findings\">",
-    ]
+    lines.append(untrusted_block("diff", diff_text))
+    lines.append("")
+    # Finding text quotes the model's own earlier output, which quoted author-controlled code. It is
+    # not trusted either, so it is framed the same way rather than concatenated raw.
+    rendered: list[str] = []
     for finding in findings:
-        lines.append(
+        rendered.append(
             f"- id={finding.id} path={finding.path} line={finding.line} "
             f"severity={finding.severity}\n  claim: {finding.title}\n  detail: {finding.body}\n"
             f"  evidence: {finding.evidence}"
         )
-    lines.append("</untrusted>")
+    lines.append(untrusted_block("findings", "\n".join(rendered)))
     return "\n".join(lines)
 
 
