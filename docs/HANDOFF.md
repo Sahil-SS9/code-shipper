@@ -15,7 +15,8 @@ repository approval policy, with Hermes Agent as the first deep integration. Hum
    Wait for a GO before the next phase.
 2. Start with Phase 0. Phase 1 does not start until the M0 report is reviewed.
 3. No remote push, no `gh repo create`, no catalog PR, no publishing anywhere. Commit locally.
-4. No LICENSE file until the owner approves the licence (decisions K6).
+4. Licence is MIT (decisions D9); the `LICENSE` file is in place. Set `license = "MIT"` in
+   `pyproject.toml` when you create it. Copied third-party code needs attribution (rule 10).
 5. Never install, enable or configure the plugin in the live Hermes (`~/.hermes`). Use an
    isolated test `HERMES_HOME` under the scratch dir. Never copy auth files into it; ask the
    owner how the test home should authenticate.

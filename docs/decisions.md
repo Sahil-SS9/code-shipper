@@ -18,6 +18,7 @@ Source: owner grill, 24/11/2026 (kanban core board, card t_135247fa).
 | D6 | Public open source from day one. Creating the public repository and the first push still wait for the owner's explicit go. | "option 2" |
 | D7 | Code-Shipper is built standalone, focused on what the closest prior art (diaktoros) lacks: a harness-neutral core, a repository-committed approval policy file, on-demand `/ship` from the user's own session, and supported macOS/Windows use (see F5 for the corrected comparison). Its MIT-licensed design may be studied; no code is copied without licence attribution. | "option 1" |
 | D8 | Name: Code-Shipper. | "name = Code-Shipper" |
+| D9 | Licence: MIT, "Copyright (c) 2026 Sahil Saghir". Supersedes K6. | "GO WITH mit" |
 
 ## Research facts this pack relies on
 
@@ -60,13 +61,13 @@ All verified 24/11/2026. Sources are in `docs/research/`.
 | K3 | PR comment command prefix `@code-shipper`; watch label `code-shipper-watching`. | Mirrors the Ship UX. |
 | K4 | Budgets: 3 fix rounds per trigger, 10 pushes per PR per day, 45 minutes wall clock per run, per-day model spend cap set by the user (no default spend). | Fail closed; numbers are tunable. |
 | K5 | v1 reports the policy verdict as a commit status (`code-shipper/approvals`), not a check run. | Commit statuses work with a personal token; check runs need a GitHub App. |
-| K6 | Licence: MIT. | Matches REA and diaktoros; permissive for a public tool. Needs owner OK before a LICENSE file is added. |
+| K6 | Superseded by D9 (MIT accepted). | — |
 | K7 | Review levels: Quick = 1 combined lens, no separate verify; Standard = 3 lenses + verify; Deep = 5 lenses + verify + test-run where a test command is configured. | Mirrors Ship's three levels with a concrete meaning. |
 | K8 | Harness adapters in v1: Hermes (native), a generic command adapter with presets for Claude Code, Codex and OpenCode, and an OpenAI-compatible direct-API adapter. Presets are "best effort" until each passes the adapter contract test on a real install. | D3 without promising untested harnesses. |
 
 ## Open questions (with recommendations)
 
-1. Licence (K6). Recommend MIT.
+1. (Closed: licence is MIT, D9.)
 2. GitHub identity setup for the strong mode: second bot account vs GitHub App. Recommend a
    second account with a fine-grained token for v1, a GitHub App later. Decided by the Phase 0
    spike result.

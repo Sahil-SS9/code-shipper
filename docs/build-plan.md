@@ -7,7 +7,7 @@ Rules for every phase:
 - Evidence (logs, command output) goes under `docs/reports/evidence/M<n>/`, redacted. No tokens,
   no real user history.
 - Long-run acceptance is capped at one hour per phase.
-- No remote push, repo creation, catalog submission, LICENSE file or live Hermes install/enable
+- No remote push, repo creation, catalog submission or live Hermes install/enable
   without the owner's explicit go (see `docs/HANDOFF.md`).
 
 ## Phase 0 — Falsification spike (authority boundary + one fix loop)
@@ -91,7 +91,7 @@ CONTRIBUTING.md, examples, `T-EVAL-SEEDED` with a held-out half, precision/recal
 draft catalog YAML (not submitted).
 
 Gate: PRD §5 metrics met or the shortfall stated; secret scan of the whole history clean;
-owner decides licence, repo creation, first push and catalog submission (D6).
+owner decides repo creation, first push and catalog submission (D6). Licence is MIT (D9).
 
 ## Report template (`docs/reports/M<n>-REPORT.md`)
 

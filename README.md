@@ -43,4 +43,5 @@ informs ours). See `docs/research/prior-art.md`.
 | `docs/adr/` | Architecture decision records |
 | `docs/research/` | Prior art and verified host surfaces |
 
-Licence: to be decided before the first public release.
+Licence: MIT (see `LICENSE`).
+
