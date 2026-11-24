@@ -602,9 +602,7 @@ def _validate(payload: dict[str, Any]) -> dict[str, Any]:
     clean = [_validate_message(message) for message in messages]
 
     tools = _validate_tools(payload.get("tools"))
-    tool_choice = payload.get("tool_choice")
-    if tool_choice is not None and not isinstance(tool_choice, (str, dict)):
-        raise Failure("bad_request")
+    tool_choice = _validate_tool_choice(payload.get("tool_choice"), tools)
 
     result = {
         "capability": token,
@@ -702,6 +700,43 @@ def _validate_tool_calls(raw: object) -> list[dict[str, Any]]:
             }
         )
     return calls
+
+
+TOOL_CHOICE_MODES = frozenset({"auto", "none", "required"})
+
+
+def _validate_tool_choice(raw: object, tools: list[dict[str, Any]]) -> str | dict[str, Any] | None:
+    """Restrict tool_choice to the three OpenAI modes or a named function that was declared.
+
+    Anything else is refused. An unconstrained dict here would be a hole in the same channel the
+    rest of this module keeps narrow: a provider could be asked for a tool the caller never
+    declared, and the refusal would arrive as a malformed response rather than a clear error.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        if raw not in TOOL_CHOICE_MODES:
+            raise Failure("bad_request")
+        return raw
+
+    if not isinstance(raw, dict):
+        raise Failure("bad_request")
+    if set(raw) != {"type", "function"}:
+        raise Failure("bad_request")
+    if raw["type"] != "function":
+        raise Failure("bad_request")
+    function = raw["function"]
+    if not isinstance(function, dict) or set(function) != {"name"}:
+        raise Failure("bad_request")
+    name = function["name"]
+    if not isinstance(name, str) or not name:
+        raise Failure("bad_request")
+
+    declared = {entry["function"]["name"] for entry in tools}
+    if name not in declared:
+        # Naming a tool that was not sent would let a caller ask for a capability it never declared.
+        raise Failure("tool_not_declared")
+    return {"type": "function", "function": {"name": name}}
 
 
 def _validate_tools(raw: object) -> list[dict[str, Any]]:

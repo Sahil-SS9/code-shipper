@@ -135,6 +135,52 @@ class ToolRefusalTests(unittest.TestCase):
     def test_refuses_a_bad_tool_choice_type(self) -> None:
         self.assertRefused("bad_request", tools=[FILE_TOOL], tool_choice=42)
 
+    def test_accepts_the_three_modes(self) -> None:
+        for mode in ("auto", "none", "required"):
+            with self.subTest(mode=mode):
+                broker = Broker(StaticUpstream("ok"))
+                cap = broker.issue_capability(run_id="r", provider="local", model="m")
+                response = broker.handle(
+                    request(cap.token, tools=[FILE_TOOL], tool_choice=mode)
+                )
+                self.assertTrue(response["ok"], response)
+
+    def test_accepts_a_named_declared_function(self) -> None:
+        broker = Broker(StaticUpstream("ok"))
+        cap = broker.issue_capability(run_id="r", provider="local", model="m")
+        response = broker.handle(
+            request(
+                cap.token,
+                tools=[FILE_TOOL],
+                tool_choice={"type": "function", "function": {"name": "read_file"}},
+            )
+        )
+        self.assertTrue(response["ok"], response)
+
+    def test_refuses_an_undeclared_function_name(self) -> None:
+        # asking for a tool that was never declared is a capability request, not a preference
+        self.assertRefused(
+            "tool_not_declared",
+            tools=[FILE_TOOL],
+            tool_choice={"type": "function", "function": {"name": "write_file"}},
+        )
+
+    def test_refuses_an_arbitrary_dict(self) -> None:
+        for bad in (
+            {"type": "function"},
+            {"type": "function", "function": {"name": "read_file", "strict": True}},
+            {"type": "code_interpreter"},
+            {"function": {"name": "read_file"}},
+            {"name": "read_file"},
+        ):
+            with self.subTest(choice=bad):
+                self.assertRefused("bad_request", tools=[FILE_TOOL], tool_choice=bad)
+
+    def test_refuses_an_unknown_mode_string(self) -> None:
+        for bad in ("always", "REQUIRED", "", "auto "):
+            with self.subTest(mode=bad):
+                self.assertRefused("bad_request", tools=[FILE_TOOL], tool_choice=bad)
+
 
 class ToolRoundTripMessageTests(unittest.TestCase):
     """The message shapes an agent needs to actually act on a tool result."""
