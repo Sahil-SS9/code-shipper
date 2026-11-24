@@ -61,5 +61,14 @@ we add is the repository-committed policy with seats and observe/enforce). See
 | `docs/adr/` | Architecture decision records |
 | `docs/research/` | Prior art and verified host surfaces |
 
+## Tests
+
+```
+./scripts/run_tests.sh          # unit tests: fast, no Docker, no network
+./scripts/run_tests.sh --full   # plus the contained-run battery (rootless Docker, cached image)
+```
+
+Standard library `unittest`; the runtime has no third-party dependencies.
+
 Licence: MIT (see `LICENSE`).
 
