@@ -82,7 +82,19 @@ def require_private_run_dir(path: Path) -> None:
     Called twice on purpose: once when the directory is made, and again by the harness immediately
     before the broker binds a socket inside it. The second call catches a widening that happened in
     between, which is exactly the failure this control exists to survive.
+
+    Windows: directory mode bits do not express access control there (``os.chmod`` only toggles the
+    read-only flag, and a directory reports 0777 regardless of its ACL), so this control cannot be
+    evaluated. That is a capability gap, not a pass — refuse with a message that says so rather than
+    reporting a misleading mode. Contained fixing on Windows is UNSUPPORTED for the same reason.
     """
+    if os.name == "nt":
+        raise StagingPermissionError(
+            "cannot verify that the run directory is host-private on Windows: directory mode bits "
+            "do not express ACLs there, so the control that makes the broker socket acceptable "
+            "cannot be evaluated. Contained runs are UNSUPPORTED on this platform."
+        )
+
     try:
         info = os.stat(path)
     except OSError as exc:

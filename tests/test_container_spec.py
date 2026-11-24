@@ -12,6 +12,7 @@ constraint; see ``spikes/b1/README.md``.
 from __future__ import annotations
 
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -33,9 +34,14 @@ class SpecFixture(unittest.TestCase):
 
     Staged under the repo's gitignored ``.staging`` rather than the ambient TMPDIR, because
     TMPDIR here points inside ``~/.hermes`` and ``validate()`` rightly refuses to mount that.
+
+    Windows is skipped: the run-directory privacy control cannot be evaluated from mode bits there,
+    so these spec tests would be asserting behaviour the platform cannot provide.
     """
 
     def setUp(self) -> None:
+        if sys.platform.startswith("win"):
+            self.skipTest("contained runs are UNSUPPORTED on Windows; see require_private_run_dir")
         self.root = new_run_dir(REPO, prefix="test-spec-")
         self.addCleanup(shutil.rmtree, self.root, True)
 

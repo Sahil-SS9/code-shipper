@@ -1,9 +1,9 @@
 name: tests
 
+# Manual only: the macOS and Windows runners are the expensive part of the matrix, so they run at
+# checkpoints (triggered with `gh workflow run tests.yml`) rather than on every push.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read

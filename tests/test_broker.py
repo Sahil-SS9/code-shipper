@@ -8,6 +8,7 @@ import json
 import os
 import tempfile
 import time
+import sys
 import unittest
 from pathlib import Path
 
@@ -19,6 +20,9 @@ from code_shipper.inference.broker import (
 )
 from code_shipper.inference.client import BrokerClient, InferenceUnavailable
 from code_shipper.inference.upstream import FailingUpstream, OpenAICompatUpstream, StaticUpstream
+# Unix-domain sockets do not exist on Windows.
+posix_only = unittest.skipIf(sys.platform.startswith("win"), "POSIX-only test")
+
 
 
 def encode(**overrides: object) -> bytes:
@@ -296,6 +300,7 @@ class SecretHandlingTests(unittest.TestCase):
             self.assertEqual(read_secret_file(path), "sk-fake")
 
 
+@posix_only
 class ClientTests(unittest.TestCase):
     def test_client_reports_unreachable_broker_as_unavailable(self) -> None:
         client = BrokerClient(

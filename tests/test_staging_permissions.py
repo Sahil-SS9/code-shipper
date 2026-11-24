@@ -176,5 +176,41 @@ class DiscardTests(unittest.TestCase):
         self.assertFalse(inside.exists())
 
 
+class WindowsCapabilityTests(unittest.TestCase):
+    """The privacy control cannot be evaluated on Windows, and must say so rather than pass.
+
+    A directory reports mode 0777 there regardless of its ACL, so a mode check would silently accept
+    anything. Refusing with an explanation is the honest behaviour, and it is what makes contained
+    runs UNSUPPORTED on that platform rather than quietly unprotected.
+    """
+
+    def test_windows_refuses_rather_than_reporting_a_misleading_mode(self) -> None:
+        from unittest import mock
+
+        from code_shipper.contain import staging
+
+        with mock.patch.object(staging.os, "name", "nt"):
+            with self.assertRaises(staging.StagingPermissionError) as caught:
+                staging.require_private_run_dir(Path("/anywhere"))
+        message = str(caught.exception)
+        self.assertIn("Windows", message)
+        self.assertIn("UNSUPPORTED", message)
+
+    def test_posix_still_enforces_the_mode(self) -> None:
+        import os
+        import tempfile
+
+        from code_shipper.contain import staging
+
+        if os.name == "nt":
+            self.skipTest("POSIX-only assertion")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "run"
+            path.mkdir()
+            os.chmod(path, 0o755)
+            with self.assertRaises(staging.StagingPermissionError):
+                staging.require_private_run_dir(path)
+
+
 if __name__ == "__main__":
     unittest.main()
