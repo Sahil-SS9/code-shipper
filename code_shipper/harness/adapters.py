@@ -72,11 +72,19 @@ class HermesHarness:
     name = "hermes"
     supported_kinds = frozenset({"review_lens", "verify", "fix", "reply"})
 
-    def __init__(self, *, profile: str | None = None, hermes_bin: str = "hermes") -> None:
+    def __init__(
+        self,
+        *,
+        profile: str | None = None,
+        hermes_bin: str = "hermes",
+        extra_argv: list[str] | None = None,
+    ) -> None:
         self._profile = profile
         self._bin = hermes_bin
+        self._extra = list(extra_argv or [])
 
     def available(self) -> tuple[bool, str]:
+        """Whether the CLI is present. NOT whether its contract holds — see contract_probe."""
         found = which(self._bin)
         if not found:
             return False, f"{self._bin} not found on PATH"
@@ -101,6 +109,7 @@ class HermesHarness:
             argv += ["-t", ""]
         if self._profile:
             argv += ["-p", self._profile]
+        argv += self._extra
         return argv
 
     def run(self, task: AgentTask, env: dict[str, str]) -> AgentResult:

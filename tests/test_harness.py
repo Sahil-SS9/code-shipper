@@ -266,11 +266,24 @@ def _hermes_installed() -> bool:
 class HermesContractTest(unittest.TestCase):
     """T-CONTRACT-01 for the hermes adapter, on a real install.
 
-    Deliberately not mocked: the point is that the flags still exist and the process really returns
-    parseable output. A mocked test would pass against a CLI that had changed its arguments.
+    Runs an actual one-shot: the flags in `argv()` must still be accepted, the prompt must work on
+    stdin, and the output must parse and validate. `--version` alone proves none of that, which is
+    why this test asserts the provider was really called and the object really came back.
+
+    Isolated by construction: a throwaway HERMES_HOME under the system temp dir, never ~/.hermes,
+    and the probe refuses to run if it would resolve inside the real one.
     """
 
-    def test_availability_reports_yes(self) -> None:
+    def test_the_real_one_shot_completes_and_parses(self) -> None:
+        from code_shipper.harness.contract_probe import probe
+
+        result = probe()
+        self.assertTrue(result["ok"], result.get("reason"))
+        self.assertGreater(result["provider_requests"], 0, "the provider was never called")
+        self.assertIn("probe ok", result["detail"])
+
+    def test_availability_alone_is_only_that(self) -> None:
+        # available() means "the binary is there", and must not be read as "the contract holds"
         ok, reason = HermesHarness().available()
         self.assertTrue(ok, reason)
         self.assertIn("Hermes", reason)
