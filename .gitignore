@@ -12,3 +12,4 @@ build/
 tokens/
 spikes/**/out/
 docs/reports/evidence/**/raw/
+.staging/
