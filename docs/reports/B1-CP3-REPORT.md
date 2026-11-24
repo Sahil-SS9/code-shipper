@@ -99,7 +99,10 @@ separate test, and it needs a real key the owner supplies.
 ## Condition 5 — bounding
 
 - Tiny prompt: `Reply with exactly one word: pong. No punctuation, no explanation.`
-- `-t ""` — no toolsets enabled.
+- `-t ""` — which, it turned out, does **not** disable toolsets. Hermes treats an empty value as
+  unset and enables every default toolset. The worker now disables all of them explicitly with
+  `hermes tools disable`, and a session configured that way sends 0 tool definitions (verified
+  in-container). See the CP4 report, finding 5.
 - `--max-turns 2 --run-budget 120`.
 - Broker capability: `max_requests: 8`, `max_prompt_chars: 64000`, `max_output_tokens: 1024`.
 

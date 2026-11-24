@@ -128,9 +128,19 @@ HERMES_HOME: the text-only worker disables all of them, the fix worker disables 
 Verified in-container: a session configured this way sends **0** tools, and CP4's fix run sends
 only the file tools.
 
-`MAX_REQUEST_BYTES` also went from 64 KB to 512 KB: a request now carries tool schemas, and 21 of
+`MAX_REQUEST_BYTES` also went from 64 KB to 256 KB: a request now carries tool schemas, and 20 of
 them exceed 64 KB on their own. The bounds that matter are per message and per capability; this is a
 transport ceiling, not the control.
+
+**One probe check is now stale, and I did not bend the limit to satisfy it.** The independent CP1
+probe sends a 70 KB body and asserts it is refused as `request_too_large`. With tool schemas in the
+picture, 64 KB is too small to be correct — a real request legitimately reaches that size — so the
+limit is 256 KB and that payload is refused for a different, still-correct reason (`unknown_field`,
+because the body is `{"op":"complete","x":"aaa..."}`). The probe therefore reports 37/38. The
+oversize path itself is covered by four unit tests that run against the real limit, including a
+multi-megabyte body, and all pass. Raising the limit back to satisfy the probe would have made the
+broker reject real traffic; the honest move is to record that the probe's threshold, not the broker,
+is out of date.
 
 ## Bounds, as required
 

@@ -283,6 +283,17 @@ def main(argv: list[str] | None = None) -> int:
         receipt["adapter_log_tail"] = (
             log.read_text(encoding="utf-8", errors="replace")[-2000:] if log.exists() else ""
         )
+        # The broker's own record: request counts, prompt sizes, outcomes. Without it the receipt
+        # cannot show what the model was actually asked, only that it answered.
+        ledger = root / "ledger.jsonl"
+        entries = (
+            [json.loads(line) for line in ledger.read_text().splitlines()] if ledger.exists() else []
+        )
+        receipt["broker_receipts"] = entries
+        receipt["confirmed_completions"] = sum(
+            1 for e in entries if e.get("outcome") == "confirmed"
+        )
+        receipt["max_prompt_chars"] = max((e.get("prompt_chars", 0) for e in entries), default=0)
 
         # ---- host-side truth: what actually changed on disk
         before_snapshot = snapshot(original)
