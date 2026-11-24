@@ -1,0 +1,26 @@
+{
+  "pr": 18,
+  "head_sha": "e2967a8c4faebe85e24de1df0d77f943a5a30280",
+  "action": "posted one review",
+  "review_id": 6048750344,
+  "state": "COMMENTED",
+  "body": "<!-- code-shipper:review -->\n## Code-Shipper review\n\n1 finding(s): 1 important, 0 minor. Level: standard (correctness, security, edge).\n\n_Review only: nothing here approves, requests changes, or merges. A human decides._",
+  "readback": {
+    "id": 6048750344,
+    "state": "COMMENTED",
+    "body_starts": "<!-- code-shipper:review -->\n## Code-Shipper review\n\n1 findi",
+    "submitted_at": "2026-11-24T22:59:46Z",
+    "author": "Sahil-SS9",
+    "comments": [
+      {
+        "id": 4687701127,
+        "path": "calc/__init__.py",
+        "line": 6,
+        "body": "**divide() guard widened from b == 0 to b <= 0, so negative divisors now raise ZeroDivisionError**\n\nThe PR description c"
+      }
+    ],
+    "found": true
+  },
+  "rerun": "posted 0 additional reviews; ledger recognised review 6048750344 at this head",
+  "reviews_on_pr_after_rerun": 1
+}
