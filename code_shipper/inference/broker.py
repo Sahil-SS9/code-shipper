@@ -39,9 +39,9 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 # A request carries tool schemas as well as messages, and real file-tool schemas are large: Hermes
-# sends about twenty definitions, ~60 KB on their own, and a fix run's prompt reached 50 KB of text.
-# Sized from measured traffic rather than guessed: 256 KB covers those with headroom while staying
-# a real limit, so an accidental infinite request is still refused. The bounds that carry the
+# sends about twenty definitions, ~60 KB on their own, on top of prompt text measured at ~9 KB in a
+# real fix run. Sizing from that traffic rather than a round number: 256 KB covers ~70 KB of real
+# request with ample headroom while still refusing an unbounded one. The bounds that carry the
 # security argument are per message (MAX_MESSAGE_CHARS) and per capability (max_prompt_chars).
 MAX_REQUEST_BYTES = 256 * 1024
 MAX_MESSAGES = 64

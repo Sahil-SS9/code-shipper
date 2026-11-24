@@ -24,14 +24,14 @@ Local only, unpushed, authored as the repository's configured identity.
 
 | | |
 |---|---|
-| PR | #15 on `Sahil-SS9/code-shipper-sandbox` |
-| Branch | `cp4/fix-e55913b9` |
-| Broken head | `38b217c6834d` |
-| Fixed head | `d61763349914` |
+| PR | #16 on `Sahil-SS9/code-shipper-sandbox` |
+| Branch | `cp4/fix-09316ac0` |
+| Broken head | `fe6e220e471b` |
+| Fixed head | `5f0f64a0ee20` |
 | CI before | failure |
 | CI after | success |
 | Canaries | 27/27 in the pinned Hermes image |
-| Model calls | 6 against a ceiling of 40 |
+| Model calls | 4 against a ceiling of 40 |
 | Merged | no |
 
 The diff, read back from GitHub after the push:
@@ -129,7 +129,7 @@ Verified in-container: a session configured this way sends **0** tools, and CP4'
 only the file tools.
 
 `MAX_REQUEST_BYTES` also went from 64 KB to 256 KB: a request now carries tool schemas, and 20 of
-them exceed 64 KB on their own. The bounds that matter are per message and per capability; this is a
+them exceed 64 KB on their own, on top of prompt text measured at 9,312 characters in this run. The bounds that matter are per message and per capability; this is a
 transport ceiling, not the control.
 
 **One probe check is now stale, and I did not bend the limit to satisfy it.** The independent CP1
@@ -146,7 +146,7 @@ is out of date.
 
 - our own wall clock: `run_hermes` uses `Popen` with our timeout and kills the process itself. In the
   mid-run refusal case it took 60 seconds to stop a session Hermes would have kept retrying.
-- broker capability: 40 requests, 120k prompt chars, 2048 output tokens. Actual: 6 calls.
+- broker capability: 40 requests, 120k prompt chars, 2048 output tokens. Actual: 4 calls, largest prompt 9,312 chars.
 - one fix round, one push, no merge.
 
 ## Still unproven
