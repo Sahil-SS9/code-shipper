@@ -1,0 +1,214 @@
+{
+  "scratch": "/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd",
+  "container": "cs-cp3-64cf4d3804",
+  "credential": "synthetic",
+  "run_dir_mode": "0o700",
+  "run_dir_uid": 1001,
+  "socket_mode": "0o666",
+  "broker": {
+    "socket": "/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/broker/broker.sock",
+    "capability_public": {
+      "run_id": "cp3-5ea4403b",
+      "provider": "local",
+      "model": "auto",
+      "max_requests": 8,
+      "requests_used": 0,
+      "max_output_tokens": 1024,
+      "expires_at": 1795545172.44846,
+      "revoked": false
+    },
+    "max_requests": 8
+  },
+  "spec": {
+    "image": "hermes-agent-harness:latest",
+    "network": "none",
+    "root_filesystem": "read-only",
+    "user": "65534:65534",
+    "capabilities": "ALL dropped",
+    "no_new_privileges": true,
+    "pids_limit": 64,
+    "memory": "512m",
+    "cpus": "1",
+    "tmpfs": [
+      "/tmp:rw,noexec,nosuid,size=256m",
+      "/work/hermes-home:rw,nosuid,size=512m,mode=1777"
+    ],
+    "mounts": {
+      "/source": {
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/source",
+        "mode": "ro"
+      },
+      "/work": {
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/work",
+        "mode": "rw"
+      },
+      "/app": {
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/app",
+        "mode": "ro"
+      },
+      "/run/cs": {
+        "src": "/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/broker",
+        "mode": "ro"
+      }
+    },
+    "host_home": null,
+    "docker_socket": null
+  },
+  "image_id": "sha256:4ffb7a8b30543d148d8ec92bdc8b7ecc50d4a9a051cdba9c15ea8c7189356433",
+  "broker_stopped_mid_run": true,
+  "run": {
+    "returncode": 1,
+    "seconds": 205.9,
+    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=1784337]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\n",
+    "stderr_tail": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import runpy,sys;canary=runpy.run_path('/app/canary.py',run_name='canary');rc=canary['main']();sys.exit(rc) if rc else runpy.run_path('/app/hermes_worker.py',run_name='__main__')\n                                                                                                                           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen runpy>\", line 294, in run_path\n  File \"<frozen runpy>\", line 98, in _run_module_code\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/app/hermes_worker.py\", line 197, in <module>\n    raise SystemExit(main())\n                     ~~~~^^\n  File \"/app/hermes_worker.py\", line 74, in main\n    hermes = run_hermes(prompt)\n  File \"/app/hermes_worker.py\", line 178, in run_hermes\n    proc = subprocess.run(\n        argv,\n    ...<5 lines>...\n        timeout=RUN_BUDGET_S + 60,\n    )\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/subprocess.py\", line 557, in run\n    stdout, stderr = process.communicate(input, timeout=timeout)\n                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/subprocess.py\", line 1221, in communicate\n    stdout, stderr = self._communicate(input, endtime, timeout)\n                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/subprocess.py\", line 2154, in _communicate\n    self._check_timeout(endtime, orig_timeout, stdout, stderr)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/subprocess.py\", line 1268, in _check_timeout\n    raise TimeoutExpired(\n    ...<2 lines>...\n            stderr=b''.join(stderr_seq) if stderr_seq else None)\nsubprocess.TimeoutExpired: Command '['hermes', 'chat', '--query-file', '-', '--oneshot', '-Q', '--provider', 'csbroker', '--model', 'auto', '-t', '', '--max-turns', '2', '--run-budget', '120', '--source', 'tool']' timed out after 180 seconds\n"
+  },
+  "container_removed": true,
+  "canary": {
+    "checks": [
+      {
+        "name": "source mounted read-only and readable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "source file content readable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "workspace writable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "tmp writable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "positive control: mounted canary readable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.hermes/.env",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.config/gh/hosts.yml",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.git-credentials",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.ssh/id_rsa",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: /home/kensei/.config/code-shipper/tokens/fixer",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/outside/out-of-container-canary)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/outside/fake-gh-hosts.yml)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-471ceqvd/outside/fake-fixer-token)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "no credential-shaped environment variables",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "environment carries no host paths",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "no docker socket",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "no system bus socket",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "host process is not visible",
+        "ok": true,
+        "detail": "host_pid=1784337"
+      },
+      {
+        "name": "root filesystem not writable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "source not writable",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "uid is not root",
+        "ok": true,
+        "detail": "uid=65534"
+      },
+      {
+        "name": "no-new-privileges effective",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "capabilities empty",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "network namespace is not the host's",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "no non-loopback route",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "broker socket present",
+        "ok": true,
+        "detail": "/run/cs/broker.sock"
+      },
+      {
+        "name": "no credential file beside the socket",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "passed": 27,
+    "failed": []
+  },
+  "hermes": null,
+  "adapter_calls": 0,
+  "broker_receipts": [],
+  "confirmed_completions": 0,
+  "ledger_has_key": false,
+  "ledger_has_prompt": false,
+  "verdict": "PASS"
+}
