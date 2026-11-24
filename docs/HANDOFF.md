@@ -37,6 +37,11 @@ repository approval policy, with Hermes Agent as the first deep integration. Hum
 10. Clean-room: reimplement Claude Ship behaviour from its public docs; never copy Anthropic text
     or prompts. diaktoros is MIT: study its design; copy code only with attribution in the file
     header and a NOTICE entry.
+11. Work directly in this repo: no kanban cards. Small-to-medium commits, one logical change
+    each, tests in the same commit as the code. Run tests before every commit and quote the
+    real output in your report; red tests mean the commit does not count. Within a phase, stop
+    at each named checkpoint for Kensei to review; the first task's checkpoints are in
+    `/home/kensei/handoffs/code-shipper/container-hermes-proof.md`.
 
 ## Machine state (verified 24/11/2026 on the build machine, user `kensei`)
 
@@ -57,10 +62,11 @@ pinned upstream; test in an isolated `HERMES_HOME`.
 ## Phase 0 first steps
 
 1. Read tech spec §2.4, §5–§6 and build plan Phase 0.
-2. Ask the owner (in your report or reply, not by guessing) for: the disposable test repo name,
-   token file paths for the fixer and approver identities, and whether a ruleset may be applied
-   on the test repo by the owner. Do not ask for sudo or a docker-group change: rootless Docker is
-   already available and was probed.
+2. Already provided by the owner: test repo `Sahil-SS9/code-shipper-sandbox` (public, `main`
+   protected) and the fixer token at `~/.config/code-shipper/tokens/fixer` (read the file path,
+   never print the value). Ask the owner in your report for an approver identity if a step needs
+   one. Do not ask for sudo or a docker-group change: rootless Docker is already available and
+   was probed.
 3. Write spike scripts under `spikes/m0/`, run C1–C4, record every result with the exact
    permissions used. Run C4 inside the rootless container as well as uncontained, then build and
    measure the §2.4 host inference transport, and finally run the one-PR fix loop through it.
