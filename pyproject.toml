@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code-shipper"
+version = "0.0.1"
+description = "Harness-neutral PR reviewer, fixer and approval-policy engine. Hermes Agent first."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Sahil Saghir" }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Sahil-SS9/code-shipper"
+
+[project.optional-dependencies]
+# Test-only. The runtime is standard library only (K1).
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["code_shipper*"]
