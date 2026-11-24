@@ -21,6 +21,7 @@ Wire behaviour that matters:
 from __future__ import annotations
 
 import json
+import signal
 import socket
 import sys
 import threading
@@ -32,8 +33,39 @@ BROKER_FILE = WORK / "broker.json"
 CAPABILITY_FILE = WORK / "capability"
 
 MAX_BODY = 2 * 1024 * 1024
-call_count = 0
-count_lock = threading.Lock()
+
+
+def _calls_file() -> Path:
+    # Derived from WORK at call time, not bound at import: the tests point WORK at a temp dir, and
+    # a module-level constant would keep writing to the real /work.
+    return WORK / "adapter-calls.json"
+
+
+def _count() -> int:
+    """Increment and return the on-disk call count, under a lock file.
+
+    A file-based counter, not a module global: the worker starts the adapter as a subprocess, so an
+    in-process counter is invisible across that boundary. Counting on disk also survives a crash,
+    which is what makes the number usable as evidence.
+    """
+    lock = WORK / "adapter-calls.lock"
+    try:
+        with open(lock, "a+") as handle:
+            try:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            except (ImportError, OSError):
+                pass
+            try:
+                current = int(json.loads(_calls_file().read_text(encoding="utf-8"))["calls"])
+            except (OSError, KeyError, ValueError, json.JSONDecodeError):
+                current = 0
+            current += 1
+            _calls_file().write_text(json.dumps({"calls": current}), encoding="utf-8")
+            return current
+    except OSError:
+        return -1
 
 
 class BrokerRefused(Exception):
@@ -82,13 +114,6 @@ def call_broker(config: dict, payload: dict) -> dict:
     if not response.get("ok"):
         raise BrokerRefused(f"broker refused: {response.get('error')}")
     return response
-
-
-def _count() -> int:
-    global call_count
-    with count_lock:
-        call_count += 1
-        return call_count
 
 
 def make_handler(config: dict):
@@ -143,6 +168,22 @@ def make_handler(config: dict):
 
             n = _count()
             usage = response.get("usage") or {}
+            prompt_tokens = usage.get("prompt_chars", 0)
+            completion_tokens = usage.get("completion_chars", 0)
+
+            if payload.get("stream"):
+                # Hermes uses the OpenAI client with stream=True by default. Answering a streaming
+                # request with a plain JSON body makes the client fail to parse the SSE stream, so
+                # the adapter must speak SSE whenever the caller asks for it.
+                self._sse(
+                    response["text"],
+                    model=config["model"],
+                    completion_id=f"chatcmpl-broker-{n}",
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+                return
+
             completion = {
                 "id": f"chatcmpl-broker-{n}",
                 "object": "chat.completion",
@@ -155,12 +196,50 @@ def make_handler(config: dict):
                     }
                 ],
                 "usage": {
-                    "prompt_tokens": usage.get("prompt_chars", 0),
-                    "completion_tokens": usage.get("completion_chars", 0),
-                    "total_tokens": usage.get("prompt_chars", 0) + usage.get("completion_chars", 0),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
                 },
             }
             self._json(200, completion)
+
+        def _sse(
+            self,
+            text: str,
+            *,
+            model: str,
+            completion_id: str,
+            prompt_tokens: int,
+            completion_tokens: int,
+        ) -> None:
+            """Emit the text as an OpenAI chat.completion.chunk stream, then [DONE]."""
+            def chunk(delta: dict, finish: str | None) -> dict:
+                return {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "model": model,
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+                }
+
+            events = [
+                chunk({"role": "assistant", "content": ""}, None),
+                chunk({"content": text}, None),
+                chunk({}, "stop"),
+            ]
+            body = b"".join(
+                f"data: {json.dumps(event)}\n\n".encode() for event in events
+            ) + b"data:"
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+                self.wfile.flush()
+            except OSError:
+                pass
 
         def _read_body(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
@@ -201,11 +280,18 @@ def main(argv: list[str]) -> int:
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(config))
     server.daemon_threads = True
     print(f"adapter: listening on 127.0.0.1:{port} -> {config['socket']}", flush=True)
+
+    def _stop(_signum: int, _frame: object) -> None:
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
     try:
         server.serve_forever()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        # The call count is already on disk, incremented per request; nothing to flush here.
         server.server_close()
     return 0
 

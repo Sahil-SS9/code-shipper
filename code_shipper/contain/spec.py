@@ -45,6 +45,13 @@ class ContainerSpec:
     pids_limit: int = 64
     memory: str = "512m"
     cpus: str = "1"
+    # Hermes writes a full HERMES_HOME: skills, caches, sessions, sqlite state. On a bind mount that
+    # leaves thousands of files owned by uid 65534 that the host user cannot delete afterwards, and
+    # on --read-only it fails outright. A tmpfs gives it somewhere disposable to write.
+    tmpfs: tuple[str, ...] = (
+        "/tmp:rw,noexec,nosuid,size=256m",
+        "/work/hermes-home:rw,nosuid,size=512m,mode=1777",
+    )
 
     def to_argv(self, *, container_name: str, docker_context: str = "rootless") -> list[str]:
         argv = [
@@ -60,7 +67,10 @@ class ContainerSpec:
             "--pids-limit", str(self.pids_limit),
             "--memory", self.memory,
             "--cpus", self.cpus,
-            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+        ]
+        for entry in self.tmpfs:
+            argv += ["--tmpfs", entry]
+        argv += [
             "--mount", f"type=bind,src={self.source_dir},dst=/source,readonly",
             "--mount", f"type=bind,src={self.work_dir},dst=/work",
         ]
@@ -93,7 +103,7 @@ class ContainerSpec:
             "pids_limit": self.pids_limit,
             "memory": self.memory,
             "cpus": self.cpus,
-            "tmpfs": ["/tmp:rw,noexec,nosuid,size=64m"],
+            "tmpfs": list(self.tmpfs),
             "mounts": mounts,
             "host_home": None,
             "docker_socket": None,

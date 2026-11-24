@@ -144,6 +144,28 @@ class AdapterCase(unittest.TestCase):
         except urllib.error.HTTPError as exc:
             return exc.code, json.loads(exc.read() or b"{}")
 
+    def post_stream(self, body: dict) -> list[dict]:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/v1/chat/completions",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        events: list[dict] = []
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertTrue(
+                response.headers["Content-Type"].startswith("text/event-stream"),
+                "streaming request must be answered as SSE",
+            )
+            for raw in response.read().decode().splitlines():
+                if not raw.startswith("data: "):
+                    continue
+                payload = raw[len("data: "):].strip()
+                if not payload:
+                    continue  # the terminal "data:" sentinel
+                events.append(json.loads(payload))
+        return events
+
 
 class ServingTests(AdapterCase):
     def test_completion_is_forwarded_and_shaped_like_openai(self) -> None:
@@ -245,6 +267,58 @@ class DeadBrokerTests(AdapterCase):
         self.assertNotIn("choices", body)
 
 
+class StreamingTests(AdapterCase):
+    """Hermes uses the OpenAI client with stream=True. Plain JSON there breaks it."""
+
+    def test_streaming_request_returns_sse_chunks(self) -> None:
+        events = self.post_stream(
+            {"messages": [{"role": "user", "content": "hi"}], "stream": True}
+        )
+        self.assertGreaterEqual(len(events), 2)
+        self.assertTrue(all(e["object"] == "chat.completion.chunk" for e in events))
+
+        text = "".join(
+            event["choices"][0]["delta"].get("content") or "" for event in events
+        )
+        self.assertEqual(text, "pong-from-broker")
+
+    def test_streaming_ends_with_a_stop_finish_reason(self) -> None:
+        events = self.post_stream(
+            {"messages": [{"role": "user", "content": "hi"}], "stream": True}
+        )
+        self.assertEqual(events[-1]["choices"][0]["finish_reason"], "stop")
+
+    def test_non_streaming_request_still_returns_json(self) -> None:
+        status, body = self.post(
+            "/v1/chat/completions",
+            {"messages": [{"role": "user", "content": "hi"}], "stream": False},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body["object"], "chat.completion")
+
+
+class CallCountingTests(AdapterCase):
+    """The call count is evidence, so it must actually count."""
+
+    def read_calls(self) -> int:
+        return int(json.loads((self.tmp / "adapter-calls.json").read_text())["calls"])
+
+    def test_no_calls_file_before_any_request(self) -> None:
+        self.assertFalse((self.tmp / "adapter-calls.json").exists())
+
+    def test_each_forwarded_request_increments_the_count(self) -> None:
+        for _ in range(3):
+            self.post("/v1/chat/completions", {"messages": [{"role": "user", "content": "hi"}]})
+        self.assertEqual(self.read_calls(), 3)
+
+    def test_refused_requests_do_not_increment_the_count(self) -> None:
+        # a 400 is rejected before the broker, so it is not a model call
+        self.post("/v1/chat/completions", {"model": "auto"})
+        self.assertFalse((self.tmp / "adapter-calls.json").exists())
+
+    def test_streaming_requests_are_counted(self) -> None:
+        self.post_stream({"messages": [{"role": "user", "content": "hi"}], "stream": True})
+        self.assertEqual(self.read_calls(), 1)
 class CredentialFreeTests(unittest.TestCase):
     def test_adapter_source_contains_no_credential_or_provider_url(self) -> None:
         source = Path(adapter.__file__).read_text(encoding="utf-8")
