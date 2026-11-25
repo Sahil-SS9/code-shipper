@@ -41,6 +41,11 @@ class ReviewRequest:
     head_sha: str
     diff: Diff
     since_diff: Diff | None = None
+    # D5: what the host says about the relationship between last_reviewed_head and this head. Either
+    # the compare payload ({"status", "files"}) or just the status string. Absent means "unknown", and
+    # unknown ancestry is treated as a fallback to a full review rather than assumed safe.
+    compare: dict[str, Any] | None = None
+    compare_status: str | None = None
     level: str = "standard"
     profile: str = "standard"
     trigger: str = "manual"
@@ -73,6 +78,7 @@ class ReviewResult:
     profile: str = "standard"
     coverage: dict[str, Any] = field(default_factory=dict)
     union_important: tuple[str, ...] = ()
+    guard_note: str = ""
     risk: dict[str, Any] = field(default_factory=dict)
     effort: dict[str, Any] = field(default_factory=dict)
 
@@ -90,6 +96,7 @@ class ReviewResult:
                 "model_calls": self.model_calls,
                 "coverage": self.coverage,
                 "union_important": list(self.union_important),
+                "guard_note": self.guard_note,
                 "risk": dict(self.risk),
                 "effort": dict(self.effort),
             }
@@ -190,27 +197,51 @@ def run(
     diff = Diff(files=kept)
 
     # Incremental scope: only the files touched since the last completed review.
+    #
+    # D5 guard first. Incremental review assumes the new head descends from the last reviewed one; a
+    # force-push, a rebase or a base change breaks that, and the input still *looks* valid. Both of the
+    # cases below used to be trusted: a replaced history was diffed as if it were a continuation, and an
+    # empty comparison returned a "complete" result with no lenses run — the most reassuring possible
+    # output for a tree nothing had looked at. Now either case falls back to a full review, and the
+    # body says so.
     scope: Scoped | None = None
     incremental = False
+    guard = None
     if request.since_diff is not None and state.is_incremental(request.head_sha):
-        scope = restrict(diff, request.since_diff, since_sha=state.last_reviewed_head,
-                         to_sha=request.head_sha)
-        if scope.empty:
-            return ReviewResult(
-                outcome=ReviewOutcome(
-                    level=request.level, complete=True,
-                    lenses_run=[],
-                ),
-                state=state,
-                incremental=True,
-                scope=scope,
-                ignored_files=tuple(ignored),
-                ignored_summary=summarise_skipped(ignored),
-                profile=profile,
-                union_important=tuple(sorted(state.important_fingerprints())),
-            )
-        diff = scope.diff
-        incremental = True
+        from . import ancestry
+
+        compare_payload = None
+        if request.compare is not None:
+            compare_payload = request.compare
+        elif request.compare_status is not None:
+            compare_payload = {"status": request.compare_status,
+                               "files": list(request.diff.files)}
+        else:
+            compare_payload = {"status": "", "files": None}
+
+        guard = ancestry.check(
+            last_reviewed_head=state.last_reviewed_head,
+            new_head=request.head_sha,
+            compare=compare_payload,
+        )
+        if guard.fell_back:
+            # Deliberately no `scope`: a full review of the whole diff, with the reason in the body.
+            incremental = False
+        else:
+            scope = restrict(diff, request.since_diff, since_sha=state.last_reviewed_head,
+                             to_sha=request.head_sha)
+            if scope.empty:
+                # Head moved, nothing scoped to review: treated as a full review, never as "nothing
+                # to do". An empty incremental pass is not evidence that the tree is unchanged.
+                guard = ancestry.GuardResult(
+                    False, ancestry.EMPTY_WITH_MOVED_HEAD,
+                    "the incremental scope covered no files",
+                )
+                scope = None
+                incremental = False
+            else:
+                diff = scope.diff
+                incremental = True
 
     outcome = run_review(
         diff=diff,
@@ -279,6 +310,7 @@ def run(
         profile=profile,
         coverage=_coverage(diff, ignored, outcome.findings),
         union_important=tuple(sorted(state.important_fingerprints())),
+        guard_note=guard.body_note() if guard is not None else "",
         risk=risk_payload,
         effort=effort_payload,
     )

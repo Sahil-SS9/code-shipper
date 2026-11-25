@@ -138,6 +138,26 @@ class GitHubHost:
             raise HostError("unexpected payload for PR list")
         return [_to_pr(entry) for entry in data]
 
+    def compare_status(self, repo: str, base: str, head: str) -> dict:
+        """The compare endpoint's `status` and file count, for the D5 ancestry guard.
+
+        Kept separate from `compare()` because that returns a `Diff` and drops `status` — and `status`
+        is the only thing that tells us whether history was rewritten. `ahead` means the new head
+        descends from the old one; `diverged` or `behind` means it does not, and an incremental review
+        would then be reading a replacement rather than a continuation.
+        """
+        owner, name = split_slug(repo)
+        data, _ = self._get(f"/repos/{owner}/{name}/compare/{base}...{head}")
+        if not isinstance(data, dict):
+            raise HostError("unexpected payload for compare")
+        files = data.get("files")
+        return {
+            "status": str(data.get("status", "")).lower(),
+            "files": files if isinstance(files, list) else None,
+            "ahead_by": data.get("ahead_by"),
+            "behind_by": data.get("behind_by"),
+        }
+
     def compare(self, repo: str, base: str, head: str) -> Diff:
         """The diff between two commits — used to scope an incremental review (D11).
 

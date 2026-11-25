@@ -320,12 +320,16 @@ class ServiceTests(unittest.TestCase):
         self.cache = ReviewCache(self.root)
 
     def run_review(self, *, head="aaa", diff=None, trigger="manual", profile="standard",
-                   harness=None, since_diff=None, max_reviews=20):
+                   harness=None, since_diff=None, max_reviews=20, compare="ahead"):
+        # `compare` defaults to "ahead" so incremental tests describe a normal continuation. The D5
+        # guard refuses to assume ancestry, so a test that wants an incremental pass must say the new
+        # head descends from the old one; tests for the guard pass "diverged" or "" explicitly.
         return run_service(
             ReviewRequest(
                 repo="o/r", pr=1, head_sha=head, diff=diff or diff_of("calc/__init__.py"),
                 since_diff=since_diff, level="standard", profile=profile, trigger=trigger,
                 workdir=self.root,
+                compare_status=compare,
             ),
             harness=harness or SilentHarness(),
             store=self.store,
@@ -399,7 +403,13 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(result.paused)
         self.assertEqual(harness.calls, 0)
 
-    def test_an_empty_incremental_scope_makes_no_model_call(self) -> None:
+    def test_an_empty_incremental_scope_falls_back_to_a_full_review(self) -> None:
+        """D5. This used to report a complete incremental review with zero model calls.
+
+        That was the most reassuring possible output for a tree nothing had looked at: the head had
+        moved, the comparison was empty, and the result claimed completeness. Now the guard forces a
+        full review and the body says why.
+        """
         self.run_review(head="aaa")                    # baseline
         harness = SilentHarness()
         result = self.run_review(
@@ -408,9 +418,10 @@ class ServiceTests(unittest.TestCase):
             since_diff=Diff(files=()),               # no files touched since
             harness=harness,
         )
-        self.assertTrue(result.incremental)
-        self.assertEqual(harness.calls, 0)
-        self.assertTrue(result.scope.empty)
+        self.assertFalse(result.incremental, "an empty comparison is not an incremental pass")
+        self.assertGreater(harness.calls, 0, "the whole change must actually be reviewed")
+        self.assertIn("Full review, not incremental", result.guard_note)
+        self.assertIn("empty", result.guard_note)
 
     def test_an_incremental_review_covers_only_new_files(self) -> None:
         self.run_review(head="aaa")
