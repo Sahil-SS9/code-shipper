@@ -28,8 +28,10 @@ class PolicyComesFromTheBaseBranchTests(unittest.TestCase):
         source = inspect.getsource(cli._reevaluate_approvals)
         self.assertIn("base_ref", source,
                       "the policy must be read from the PR's base, not the repo default")
-        # the default branch may only be a fallback, never the primary source
-        self.assertIn("or host.default_branch", source)
+        # The fallback was removed on review: `base_ref or host.default_branch(repo)` restored this
+        # very defect whenever the field was absent. A missing base is now refused instead.
+        self.assertNotIn("or host.default_branch(repo)", source,
+                         "a fallback reintroduces the defect for any PR that omits base_ref")
 
     def test_a_non_default_base_is_used(self) -> None:
         from code_shipper import cli

@@ -383,6 +383,20 @@ def _build_rule(fields: dict[str, Any], *, node_line: int) -> ApprovalRule:
             line=node_line,
         )
 
+    # A rule needing more approvals than there are named approvers can never be satisfied. Left
+    # accepted, the status comment tells a reviewer "2 more approval(s) needed" forever — a statement
+    # that is false, because no number of approvals reaches it. Refused at parse with both numbers, so
+    # the message says exactly what to change. This grammar has no teams or groups, so the count of
+    # possible approvers is knowable here; if that ever changes, this must become a comment-level
+    # "cannot be satisfied as written" instead of a parse refusal, not a silent acceptance.
+    if count > len(approvers):
+        raise PolicyError(
+            f"count ({count}) exceeds the number of named approvers ({len(approvers)}), so this rule "
+            "can never be satisfied; name more approvers or lower the count",
+            key="count",
+            line=node_line,
+        )
+
     when = fields.get("when", {})
     if when and not isinstance(when, dict):
         raise PolicyError("when must be a mapping of facts", key="when", line=node_line)

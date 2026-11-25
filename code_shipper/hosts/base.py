@@ -21,6 +21,10 @@ class PullRequest:
     head_sha: str
     head_ref: str
     base_ref: str
+    # The commit the base branch pointed at when the PR was read. The approvals policy is fetched at
+    # this SHA rather than at the branch name, because a branch moves and a verdict must describe a
+    # fixed tree.
+    base_sha: str = ""
     draft: bool = False
     from_fork: bool = False
     labels: tuple[str, ...] = ()

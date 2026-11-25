@@ -308,6 +308,16 @@ class GitHubHost:
             raise HostError("unexpected payload for labels")
         return [str(entry.get("name", "")) for entry in data if isinstance(entry, dict)]
 
+    def resolve_ref(self, repo: str, ref: str) -> str:
+        """The commit a branch currently points at.
+
+        Used instead of a branch name when reading a file whose version must be fixed for the duration
+        of a decision. `pr.base.sha` is not this: it is the merge base, which lags the branch tip.
+        """
+        owner, name = split_slug(repo)
+        data, _ = self._get(f"/repos/{owner}/{name}/git/ref/heads/{ref}")
+        return str((data or {}).get("object", {}).get("sha", ""))
+
     def approvals(self, repo: str, number: int) -> list[str]:
         """Logins whose latest review on this PR is an approval.
 
@@ -375,6 +385,7 @@ def _to_pr(data: Any) -> PullRequest:
         head_sha=str(head.get("sha", "")),
         head_ref=str(head.get("ref", "")),
         base_ref=str(base.get("ref", "")),
+        base_sha=str(base.get("sha", "")),
         draft=bool(data.get("draft", False)),
         from_fork=bool(repo_full and base_full and repo_full != base_full),
         labels=tuple(

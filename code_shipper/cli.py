@@ -580,8 +580,13 @@ def cmd_poll(args: argparse.Namespace) -> int:
             print(f"  {result.risk['summary']}")
 
         # Approvals re-evaluation happens in the same round as the review, from the same head, so the
-        # comment and the review can never describe different commits.
-        _reevaluate_approvals(host=host, repo=repo, pr=args.pr, token=token, dry_run=args.dry_run)
+        # comment and the review can never describe different commits. A refusal here stops the
+        # approvals half, not the review: the review already happened and its result is true.
+        try:
+            _reevaluate_approvals(host=host, repo=repo, pr=args.pr, token=token,
+                                  dry_run=args.dry_run)
+        except ApprovalRefused as exc:
+            print(f"  approvals refused: {exc}", file=sys.stderr)
 
     outcome = poll(
         current_head=current_head,
@@ -640,6 +645,10 @@ def _post_review(*, token: str, repo: str, pr: int, result: Any) -> int:
     return 0
 
 
+class ApprovalRefused(Exception):
+    """The approvals policy cannot be located or applied. Refused, never defaulted."""
+
+
 def _reevaluate_approvals(
     *, host: Any, repo: str, pr: int, token: str, dry_run: bool = False
 ) -> dict:
@@ -654,18 +663,53 @@ def _reevaluate_approvals(
     from .approvals.shared import merge
     from .broker.roles import Broker, BrokerError, BrokerRefused
 
-    # The policy comes from the PR's BASE branch, never from the PR and never from the repository
-    # default. Reading the default branch applied the wrong policy to every PR against a non-default
-    # base — measured on PR #25, where the policy lived on demo/base and was reported as absent.
-    base = getattr(host.get_pr(repo, pr), "base_ref", "") or host.default_branch(repo)
+    # The policy is read at the PR's BASE COMMIT, never from the PR, never from the repository default,
+    # and never from a branch *name*.
+    #
+    # Three separate reasons, all measured or required:
+    # - The PR must not govern itself (T-ADV-01).
+    # - The repository default is the wrong base for any PR against a non-default branch. This was a
+    #   real defect: PR #25's policy lived on demo/base and was reported absent.
+    # - A branch name is not a fixed reference. Reading "the branch" can return a policy that changed
+    #   after the head being evaluated, so the verdict and the code it describes can drift apart. The
+    #   exact-head principle applies to the policy as much as to the diff.
+    #
+    # A missing base_ref is refused rather than defaulted: `base_ref or default_branch` silently
+    # restored the very bug above whenever the field was absent, and a fallback that reintroduces a
+    # fixed defect under a slightly different input is not a fallback, it is the defect.
+    pr_obj = host.get_pr(repo, pr)
+    base_ref = str(getattr(pr_obj, "base_ref", "") or "").strip()
+    if not base_ref:
+        raise ApprovalRefused(
+            "this pull request reports no base branch, so the approvals policy cannot be located. "
+            "Refusing rather than reading the repository default, which may not be the base this "
+            "pull request targets."
+        )
+    base_sha = str(getattr(pr_obj, "base_sha", "") or "").strip()
+    if not base_sha:
+        raise ApprovalRefused(
+            f"this pull request reports no base commit for {base_ref}, so the policy cannot be read at "
+            "a fixed reference. Refusing rather than reading a branch name, which can move."
+        )
+    # `pr.base.sha` is GitHub's merge base, not the tip of the base branch: the API returned
+    # 2e9e11ad for a branch whose tip was 514cc54b. Reading the policy there would apply a stale
+    # policy — the tip's policy had already changed from count-2-with-one-approver to something valid.
+    # So resolve the branch to its current commit once, and read the policy at that fixed SHA.
+    try:
+        base_sha = host.resolve_ref(repo, base_ref) or base_sha
+    except Exception:  # noqa: BLE001 - fall back to the reported sha rather than a branch name
+        pass
+
     central_text = ""
     local_text = ""
     try:
-        central_text = host.read_file(repo, base, ".code-shipper/approvals.yml").decode() or ""
+        fetched = host.read_file(repo, base_sha, ".code-shipper/approvals.yml")
+        central_text = fetched.decode() if fetched else ""
     except Exception:  # noqa: BLE001 - absent central config is normal
         central_text = ""
     try:
-        local_text = host.read_file(repo, base, "code-shipper.yml").decode() or ""
+        fetched = host.read_file(repo, base_sha, "code-shipper.yml")
+        local_text = fetched.decode() if fetched else ""
     except Exception:  # noqa: BLE001
         local_text = ""
 
@@ -680,7 +724,6 @@ def _reevaluate_approvals(
     for refusal in merged.refused:
         print(f"  approvals: {refusal}")
 
-    pr_obj = host.get_pr(repo, pr)
     files = tuple(diff_file.path for diff_file in host.get_diff(repo, pr).files)
     facts = Facts(
         changed_files=files,
