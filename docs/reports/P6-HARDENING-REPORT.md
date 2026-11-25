@@ -106,12 +106,28 @@ Ran 1141 tests in 348.372s
 OK
 ```
 
-## Checkpoint CI
+## Checkpoint CI — one green run, and one that could not start
 
 | Run | Commit | Result |
 |---|---|---|
-| `45682751422` | `ac69794` | **6/6** |
-| `45684044951` | `ccfbefa` | run ID in the header of my reply |
+| `45682751422` | `ac69794` (the six fixes) | **6/6** |
+| `45684044951` | `ccfbefa` (Phase 6 hardening) | **6/6** |
+| `45685682311` | `88b3254` (the surface tests) | **0/6 — jobs never started** |
+
+The third run is not a failure of the code and I am not going to dress it up as one. GitHub refused to
+start any job:
+
+```
+The job was not started because recent account payments have failed or your spending limit needs to be
+increased. Please check the 'Billing & plans' section in your settings
+```
+
+An account billing problem, not a test result. **So the last commit has no green CI evidence behind it.**
+What it does have: the local suite ran the exact committed bytes — SHA-256 of the working file and of
+`git show HEAD:tests/test_phase5c.py` are identical (`fc5809a8…`), tree clean — at **1141 tests, OK**.
+
+Anyone picking this up should re-run CI once the account is sorted before treating `88b3254` as verified.
+I am recording the gap rather than letting the local run stand in for a matrix result.
 
 ## What is still unproven
 
