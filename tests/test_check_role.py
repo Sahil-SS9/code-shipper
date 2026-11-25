@@ -302,3 +302,61 @@ class FixtureConsistencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SuccessTitleTests(unittest.TestCase):
+    """Fix 6: a green tick must not read as ready.
+
+    `approvals-blocked` correctly concludes `success` — the review itself is clear — but a title that
+    omits the outstanding approvals turns a green check into a claim that nothing is left to do.
+    """
+
+    def _title(self, **kwargs) -> str:
+        payload = CheckRequest(repo="o/r", head_sha="abc", complete=True, **kwargs).as_payload()
+        assert payload is not None
+        return payload["output"]["title"]
+
+    def test_every_success_title_in_approvals_blocked_names_the_outstanding_approvals(self) -> None:
+        for have, needed in ((0, 2), (1, 3), (0, 1)):
+            title = self._title(state="approvals-blocked", approvals_have=have,
+                                approvals_needed=needed)
+            self.assertIn("approvals still needed", title.lower())
+            self.assertIn(f"({have} of {needed})", title)
+
+    def test_the_exact_required_title(self) -> None:
+        self.assertEqual(
+            self._title(state="approvals-blocked", approvals_have=0, approvals_needed=2),
+            "Review clear · approvals still needed (0 of 2)",
+        )
+
+    def test_without_counts_it_still_says_approvals_are_needed(self) -> None:
+        title = self._title(state="approvals-blocked")
+        self.assertIn("approvals still needed", title.lower())
+        self.assertNotIn("0 of 0", title)
+
+    def test_no_success_title_omits_the_outstanding_approvals_in_that_state(self) -> None:
+        """Swept over plausible counts: every one must name them."""
+        for needed in range(1, 6):
+            for have in range(0, needed):
+                title = self._title(state="approvals-blocked", approvals_have=have,
+                                    approvals_needed=needed)
+                self.assertIn("approvals", title.lower())
+                self.assertNotEqual(title.strip().lower(), "review complete")
+
+    def test_the_ready_state_says_rules_are_met(self) -> None:
+        title = self._title(state="approvals-satisfied")
+        self.assertIn("rules are met", title.lower())
+
+    def test_a_success_title_never_claims_approval(self) -> None:
+        """`approvals` is the word we want; `approved` and `approve` are the claims we refuse."""
+        for state in ("approvals-blocked", "approvals-satisfied"):
+            title = self._title(state=state).lower()
+            for claim in ("approved", "approve ", "approve,", "approved."):
+                self.assertNotIn(claim, title)
+            self.assertFalse(title.rstrip().endswith("approve"), title)
+
+    def test_an_incomplete_title_says_it_is_not_a_pass(self) -> None:
+        payload = CheckRequest(repo="o/r", head_sha="abc", state="incomplete",
+                               complete=False).as_payload()
+        assert payload is not None
+        self.assertIn("not a pass", payload["output"]["title"].lower())

@@ -57,6 +57,35 @@ STATE_CONCLUSIONS: dict[str, str | None] = {
 FORBIDDEN_WORDS = ("approved", "approve", "merge", "lgtm")
 
 
+def title_for(state: str, *, complete: bool, approvals_have: int = 0,
+              approvals_needed: int = 0) -> str:
+    """The check-run output title.
+
+    A `success` conclusion on `approvals-blocked` is correct — the *review* is clear — but a green tick
+    titled just "Review complete" reads as ready to merge, which it is not. So the title names the
+    outstanding approvals, and the check's green means "nothing left to review", never "nothing left to
+    do". A test asserts every success title in that state mentions the outstanding approvals.
+    """
+    if state == "approvals-blocked":
+        if approvals_needed > 0:
+            return (f"Review clear · approvals still needed "
+                    f"({approvals_have} of {approvals_needed})")
+        # Without the numbers, still say approvals are needed: a title that omits it is the exact
+        # misleading case this function exists to prevent.
+        return "Review clear · approvals still needed"
+    if state == "approvals-satisfied":
+        return "Review clear · your approval rules are met"
+    if state == "findings":
+        return "Review complete · findings to fix"
+    if state == "observe":
+        return "Review complete · observe only"
+    if not complete:
+        return "Review did not finish · not a pass"
+    if state == "error":
+        return "Review did not run"
+    return "Review complete"
+
+
 class CheckRefused(Exception):
     """A check write that will not happen. ``code`` is stable."""
 
@@ -110,6 +139,8 @@ class CheckRequest:
     title: str = ""
     summary: str = ""
     details_url: str = ""
+    approvals_have: int = 0
+    approvals_needed: int = 0
 
     def conclusion(self) -> str | None:
         return conclusion_for(self.state, complete=self.complete)
@@ -120,7 +151,10 @@ class CheckRequest:
         if conclusion is None:
             return None
         assert_not_a_pass(conclusion, complete=self.complete, state=self.state)
-        title = self.title or f"Review: {self.state}"
+        title = self.title or title_for(
+            self.state, complete=self.complete,
+            approvals_have=self.approvals_have, approvals_needed=self.approvals_needed,
+        )
         lowered = title.lower()
         for word in FORBIDDEN_WORDS:
             if word in lowered:

@@ -445,6 +445,8 @@ class Broker:
         title: str = "",
         summary: str = "",
         details_url: str = "",
+        approvals_have: int = 0,
+        approvals_needed: int = 0,
         role: str = "reporter",
     ) -> dict[str, Any] | None:
         """Create or update the review check for this head (D13).
@@ -464,6 +466,7 @@ class Broker:
         request = CheckRequest(
             repo=self.repo, head_sha=head_sha, state=state, complete=complete,
             title=title, summary=summary, details_url=details_url,
+            approvals_have=approvals_have, approvals_needed=approvals_needed,
         )
         payload = request.as_payload(external_id=f"{self.repo}#{pr}")
         if payload is None:
