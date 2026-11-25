@@ -35,7 +35,9 @@ KEYMAP: dict[str, str] = {
 STATIC_KEYS = (("j/k", "move"), ("↵", "open"), ("c", "copy"), ("t", "track"),
                (":", "commands"), ("?", "help"), ("q", "quit"))
 
-LANE_ICON = {"done": "✓", "failed": "✕", "waiting": "◐", "running": "◐",
+# ◐ means "work is happening right now", and nothing else. A waiting decision is not running: a spinner
+# over a step that is waiting for a person reads as activity and invites waiting for it to finish.
+LANE_ICON = {"done": "✓", "failed": "✕", "waiting": "▸", "running": "◐",
              "notstarted": "○", "notneeded": "–"}
 BULLET = {"fail": "●", "warn": "●", "pass": "●", "muted": "●", "flight": "●"}
 
@@ -63,15 +65,53 @@ def _age(seconds: int) -> str:
     return f"{seconds // 86400}d"
 
 
-def _next_bar(projection: Projection, width: int) -> list[str]:
-    """The NEXT bar: a coloured left edge and two lines of copy from the projection."""
+def _wrap(text: str, width: int) -> list[str]:
+    """Wrap on word boundaries, keeping the caller's indent on continuation lines."""
+    if width <= 1:
+        return [""]
+    words = text.split()
+    if not words:
+        return [""]
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        if len(current) + 1 + len(word) <= width:
+            current += " " + word
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
+def _wrapped(prefix: str, text: str, width: int) -> list[str]:
+    """`prefix` + wrapped text, with continuation lines aligned under the text."""
+    indent = " " * len(prefix)
+    pieces = _wrap(text, max(8, width - len(prefix)))
+    out = [prefix + pieces[0]]
+    out.extend(indent + piece for piece in pieces[1:])
+    return out
+
+
+def _next_bar(projection: Projection, width: int, *, wrap: bool = True) -> list[str]:
+    """The NEXT bar: a coloured left edge and the copy from the projection.
+
+    Wrapped rather than clipped in the wide layout: the sub-line is the sentence that tells a reader what
+    to do, and cutting it with an ellipsis removes exactly the part that says so. The narrow layout clips,
+    because there a wrapped sentence is worse than a short one.
+    """
     headline, sub, _action, _label = projection.next_bar()
     inner = max(10, width - 2)
-    return [f"▌{_pad('NEXT  ' + headline, inner)}",
-            f"▌{_pad('      ' + sub, inner)}"]
+    if not wrap:
+        return [f"▌{_pad('NEXT  ' + headline, inner)}",
+                f"▌{_pad('      ' + sub, inner)}"]
+    out = [f"▌{line}" for line in _wrapped("NEXT  ", headline, inner)]
+    out += [f"▌{line}" for line in _wrapped("      ", sub, inner)]
+    return out
 
 
 def _lanes_line(projection: Projection, width: int) -> list[str]:
+    """Two labelled groups, as the Desktop has: who does what is the point of the line."""
     steps = projection.lanes()
     blocking = ""
     for name, state, _sub in steps:
@@ -83,7 +123,10 @@ def _lanes_line(projection: Projection, width: int) -> list[str]:
         icon = LANE_ICON.get(state, "○")
         shown = name.upper() if name == blocking else name
         labels.append(f"{icon} {shown}")
-    line = f" {labels[0]}  {labels[1]}  │  {labels[2]}  {labels[3]}"
+    # Kept inside the board width: a lanes line that overflows is clipped by the caller and loses the
+    # label on the right, which is the one naming the reader's own steps.
+    line = (f" CODE-SHIPPER {labels[0]} {labels[1]} │ YOU AND GITHUB "
+            f"{labels[2]} {labels[3]}")
     return [_pad(line, width)]
 
 
@@ -104,9 +147,9 @@ def _inbox(projection: Projection, width: int) -> list[str]:
     return lines
 
 
-def _finding_lines(projection: Projection, width: int) -> list[str]:
+def _finding_lines(projection: Projection, width: int, *, wrap: bool = True) -> list[str]:
     if not projection.findings:
-        return [" No findings at this head."]
+        return [f" {projection.findings_placeholder()}"]
     out: list[str] = []
     open_index = 0
     for index, finding in enumerate(projection.findings):
@@ -121,7 +164,10 @@ def _finding_lines(projection: Projection, width: int) -> list[str]:
         out.append(_clip(f"        {finding.path}:{finding.line}", width))
         if index == open_index:
             if finding.why:
-                out.append(_clip(f"    {finding.why}", width))
+                if wrap:
+                    out += _wrapped("    ", finding.why, width)
+                else:
+                    out.append(_clip(f"    {finding.why}", width))
             for _kind, number, text in (finding.code or ()):
                 out.append(_clip(f"   {number:>3} │ {text}", width))
             if finding.suggested_fix:
@@ -173,7 +219,7 @@ def render(projection: Projection, *, width: int = DEFAULT_WIDTH,
     right.append("")
     right += _lanes_line(projection, right_width)
     right.append("")
-    right += _finding_lines(projection, right_width - 1)
+    right += _finding_lines(projection, right_width - 1, wrap=True)
 
     body_height = max(4, height - 6)
     for index in range(body_height):
@@ -194,10 +240,10 @@ def render_narrow(projection: Projection, *, width: int = 68) -> list[str]:
         lines.append(_pad(f" STALE: computed at {projection.reviewed_head[:8] or 'none'}", width))
     # Every line is padded to exactly `width`, including the ones built by the shared helpers: a
     # screenshot or a diff of a board with ragged right edges is unusable.
-    lines += [_pad(line, width) for line in _next_bar(projection, width)]
+    lines += [_pad(line, width) for line in _next_bar(projection, width, wrap=False)]
     lines += [_pad(line, width) for line in _lanes_line(projection, width)]
     lines.append(_pad("─" * width, width))
-    lines += [_pad(line, width) for line in _finding_lines(projection, width)]
+    lines += [_pad(line, width) for line in _finding_lines(projection, width, wrap=False)]
     lines.append(_pad("─" * width, width))
     live = "  ".join(KEYMAP[a] for a in projection.actions() if a in KEYMAP)
     lines.append(_pad(f" ← list  j/k move  {live}  : commands  ? help", width))
