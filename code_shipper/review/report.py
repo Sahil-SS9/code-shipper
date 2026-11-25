@@ -40,6 +40,7 @@ class ReviewReport:
     omitted_nits: int = 0
     omitted_pre_existing: int = 0
     dropped_unverified: int = 0
+    merged_findings: int = 0
     incremental: bool = False
     since_head: str = ""
     errors: list[str] = field(default_factory=list)
@@ -75,6 +76,12 @@ class ReviewReport:
             lines.append(
                 f"{self.dropped_unverified} candidate finding(s) were not confirmed on verification "
                 "and are not listed."
+            )
+            lines.append("")
+        if self.merged_findings:
+            lines.append(
+                f"{self.merged_findings} additional finding(s) shared a fingerprint with one above "
+                "and are named in that finding's body rather than posted separately."
             )
             lines.append("")
         if self.risk:
@@ -117,6 +124,7 @@ class ReviewReport:
                 "omitted_nits": self.omitted_nits,
                 "omitted_pre_existing": self.omitted_pre_existing,
                 "dropped_unverified": self.dropped_unverified,
+                "merged_away": self.merged_findings,
             },
             "findings": [
                 {"fingerprint": f.fingerprint, "path": f.path, "line": f.line}

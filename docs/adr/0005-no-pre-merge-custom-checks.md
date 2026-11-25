@@ -1,4 +1,4 @@
-# ADR 0003 — No pre-merge custom checks in v1
+# ADR 0005 — No pre-merge custom checks in v1
 
 Status: accepted (owner decision D14, 24/11/2026).
 Supersedes nothing. Related: ADR 0002 (authority from credentials, not text), tech spec §7.

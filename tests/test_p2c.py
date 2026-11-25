@@ -179,7 +179,7 @@ class VerdictBlockTests(unittest.TestCase):
     def test_the_block_never_claims_approval_or_merge(self) -> None:
         report = ReviewReport(state=ReviewState.COMPLETE, level="standard")
         block = report.verdict_block().lower()
-        for forbidden in ("\"approved\"", "merge", "request_changes"):
+        for forbidden in ('"approved"', '"request_changes"', '"merge"', '"merged": true'):
             self.assertNotIn(forbidden, block)
 
 
@@ -321,6 +321,98 @@ class RationaleTests(unittest.TestCase):
         from code_shipper.review.filters import comment_body
 
         self.assertNotIn("<details>", comment_body(title="t", body="b"))
+
+
+class MergeTests(unittest.TestCase):
+    """Two different problems quoting the same line must not become one silently.
+
+    Identity is path + evidence, so findings sharing a quoted line share a fingerprint and merge.
+    The condition on that: keep the highest severity, name the ones that merged, record the count.
+    """
+
+    def _finding(self, severity: str, title: str, path: str = "calc/__init__.py"):
+        from code_shipper.review.verify import Finding
+
+        return Finding(
+            id=f"f-{severity}",
+            path=path,
+            line=6,
+            severity=severity,
+            title=title,
+            body=f"detail for {title}",
+            evidence="+    return a * b",
+        )
+
+    def test_a_correctness_and_a_security_finding_produce_one_posted_finding_naming_both(self) -> None:
+        from code_shipper.review.fingerprint import merge_by_fingerprint
+
+        correctness = self._finding("important", "divide multiplies instead of dividing")
+        security = self._finding("blocking", "operator swap turns division into multiplication")
+
+        # the two distinct problems share a path and a quoted line
+        self.assertEqual(
+            fingerprint(path=correctness.path, title=correctness.title, evidence=correctness.evidence),
+            fingerprint(path=security.path, title=security.title, evidence=security.evidence),
+        )
+
+        merged = merge_by_fingerprint([correctness, security])
+
+        self.assertEqual(len(merged), 1, "one posted finding")
+        survivor = merged[0]
+        # the more serious one survives
+        self.assertEqual(survivor.severity, "blocking")
+        self.assertEqual(survivor.title, "operator swap turns division into multiplication")
+        # and the other is named, not lost
+        self.assertIn("divide multiplies instead of dividing", survivor.body_suffix())
+        self.assertIn("Also noted on this line:", survivor.body_suffix())
+        self.assertEqual(survivor.merged_count, 1)
+
+    def test_the_merge_keeps_the_highest_severity_whatever_the_order(self) -> None:
+        from code_shipper.review.fingerprint import merge_by_fingerprint
+
+        nit = self._finding("nit", "a style nit")
+        blocking = self._finding("blocking", "a real bug")
+        for order, label in (([nit, blocking], "nit first"), ([blocking, nit], "blocking first")):
+            with self.subTest(order=label):
+                merged = merge_by_fingerprint(order)
+                self.assertEqual(len(merged), 1)
+                self.assertEqual(merged[0].severity, "blocking")
+
+    def test_a_single_finding_is_untouched_and_names_nothing(self) -> None:
+        from code_shipper.review.fingerprint import merge_by_fingerprint
+
+        merged = merge_by_fingerprint([self._finding("important", "one problem only")])
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].merged_count, 0)
+        self.assertEqual(merged[0].body_suffix(), "")
+
+    def test_distinct_evidence_does_not_merge(self) -> None:
+        from code_shipper.review.fingerprint import merge_by_fingerprint
+        from code_shipper.review.verify import Finding
+
+        one = self._finding("important", "problem one")
+        two = Finding("f2", "calc/__init__.py", 9, "important", "problem two", "b",
+                      "+    return a / b")
+        merged = merge_by_fingerprint([one, two])
+        self.assertEqual(len(merged), 2, "different code is a different finding")
+
+    def test_the_report_counts_merged_findings(self) -> None:
+        report = ReviewReport(state=ReviewState.COMPLETE, level="standard", merged_findings=2)
+        self.assertIn("2 additional finding(s) shared a fingerprint", report.render())
+
+    def test_the_verdict_block_records_the_merged_count(self) -> None:
+        report = ReviewReport(state=ReviewState.COMPLETE, merged_findings=1)
+        parsed = json.loads(report.verdict_block().split("```json", 1)[1].rsplit("```", 1)[0])
+        self.assertEqual(parsed["counts"]["merged_away"], 1)
+
+    def test_the_merge_preserves_the_caller_order(self) -> None:
+        from code_shipper.review.fingerprint import merge_by_fingerprint
+        from code_shipper.review.verify import Finding
+
+        first = self._finding("important", "first")
+        second = Finding("f2", "other.py", 2, "important", "second", "b", "+other code")
+        merged = merge_by_fingerprint([first, second])
+        self.assertEqual([m.title for m in merged], ["first", "second"])
 
 
 if __name__ == "__main__":
