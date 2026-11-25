@@ -104,7 +104,24 @@ Receipt: `docs/reports/evidence/P3B/receipt.json`.
 ```
 $ ./scripts/run_tests.sh
 ...
-Ran 572 tests in 115.171s
+Ran 572 tests in 112.889s
 
 OK
 ```
+
+## Checkpoint CI
+
+Run **45530288577** — **6/6 success** across ubuntu, macOS and Windows on py3.11 and py3.12.
+
+It took four attempts, and the failures were worth having:
+
+| Run | Result | What it found |
+|---|---|---|
+| 45527032812 | 0/6 | `require_private_dir` checked mode bits Windows does not have (`mkdtemp` reports 0o777 there) |
+| 45528092982 | 0/6 | The credential-path guard matched only `/`-separated strings, so a Windows `C:\Users\x\.hermes` was **mountable**. Cleanup failed on Windows. A socket test spent a shared capability. |
+| 45529081851 | 2/6 | Windows green; POSIX still failed on a test that asserted a rule which does not exist |
+| 45530288577 | **6/6** | — |
+
+The second one is the finding that matters: the guard that stops a credential directory being mounted
+into the container silently did not work on Windows. It was written, reviewed and passing on Linux.
+
