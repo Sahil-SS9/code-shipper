@@ -46,6 +46,20 @@ Review
   A review never approves or blocks.
 - FR-R5. Read review instructions (`REVIEW.md`, `.code-shipper/review.md`) only from the base
   branch, never from the PR's own changes.
+- FR-R6 (D10). Review behaviour is three **orthogonal** settings, not one dial: depth
+  (`review.level`: quick/standard/deep), volume (`review.profile`: quiet/standard/assertive, default
+  standard) and trigger (`review.trigger`: manual/open/on-push/off, config only). `--level` and
+  `--profile` are CLI flags.
+- FR-R7 (D11). Incremental review ships in v1. An on-push review covers only commits since
+  `last_reviewed_head`, which only a **complete** review sets — never ledger activity. Findings are
+  deduplicated across pushes by a stable fingerprint (path + normalised title + hash of quoted
+  evidence, **not** the line number), so shifting code by N lines does not re-post them. For
+  approvals, `review.important_open` is the **union** of open important findings across the whole PR.
+- FR-R8 (D12). Pre-existing findings are **not posted**; the summary says how many were omitted.
+- FR-R9 (D13). Review state is stated in the review body. A check run or status is Phase 5 and needs
+  its own tested broker role.
+- FR-R10 (D15a). The review summary carries an **advisory** merge risk rating with reasons. It is
+  never a gate: the approvals evaluator has no access to it, enforced by test.
 
 Steward (fix loop)
 - FR-S1. Work on: failing checks whose cause is in code the PR touches; merge conflicts (merge

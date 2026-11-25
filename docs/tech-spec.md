@@ -157,6 +157,12 @@ regardless of container isolation results.
 | Policy file limits | ≤ 64 KB, ≤ 100 rules, `count` 1–16 | FR-A1 |
 | PR size limit for approvals | ≥ 2,000 changed files → status `failure` "Change too large to evaluate" | |
 | Diff scope for fixes | PR's changed files + paths matching `tests/**`, `test_*`, `*_test.*`, `*.test.*`, `__tests__/**`; repo config may widen | FR-S1 |
+| Review profile (D10) | quiet \| standard \| assertive; default **standard** | Volume, independent of level. Quiet drops nits from the posted review; assertive lowers the bar for Important. Neither changes verification |
+| Review trigger (D10) | manual \| open \| on-push \| off; default **open** | Config only, no CLI flag. `off` is a hard switch that no PR-authored text can set |
+| Stable fingerprint (D11) | sha256 of (path, normalised title, hash of quoted evidence) | **Never the line number.** Shifting code by N lines must not re-post a finding |
+| `last_reviewed_head` (D11) | set only by a **complete** review | An incomplete or failed review leaves it unchanged, so the next pass re-covers the same commits rather than skipping them |
+| `review.important_open` (D11) | union of open important findings across the whole PR | Never just the last pass; an unfixed finding from commit 1 still blocks |
+| Pre-existing findings (D12) | recorded, **not posted** | The summary states the count |
 
 ## 4. Approval policy (`.code-shipper/approvals.yml`)
 

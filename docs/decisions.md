@@ -24,6 +24,26 @@ Source: owner grill, 24/11/2026 (kanban core board, card t_135247fa).
 | D7 | Code-Shipper is built standalone, focused on what the closest prior art (diaktoros) lacks: a harness-neutral core, a repository-committed approval policy file, on-demand `/ship` from the user's own session, and supported macOS/Windows use (see F5 for the corrected comparison). Its MIT-licensed design may be studied; no code is copied without licence attribution. | "option 1" |
 | D8 | Name: Code-Shipper. | "name = Code-Shipper" |
 | D9 | Licence: MIT, "Copyright (c) 2026 Sahil Saghir". Supersedes K6. | "GO WITH mit" |
+| D10 | Review modes are three **orthogonal** settings: depth `review.level` (quick/standard/deep, existing), volume `review.profile` (quiet/standard/assertive), and trigger `review.trigger` (manual/open/on-push/off). `profile` defaults to **standard** everywhere. `--level` and `--profile` are CLI flags; trigger is config only. | Owner approved 24/11/2026 |
+| D11 | Incremental review ships in v1. An on-push review covers only commits since `last_reviewed_head`, which is set **only** by a complete review — never by ledger activity. Findings are deduplicated across pushes by a stable fingerprint: path + normalised title + hash of the quoted evidence, and **not** the line number. For approvals, `review.important_open` is the **union** of open important findings over the whole PR, never just the last pass. | Owner approved 24/11/2026 |
+| D12 | `pre_existing` findings are **not posted**. The review summary states how many were omitted. | Owner approved 24/11/2026 |
+| D13 | Review state is stated in the review body now. A GitHub check run or status arrives in Phase 5 and needs a new, separately tested broker role. | Owner approved 24/11/2026 |
+| D14 | No pre-merge custom checks in v1. Recorded as an ADR: they are model judgement on author-controlled text and they overlap the approval policy. | Owner approved 24/11/2026 |
+| D15a | **Merge risk score** (advisory): a 5-level rating with reasons in the review summary. **GUARDRAIL: advisory only.** The approvals evaluator must not read it, enforced by a structural test that the policy evaluator has no access to the field. Never named or styled as a gate. | Owner approved 24/11/2026 |
+| D15b | **Low-effort / AI-generated PR detection.** **GUARDRAIL: default OFF.** When on it adds one label and one explanatory note only. It never closes, blocks, or lowers review effort, and never states as fact that something is AI-written — "signals of", with the signals listed. | Owner approved 24/11/2026 |
+| D15c | **Review memory** (evidence-gated shape): each lesson is a cue + action + at least one evidence row (PR, comment, who, when). **GUARDRAILS:** lessons are learnt only from feedback by accounts with write access, checked through the host API rather than claimed in text; modes off → shadow (report what would change, apply nothing) → on, default **shadow**; every lesson is listable and withdrawable (`code-shipper lessons list|show|withdraw`); a reversed disposition withdraws the lesson; lessons never touch the approvals policy or security settings; stored locally under the state dir, harness- and memory-provider-neutral. | Owner approved 24/11/2026 |
+| D15d | **Shared settings across repos**: a central config (local path or a designated repo) that repos inherit. **GUARDRAIL: a repo may TIGHTEN but never LOOSEN** a central security key — `allow_agent_approval`, protected paths, scope rules, budget ceilings, the trigger off-switch. A loosening attempt is refused with the key named. `code-shipper config effective <repo>` prints the merged result and where each value came from. | Owner approved 24/11/2026 |
+
+Source for D10–D15: owner decisions 24/11/2026, folded in from
+`SCOPE-ADDITIONS-2026-11-24.md`; underlying research in `docs/research/review-modes-scope.md`
+(recommendation IDs C1–C20). ARTEX is AGPL-3.0: ideas only, no code adopted.
+
+## Not adopted (binding)
+
+- **Any switch in PR-authored text** that disables, pauses or reconfigures its own review — a
+  description, a commit message, or a comment by a non-writer. This is the same principle as ADR 0002
+  (authority comes from credentials, not from text) and as the framing note in tech spec §7.
+- **Any approve or merge path.** Humans always merge.
 
 ## Research facts this pack relies on
 

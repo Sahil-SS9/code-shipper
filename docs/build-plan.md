@@ -70,27 +70,68 @@ on unit tests.
 
 ## Phase 2 — Review engine
 
-Work: lenses, verify, rank, posting plan, `code-shipper review <pr> [--level]` with
+Work: lenses, verify, rank, posting plan, `code-shipper review <pr> [--level] [--profile]` with
 `--dry-run` (prints findings, posts nothing) and a real post via broker `reviewer` role.
 
-Gate: T-ADV-05, T-ADV-13 (reviewer approve refused), a dry-run on 5 seeded PRs with findings
-listed in the report, one real posted review on the test repo.
+### P2-C — honesty pack (owner decisions D10–D15, 24/11/2026)
+
+Work, from `SCOPE-ADDITIONS-2026-11-24.md`:
+
+- C1 path filters with default ignores.
+- C2 wrap-up budget reserve: a run forced to exhaust its budget still posts "incomplete" and writes
+  the ledger.
+- C4 stable fingerprint — path + normalised title + hash of quoted evidence, never the line number.
+  **A prerequisite for Phase 3 incremental review (D11).**
+- C6 per-finding rationale, collapsed.
+- C7 + C8 explicit review state, including the "no findings" case.
+- C16 machine-readable verdict block in the review body.
+- C20 review cache keyed on (repo, head_sha).
+
+Gate: T-UNIT-* for the fingerprint (shifting code by N lines does not re-post); the wrap-up reserve
+test; a review posted with the new body shape; cache hit and miss both exercised.
 
 ## Phase 3 — Broker + Steward (on-demand watch)
 
 Work: broker roles/allowlists/exact head/receipts, expected-old-ref lease, uncertain-write
 reconciliation; steward classify/contained workspace/fix/scope; comment commands; label; budgets;
-`code-shipper watch <pr>` and `stop`.
+`code-shipper watch <pr>` and `stop`. Scope rules come from policy config, not hard-coded paths, and
+test-weakening detection is AST-based.
 
-Gate: T-ADV-02, 03, 04, 06, 08, 09, 10, 11, 14, 15, T-UNIT-BUDGET, T-SCN-01..04 on the test repo.
+Phase 3 additions from D10–D15: C3 incremental review plus the D11 union rule; C9 coverage summary;
+C12 per-PR review cap with a stated pause; C5 profile; C10 CI annotations as untrusted hints.
+
+Gate: T-ADV-02, 03, 04, 06, 08, 09, 10, 11, 14, 15, T-UNIT-BUDGET, T-SCN-01..04 on the test repo,
+plus one real contained fix run.
 
 ## Phase 4 — Approvals
 
 Work: policy parser + validator (stdlib), facts, evaluator, status + observe comment, agent
 approval path under FR-A4 in `separated` mode, re-evaluation on push.
 
+Phase 4 additions from D10–D15: C13 preview/validate config and `approvals.yml` before use; D15d
+shared settings plus `code-shipper config effective <repo>` (a repo may tighten, never loosen, a
+central security key).
+
 Gate: T-UNIT-POLICY-01..20, T-UNIT-POLICY-PARITY, T-UNIT-EVAL-01..15, T-ADV-01, T-ADV-16, T-ADV-17,
-T-SCN-05.
+T-SCN-05, plus the D15d loosening refusal with the key named and provenance in `config effective`.
+
+## Phase 4b — Review intelligence (D15a–c)
+
+Work:
+
+- **Merge risk score** (D15a): a 5-level advisory rating with reasons in the review summary.
+- **Low-effort / AI-generated PR detection** (D15b): default **off**; when on, one label and one
+  explanatory note only.
+- **Review memory** (D15c): cue + action + evidence rows; learnt only from write-access feedback
+  checked through the host API; off → shadow → on, default shadow; `code-shipper lessons
+  list|show|withdraw`; a reversed disposition withdraws the lesson; stored under the state dir,
+  harness- and memory-provider neutral.
+
+Gate, one per guardrail: the approvals evaluator **cannot** read the risk score (structural test);
+detection defaults off and, when on, makes at most one label and one note and has no close or block
+call; feedback from a non-writer creates no lesson; shadow mode changes no output; withdraw removes
+the effect on the next review; a reversed disposition withdraws automatically; lessons never touch
+the approvals policy or security settings.
 
 ## Phase 5 — `/ship` + Hermes plugin + CLI
 
