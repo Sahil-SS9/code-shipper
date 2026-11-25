@@ -63,6 +63,29 @@ def build_parser() -> argparse.ArgumentParser:
         default=".",
         help="directory the agent runs in (default: the current directory)",
     )
+
+    watch = sub.add_parser("watch", help="watch a pull request and fix it within a budget")
+    watch.add_argument("pr", type=int, help="pull request number")
+    watch.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
+    watch.add_argument(
+        "--rounds", type=int, default=3, help="maximum fix rounds (default: 3)"
+    )
+    watch.add_argument(
+        "--minutes", type=float, default=15.0, help="wall-clock limit in minutes (default: 15)"
+    )
+    watch.add_argument("--dry-run", action="store_true",
+                       help="run the loop but never push (no token needed)")
+    watch.add_argument("--json", action="store_true", help="machine-readable output")
+    watch.add_argument(
+        "--label",
+        default="code-shipper-watching",
+        help="label that must stay on the PR for the loop to continue",
+    )
+
+    stop = sub.add_parser("stop", help="tell a running watch loop to stop")
+    stop.add_argument("pr", type=int, help="pull request number")
+    stop.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
+    stop.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
 
 
@@ -157,6 +180,140 @@ def cmd_review(args: argparse.Namespace) -> int:
     return 0 if outcome.complete else 1
 
 
+def cmd_watch(args: argparse.Namespace) -> int:
+    """Watch a PR: classify, fix, check scope, push — within a budget, and stoppable.
+
+    Nothing here merges or approves. `--dry-run` runs the identical loop but passes no token, so no
+    push can happen; it exercises the same code path rather than a separate one.
+    """
+    import tempfile
+
+    from .budget import RunBudget
+    from .hosts.github import GitHubHost
+    from .steward.policy import ScopePolicy
+    from .steward.watch import watch as run_watch
+
+    token = _read_token_quietly()
+    if not token:
+        print(
+            "no GitHub token found at ~/.config/code-shipper/tokens/fixer. The loop needs read "
+            "access even for a dry run.",
+            file=sys.stderr,
+        )
+        return 2
+
+    host = GitHubHost(token)
+    try:
+        pr = host.get_pr(args.repo, args.pr)
+    except Exception as exc:  # noqa: BLE001 - a read failure is a message, not a traceback
+        print(f"could not read PR #{args.pr} in {args.repo}: {exc}", file=sys.stderr)
+        return 2
+
+    # The policy comes from the repository's own config, never from a hard-coded path list.
+    policy = ScopePolicy.from_config(_read_scope_config(args.repo) or {})
+
+    with tempfile.TemporaryDirectory(prefix="cs-watch-") as workdir:
+        receipt = run_watch(
+            repo=args.repo,
+            pr_number=args.pr,
+            host=host,
+            worker=_container_worker(),
+            policy=policy,
+            budget=RunBudget(
+                fix_rounds=args.rounds,
+                wall_clock_seconds=int(max(1.0, args.minutes) * 60),
+            ),
+            repo_dir=Path(workdir),
+            token=None if args.dry_run else token,
+            label_present=lambda: args.label in host.list_labels(args.repo, args.pr),
+        )
+
+    payload = receipt.as_dict()
+    payload["pr"] = args.pr
+    payload["repo"] = args.repo
+    payload["dry_run"] = bool(args.dry_run)
+
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"PR #{args.pr} {pr.title}")
+        for record in receipt.rounds:
+            print(f"  round {record.index}: {record.verdict}")
+        print(f"stopped: {receipt.stopped_because or 'reason not recorded'}")
+        if receipt.pushed:
+            print(f"pushed: {', '.join(sha[:7] for sha in receipt.pushed)}")
+        else:
+            print("pushed: nothing")
+        if args.dry_run:
+            print("dry run: no token was used, so no push could happen")
+    return 0
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    """Stop a running watch loop.
+
+    Two mechanisms exist and both are honoured by the loop: `@code-shipper stop` from a writer, and
+    removing the watching label. This command does the second, because it is the one an operator can
+    do without leaving a comment — and it is a write, so it goes through the broker's `user` role,
+    which is where every write belongs.
+    """
+    from .broker.roles import Broker, BrokerRefused
+    from .hosts.github import split_slug
+
+    token = _read_token_quietly()
+    if not token:
+        print("no GitHub token found; cannot change labels.", file=sys.stderr)
+        return 2
+
+    owner, name = split_slug(args.repo)
+    broker = Broker(token=token, repo=f"{owner}/{name}")
+    try:
+        broker.remove_label(pr=args.pr, label="code-shipper-watching", role="user")
+    except BrokerRefused as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001
+        print(f"could not remove the label from PR #{args.pr}: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps({"pr": args.pr, "repo": args.repo, "label_removed": True}))
+    else:
+        print(f"PR #{args.pr}: removed code-shipper-watching; a running loop stops after this round")
+    return 0
+
+
+def _read_scope_config(repo: str) -> dict:
+    """The repository's scope policy.
+
+    Read from `code-shipper.yml` on the default branch when the host provides one. No YAML parser is
+    bundled (K1 / ADR 0004: standard library only), so the supported shape is a flat `scope:` block of
+    lists, which covers what the policy needs. Anything else is refused rather than half-parsed — a
+    config file silently ignored is a scope rule silently absent.
+    """
+    from .config import read_scope_block
+    from .hosts.github import GitHubHost
+
+    token = _read_token_quietly()
+    if not token:
+        return {}
+    host = GitHubHost(token)
+    try:
+        raw = host.read_file(repo, host.default_branch(repo), "code-shipper.yml")
+    except Exception:  # noqa: BLE001 - no config is not an error
+        return {}
+    if not raw:
+        return {}
+    return read_scope_block(raw.decode("utf-8", "replace"))
+
+
+def _container_worker():
+    """The contained worker, wired the same way a real run uses it."""
+    from .steward.contained import ContainedWorker
+
+    return ContainedWorker()
+
+
 def _read_token_quietly() -> str:
     from pathlib import Path
 
@@ -174,6 +331,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_doctor(args)
     if args.command == "review":
         return cmd_review(args)
+    if args.command == "watch":
+        return cmd_watch(args)
+    if args.command == "stop":
+        return cmd_stop(args)
     parser.error(f"unknown command: {args.command}")
     return 2
 

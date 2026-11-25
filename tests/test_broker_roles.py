@@ -29,6 +29,7 @@ from code_shipper.broker.roles import (
     reconcile,
 )
 from code_shipper.contain import fixloop
+from code_shipper.steward.policy import ScopePolicy
 
 REPO = "Sahil-SS9/code-shipper-sandbox"
 
@@ -304,6 +305,79 @@ class ForkPrTests(unittest.TestCase):
         own = PullRequest(2, "t", "a", "sha", "h", "main", from_fork=False)
         self.assertFalse(Broker.pr_is_eligible(fork))
         self.assertTrue(Broker.pr_is_eligible(own))
+
+
+class LabelTests(unittest.TestCase):
+    """A label change is a write, so it goes through the role allowlist like everything else."""
+
+    def test_a_user_may_remove_the_watch_label(self) -> None:
+        brk, transport = broker()
+        brk.remove_label(pr=1, label="code-shipper-watching", role="user")
+        self.assertEqual(transport.count, 1)
+        url, _payload, _headers = transport.requests[0]
+        self.assertIn("/labels/code-shipper-watching", url)
+
+    def test_a_reviewer_may_not(self) -> None:
+        brk, transport = broker()
+        with self.assertRaises(BrokerRefused) as caught:
+            brk.remove_label(pr=1, label="x", role="reviewer")
+        self.assertEqual(caught.exception.code, "role_may_not")
+        self.assertEqual(transport.count, 0, "no request may be sent")
+
+    def test_an_empty_label_is_refused(self) -> None:
+        brk, transport = broker()
+        with self.assertRaises(BrokerRefused):
+            brk.remove_label(pr=1, label="  ", role="user")
+        self.assertEqual(transport.count, 0)
+
+    def test_a_label_name_is_url_encoded(self) -> None:
+        # a label with a slash or space must not break out of the path
+        brk, transport = broker()
+        brk.remove_label(pr=1, label="needs review/x", role="user")
+        url, _p, _h = transport.requests[0]
+        self.assertNotIn("needs review/x", url)
+        self.assertIn("%20", url)
+
+
+class ScopeConfigTests(unittest.TestCase):
+    """The repository describes its own layout; nothing about a path list is hard-coded."""
+
+    def test_a_scope_block_is_parsed(self) -> None:
+        from code_shipper.config import read_scope_block
+
+        parsed = read_scope_block(
+            "scope:\n"
+            "  allowed: [src/**/*.py, tests/**/*.py]\n"
+            "  forbidden: [**/conftest.py]\n"
+        )
+        self.assertEqual(parsed["allowed"], ["src/**/*.py", "tests/**/*.py"])
+        self.assertEqual(parsed["forbidden"], ["**/conftest.py"])
+
+    def test_comments_and_blank_lines_are_ignored(self) -> None:
+        from code_shipper.config import read_scope_block
+
+        parsed = read_scope_block("# a comment\nscope:\n\n  allowed: [a.py]  # trailing\n")
+        self.assertEqual(parsed["allowed"], ["a.py"])
+
+    def test_no_scope_block_is_empty_not_permissive(self) -> None:
+        from code_shipper.config import read_scope_block
+
+        self.assertEqual(read_scope_block("other: [x]\n"), {})
+        # and the empty policy allows nothing
+        self.assertFalse(ScopePolicy.from_config({}).path_allowed("src/a.py"))
+
+    def test_an_unknown_key_is_refused(self) -> None:
+        # a rule silently dropped is a path the fixer could then write
+        from code_shipper.config import ConfigError, read_scope_block
+
+        with self.assertRaises(ConfigError):
+            read_scope_block("scope:\n  allow_all: [**]\n")
+
+    def test_a_non_list_value_is_refused(self) -> None:
+        from code_shipper.config import ConfigError, read_scope_block
+
+        with self.assertRaises(ConfigError):
+            read_scope_block("scope:\n  allowed: src/**\n")
 
 
 if __name__ == "__main__":

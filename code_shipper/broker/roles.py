@@ -34,7 +34,7 @@ USER_AGENT = "code-shipper-broker/0.1"
 # What each role may do. A merge is absent from every set, deliberately: an operation that does not
 # exist cannot be authorised by mistake.
 ROLE_OPS: dict[str, frozenset[str]] = {
-    "user": frozenset({"comment", "open_pr", "create_branch", "push_branch"}),
+    "user": frozenset({"comment", "open_pr", "create_branch", "push_branch", "label"}),
     "reviewer": frozenset({"review_comment", "comment", "resolve_thread"}),
     "fixer": frozenset({"push_head", "comment", "reply_review", "label"}),
     "approver": frozenset({"set_status", "approve", "dismiss_approval"}),
@@ -66,6 +66,7 @@ class BrokerError(Exception):
 
 class Transport(Protocol):
     def post(self, url: str, body: dict, headers: dict[str, str]) -> tuple[int, dict]: ...
+    def delete(self, url: str, headers: dict[str, str]) -> tuple[int, dict]: ...
 
 
 class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
@@ -100,6 +101,29 @@ class UrllibTransport:
             ) from None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             # A transport failure is uncertain for the same reason.
+            raise BrokerError(f"transport failure: {exc}", uncertain=True) from None
+
+    def delete(self, url: str, headers: dict[str, str]) -> tuple[int, dict]:
+        """A real DELETE. GitHub's label endpoint needs one, and no method-override header works."""
+        request = urllib.request.Request(
+            url,
+            headers={**headers, "User-Agent": USER_AGENT},
+            method="DELETE",
+        )
+        try:
+            with self._opener.open(request, timeout=self._timeout) as response:
+                body = response.read() or b"{}"
+                return response.status, json.loads(body or b"{}")
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", "replace")[:300]
+            except Exception:  # noqa: BLE001
+                pass
+            raise BrokerError(
+                f"HTTP {exc.code}: {detail}", status=exc.code, uncertain=exc.code >= 500
+            ) from None
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise BrokerError(f"transport failure: {exc}", uncertain=True) from None
 
 
@@ -280,6 +304,35 @@ class Broker:
             payload=payload,
         )
 
+    def remove_label(self, *, pr: int, label: str, role: str = "user") -> dict[str, Any]:
+        """Remove a label. A real DELETE, through the same role allowlist as every other write."""
+        if not isinstance(label, str) or not label.strip():
+            raise BrokerRefused("empty_label")
+        self._authorise(role, "label", repo=self.repo, pr=pr)
+        return self._send(
+            role=role,
+            op="remove_label",
+            pr=pr,
+            expected_head=None,
+            path=f"/repos/{self.repo}/issues/{pr}/labels/{urllib.parse.quote(label)}",
+            payload={},
+            method="DELETE",
+        )
+
+    def add_label(self, *, pr: int, label: str, role: str = "fixer") -> dict[str, Any]:
+        """Add a label. Used to mark a PR as watched, not to gate anything."""
+        if not isinstance(label, str) or not label.strip():
+            raise BrokerRefused("empty_label")
+        self._authorise(role, "label", repo=self.repo, pr=pr)
+        return self._send(
+            role=role,
+            op="add_label",
+            pr=pr,
+            expected_head=None,
+            path=f"/repos/{self.repo}/issues/{pr}/labels",
+            payload={"labels": [label]},
+        )
+
     def _inline(self, entry: dict[str, Any]) -> dict[str, Any]:
         path = entry.get("path")
         line = entry.get("line")
@@ -303,6 +356,7 @@ class Broker:
         expected_head: str | None,
         path: str,
         payload: dict[str, Any],
+        method: str = "POST",
     ) -> dict[str, Any]:
         request_hash = hashlib.sha256(
             json.dumps(payload, sort_keys=True).encode()
@@ -311,7 +365,14 @@ class Broker:
         self._record(role, op, pr, expected_head, "planned", request_hash, op_id=op_id)
         self._record(role, op, pr, expected_head, "posting", request_hash, op_id=op_id)
         try:
-            status, data = self.transport.post(f"{self.api_root}{path}", payload, self._headers())
+            if method == "DELETE":
+                status, data = self.transport.delete(
+                    f"{self.api_root}{path}", self._headers()
+                )
+            else:
+                status, data = self.transport.post(
+                    f"{self.api_root}{path}", payload, self._headers()
+                )
         except BrokerError as exc:
             state = "uncertain" if exc.uncertain else "refused"
             self._record(
@@ -417,6 +478,12 @@ class CountingTransport:
 
     def post(self, url: str, body: dict, headers: dict[str, str]) -> tuple[int, dict]:
         self.requests.append((url, body, headers))
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+    def delete(self, url: str, headers: dict[str, str]) -> tuple[int, dict]:
+        self.requests.append((url, {}, headers))
         if self._error is not None:
             raise self._error
         return self._response

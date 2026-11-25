@@ -213,6 +213,14 @@ class GitHubHost:
             if isinstance(entry, dict)
         ]
 
+    def list_labels(self, repo: str, number: int) -> list[str]:
+        """The label names on a PR. Read-only, so it belongs on the read host."""
+        owner, name = split_slug(repo)
+        data, _ = self._get(f"/repos/{owner}/{name}/issues/{int(number)}/labels")
+        if not isinstance(data, list):
+            raise HostError("unexpected payload for labels")
+        return [str(entry.get("name", "")) for entry in data if isinstance(entry, dict)]
+
     def permission_of(self, repo: str, login: str) -> str:
         owner, name = split_slug(repo)
         try:

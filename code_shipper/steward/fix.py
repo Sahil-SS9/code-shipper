@@ -111,6 +111,7 @@ def run_fix(
     push: bool = True,
     keep: bool = False,
     remote: str = "",
+    cancel: Any = None,
     author: tuple[str, str] = ("Code-Shipper", "noreply@example.invalid"),
 ) -> FixReceipt:
     """One fix attempt, start to finish.
@@ -212,6 +213,11 @@ def run_fix(
             receipt.problems = ["a push was requested but no credential was supplied"]
             receipt.budget = budget.as_dict()
             return receipt
+
+        # Cancellation is checked here, after scope and before the push, because this is the only
+        # irreversible step. A cancel that arrives while the worker runs must not result in a push.
+        if cancel is not None:
+            cancel.check()
 
         try:
             budget.record_push()

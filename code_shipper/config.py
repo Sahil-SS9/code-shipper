@@ -146,6 +146,53 @@ def _require_type(value: Any, kind: type, label: str) -> Any:
     return value
 
 
+def read_scope_block(text: str) -> dict[str, Any]:
+    """Parse the `scope:` block from a repository's `code-shipper.yml`.
+
+    Standard library only (K1 / ADR 0004), so this handles exactly the shape the policy needs: a
+    top-level `scope:` key followed by indented `key: [a, b]` list entries. Anything else raises,
+    because a config file that is half-understood is worse than one that is refused — a scope rule
+    silently dropped off the end is a path the fixer would then be allowed to write.
+    """
+    if not text or not text.strip():
+        return {}
+
+    result: dict[str, Any] = {}
+    in_scope = False
+    for number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+
+        if not line.startswith((" ", "\t")):
+            in_scope = line.strip().rstrip(":") == "scope" and line.strip().endswith(":")
+            if not in_scope:
+                continue
+            continue
+
+        if not in_scope:
+            continue
+
+        stripped = line.strip()
+        if ":" not in stripped:
+            raise ConfigError(f"line {number}: expected 'key: [values]' inside scope")
+        key, _, value = stripped.partition(":")
+        key = key.strip()
+        value = value.strip()
+
+        if key not in ("allowed", "forbidden", "tests"):
+            raise ConfigError(
+                f"line {number}: unknown scope key {key!r}; scope accepts allowed, forbidden, tests"
+            )
+
+        if not (value.startswith("[") and value.endswith("]")):
+            raise ConfigError(f"line {number}: {key} must be a bracketed list")
+        items = [part.strip().strip("'\"") for part in value[1:-1].split(",")]
+        result[key] = [item for item in items if item]
+
+    return result
+
+
 def load(path: Path) -> Config:
     """Load and validate a config file (.toml or .json). Refuses it rather than filling gaps."""
     path = Path(path)
