@@ -210,6 +210,7 @@ def run(
         budget=request.budget,
         log_tail=request.log_tail,
         intent=request.intent,
+        assertiveness=profile,
     )
 
     # Volume profile: quiet drops nits, assertive is the caller's business at the lens level. Neither

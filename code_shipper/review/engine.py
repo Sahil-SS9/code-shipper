@@ -93,7 +93,7 @@ def intent_block(title: str, body: str, *, limit: int = MAX_INTENT_CHARS) -> str
 
 
 def lens_prompt(
-    lens: Lens, diff: Diff, *, log_tail: str = "", intent: str = ""
+    lens: Lens, diff: Diff, *, log_tail: str = "", intent: str = "", assertiveness: str = "standard"
 ) -> str:
     parts = [
         f"You are reviewing a pull request. Your lens is: {lens.title}.",
@@ -102,6 +102,31 @@ def lens_prompt(
         "Report only problems this change introduces. Do not report pre-existing code unless the "
         "change makes it worse, and mark that as pre_existing.",
         "",
+    ]
+    if assertiveness == "assertive":
+        # A real threshold, not a label: assertive asks the lens to report speculatively and to raise
+        # things it would normally leave out. The trade is more false positives at review, which is
+        # what the profile is for.
+        parts += [
+            "Apply a low bar for reporting. Include anything a careful reviewer would want to raise "
+            "even if you are not certain it is wrong: edge cases, unclear naming, missing tests, "
+            "silent assumptions, and risks that would only bite later. Say plainly in the body when "
+            "you are unsure, rather than withholding the finding.",
+            "",
+        ]
+    elif assertiveness == "quiet":
+        parts += [
+            "Apply a high bar for reporting. Report only problems that would cause a defect, data "
+            "loss or a security issue. Leave out style, naming and preference.",
+            "",
+        ]
+    else:
+        parts += [
+            "Report problems that would matter to the person merging this: correctness, security, "
+            "data, and clear maintainability problems. Leave out preferences.",
+            "",
+        ]
+    parts += [
         "For each finding give path, line, severity (important|nit|pre_existing), a title of at most "
         "120 characters, a body of at most 2000 characters, and evidence quoting the exact lines "
         "from the diff.",
@@ -197,6 +222,7 @@ def review(
     budget: Budget | None = None,
     log_tail: str = "",
     intent: str = "",
+    assertiveness: str = "standard",
 ) -> ReviewOutcome:
     """Run the full review: every selected lens, then verification, then ranking."""
     outcome = ReviewOutcome(level=level)
@@ -208,7 +234,8 @@ def review(
         outcome.lenses_run.append(lens.name)
         task = AgentTask(
             kind="review_lens",
-            prompt=lens_prompt(lens, diff, log_tail=log_tail, intent=intent),
+            prompt=lens_prompt(lens, diff, log_tail=log_tail, intent=intent,
+                              assertiveness=assertiveness),
             workdir=workdir,
             output_schema=FINDINGS_SCHEMA,
             budget=budget,

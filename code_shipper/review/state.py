@@ -132,7 +132,7 @@ def advance(
     head_sha: str,
     complete: bool,
     findings: list[Any],
-    covered_paths: list[str] | None = None,
+    covered_paths: list[str],
     now: float | None = None,
 ) -> ReviewState:
     """Update state after a review.
@@ -141,10 +141,17 @@ def advance(
     stays put and the open-findings map is left alone: an incomplete pass has not looked at the code,
     so it has no standing to declare anything resolved.
 
-    ``covered_paths`` is what the pass actually read. It is required for clearing anything: a review
-    that looked at one file cannot say a finding in another is fixed, and treating "not reported" as
-    "resolved" would make the union rule meaningless.
+    ``covered_paths`` is required, with no default, and is what the pass actually read. Omitting it
+    used to clear every open finding: a caller that forgot would silently discard serious findings in
+    files nobody looked at, which is the same optional-protection mistake as a push scope that only
+    applies when the caller remembers to pass a branch. ``[]`` is meaningful and means "this pass
+    reviewed nothing, so it clears nothing".
     """
+    if covered_paths is None:
+        raise TypeError(
+            "covered_paths is required: pass the paths this review actually read, or [] if it read "
+            "none. A default here would clear open findings that were never looked at."
+        )
     if not complete:
         return state
 
@@ -175,15 +182,15 @@ def advance(
             state.open_important[fingerprint] = payload
 
     # Only a finding in a file this pass actually covered can be cleared by not being reported.
-    covered = set(covered_paths) if covered_paths is not None else set()
+    covered = set(covered_paths)
     for fingerprint, payload in list(state.open_all.items()):
         if fingerprint in seen:
             continue
-        path = (payload or {}).get("path", "")
-        if covered and path and path not in covered:
+        if not covered:
+            # The pass reviewed nothing, so it clears nothing.
             continue
-        if not covered and covered_paths is not None:
-            # The pass reviewed nothing, so it can clear nothing.
+        path = (payload or {}).get("path", "")
+        if path and path not in covered:
             continue
         state.open_all.pop(fingerprint, None)
         # Important findings stay open until a pass that covered them stops reporting them.

@@ -82,6 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="where review state and the cache live (default: ~/.local/state/code-shipper)",
     )
     review.add_argument(
+        "--with-ci",
+        action="store_true",
+        help="read the failing check's log and annotation paths as hints (C10)",
+    )
+    review.add_argument(
         "--max-reviews",
         type=int,
         default=20,
@@ -141,6 +146,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     from .harness.adapters import scrubbed_env
     from .hosts.github import GitHubHost
     from .review.engine import intent_block
+    from .review.framing import ci_annotations, hint_block
     from .review.engine import review as run_review
 
     if not args.dry_run:
@@ -173,6 +179,21 @@ def cmd_review(args: argparse.Namespace) -> int:
         print(f"harness unavailable: {reason}", file=sys.stderr)
         return 2
 
+    # C10: a failing check's log and annotation paths are *hints*, not evidence. They come from code
+    # the PR author wrote, so they are fetched only to point the review at the right files, and the
+    # prompt says so. Opt-in, because logs can be large and noisy and a routine review does not need
+    # them.
+    log_tail = ""
+    hint_paths: list[str] = []
+    if args.with_ci:
+        try:
+            log_tail = host.failing_log(args.repo, pr.head_sha)
+            hint_paths = host.annotations(args.repo, pr.head_sha)
+        except Exception as exc:  # noqa: BLE001 - a missing log must not fail a review
+            print(f"note: CI hints unavailable ({exc}); continuing without them", file=sys.stderr)
+        if log_tail:
+            log_tail = hint_block(ci_annotations(log_tail) or hint_paths) + "\n" + log_tail
+
     from .review.cache import ReviewCache
     from .review.service import ReviewRequest, run as run_service
     from .review.state import ReviewStore
@@ -202,6 +223,7 @@ def cmd_review(args: argparse.Namespace) -> int:
             profile=args.profile,
             trigger=args.trigger,
             intent=intent_block(pr.title, pr.body),
+            log_tail=log_tail,
             workdir=args.workdir,
             env=scrubbed_env(),
         ),

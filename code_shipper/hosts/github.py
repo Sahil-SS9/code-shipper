@@ -65,6 +65,31 @@ class GitHubHost:
 
     # -- transport ---------------------------------------------------------
 
+    def _get_log(self, path: str) -> str:
+        """A plain-text endpoint (job logs). Separate from _get because the response is not JSON."""
+        url = f"{self._api}{path}"
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "Accept": "text/plain",
+                "User-Agent": USER_AGENT,
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            method="GET",
+        )
+        try:
+            with self._opener.open(request, timeout=self._timeout) as response:
+                return response.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as exc:
+            # A missing or expired log is not worth failing a review over: the review proceeds
+            # without the hint, which is the same as having no failing checks.
+            if exc.code in (404, 410, 403):
+                return ""
+            raise HostError(f"HTTP {exc.code} reading a log") from None
+        except (urllib.error.URLError, TimeoutError, OSError):
+            return ""
+
     def _get(self, path: str, *, accept: str = "application/vnd.github+json") -> tuple[Any, dict]:
         url = f"{self._api}{path}"
         request = urllib.request.Request(
@@ -137,6 +162,43 @@ class GitHubHost:
                 )
             )
         return Diff(files=tuple(patches))
+
+    def failing_log(self, repo: str, head_sha: str, *, max_chars: int = 20_000) -> str:
+        """The tail of the failing check's log for this commit, or "" when nothing failed (C10).
+
+        Returned as raw text for the caller to frame as untrusted. This deliberately does not parse or
+        filter: the log is author-influenced output, so the value is in *seeing* it labelled as a hint,
+        not in this method deciding what it means.
+        """
+        owner, name = split_slug(repo)
+        runs, _ = self._get(
+            f"/repos/{owner}/{name}/actions/runs?head_sha={head_sha}&per_page=10"
+        )
+        for run in (runs or {}).get("workflow_runs") or []:
+            if str(run.get("conclusion")) not in ("failure", "timed_out", "cancelled"):
+                continue
+            jobs, _ = self._get(
+                f"/repos/{owner}/{name}/actions/runs/{run.get('id')}/jobs?per_page=20"
+            )
+            for job in (jobs or {}).get("jobs") or []:
+                if str(job.get("conclusion")) not in ("failure", "timed_out"):
+                    continue
+                text = self._get_log(f"/repos/{owner}/{name}/actions/jobs/{job.get('id')}/logs")
+                if text:
+                    return text[-max_chars:]
+        return ""
+
+    def annotations(self, repo: str, head_sha: str) -> list[str]:
+        """Check annotations for this commit, as path hints only."""
+        owner, name = split_slug(repo)
+        runs, _ = self._get(f"/repos/{owner}/{name}/check-runs?head_sha={head_sha}")
+        hints: list[str] = []
+        for run in (runs or {}).get("check_runs") or []:
+            for annotation in run.get("output", {}).get("annotations") or []:
+                path = annotation.get("path")
+                if isinstance(path, str) and path and path not in hints:
+                    hints.append(path)
+        return hints
 
     def get_diff(self, repo: str, number: int) -> Diff:
         owner, name = split_slug(repo)

@@ -81,6 +81,55 @@ class SilentHarness:
         return AgentResult(ok=True, output={"findings": []}, error="")
 
 
+class CoveredPathsRequiredTests(unittest.TestCase):
+    """The same class of bug as head_branch: a protection that only applies if the caller remembers.
+
+    Measured before the fix with the real Finding class: an important finding in a.py, then a complete
+    pass with covered_paths omitted, and important_fingerprints() was empty.
+    """
+
+    def test_the_signature_has_no_default(self) -> None:
+        import inspect
+
+        parameter = inspect.signature(advance).parameters["covered_paths"]
+        self.assertIs(parameter.default, inspect.Parameter.empty,
+                      "covered_paths must have no default; a default clears everything")
+        self.assertEqual(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
+
+    def test_omitting_it_is_a_type_error(self) -> None:
+        state = ReviewState(repo="o/r", pr=1)
+        with self.assertRaises(TypeError) as caught:
+            advance(state, head_sha="aaa", complete=True, findings=[])  # type: ignore[call-arg]
+        self.assertIn("covered_paths", str(caught.exception))
+
+    def test_passing_none_is_refused(self) -> None:
+        state = ReviewState(repo="o/r", pr=1)
+        with self.assertRaises(TypeError):
+            advance(state, head_sha="aaa", complete=True, findings=[],
+                    covered_paths=None)  # type: ignore[arg-type]
+
+    def test_an_omitted_pass_cannot_clear_an_important_finding(self) -> None:
+        # the exact measurement the review made
+        state = ReviewState(repo="o/r", pr=1)
+        unstamped = Finding("f1", "a.py", 1, "important", "a real bug", "b", "+x")
+        advance(state, head_sha="aaa", complete=True, findings=[unstamped], covered_paths=["a.py"])
+        self.assertEqual(len(state.important_fingerprints()), 1)
+
+        with self.assertRaises(TypeError):
+            advance(state, head_sha="bbb", complete=True, findings=[])  # type: ignore[call-arg]
+
+        self.assertEqual(len(state.important_fingerprints()), 1,
+                         "a refused call must not have mutated anything")
+
+    def test_an_empty_list_means_cleared_nothing(self) -> None:
+        state = ReviewState(repo="o/r", pr=1)
+        unstamped = Finding("f1", "a.py", 1, "important", "a real bug", "b", "+x")
+        advance(state, head_sha="aaa", complete=True, findings=[unstamped], covered_paths=["a.py"])
+        advance(state, head_sha="bbb", complete=True, findings=[], covered_paths=[])
+        self.assertEqual(len(state.important_fingerprints()), 1,
+                         "[] is 'reviewed nothing', which clears nothing")
+
+
 class StateTests(unittest.TestCase):
     """D11: only a complete review moves the baseline, and the union is over the whole PR."""
 
