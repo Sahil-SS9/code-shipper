@@ -909,10 +909,12 @@ def _projection_for(args: argparse.Namespace):
     if state_name and state_name != "auto":
         # A named state is a design-review screen. Treating it as real would need a PR to name too.
         if not demo and (not repo or not pr):
-            raise SystemExit(
+            print(
                 "a named state draws sample data: pass --demo, or pass --repo and a pull request "
-                "number to draw a real review"
+                "number to draw a real review",
+                file=sys.stderr,
             )
+            raise SystemExit(2)
         return fixtures.ALL[state_name](), demo
 
     if demo:
@@ -923,11 +925,13 @@ def _projection_for(args: argparse.Namespace):
         # "show me the board" when they have not said which.
         found = loader.discover(args.state_dir or None)
         if not found:
-            raise SystemExit(
+            print(
                 "no reviews have been stored yet. Review one first:\n"
                 "  code-shipper review <pr> --repo owner/name\n"
-                "or see the sample board: --demo"
+                "or see the sample board: --demo",
+                file=sys.stderr,
             )
+            raise SystemExit(2)
         repo, pr = found[0]
     return loader.load_projection(repo, int(pr),
                                   state_dir=args.state_dir or None), False
@@ -1232,11 +1236,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fix":
         return cmd_fix(args)
     if args.command == "ui":
-        # `ship-ui` has no --json flag, so `cmd_ui`'s attribute read would raise AttributeError. Default it
-    # rather than adding a flag the older name never had.
-    if not hasattr(args, "json"):
-        args.json = False
-    return cmd_ui(args)
+        return cmd_ui(args)
     if args.command == "status":
         return cmd_status(args)
     if args.command == "ship-ui":

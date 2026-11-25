@@ -320,3 +320,91 @@ class PaletteDrawnTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommandLineEndToEndTests(unittest.TestCase):
+    """Every surface command, run through the real parser and entry point.
+
+    The bug this exists for: `ship-ui` delegated to `cmd_ui`, which reads `args.json`, and the `ship-ui`
+    subparser has no such flag — an AttributeError on every invocation. The suite was green throughout
+    because the tests called `tui.render` directly and never went through `main()`. Exercising the actual
+    command is the only thing that catches a wiring mistake between parser and handler.
+    """
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="cs-e2e-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.root, ignore_errors=True))
+        _write_review(self.root, findings=[FINDING])
+
+    def _run(self, *argv: str) -> tuple[int, str]:
+        """Run the CLI in-process and capture stdout."""
+        import contextlib
+        import io
+
+        from code_shipper import cli
+
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = cli.main(list(argv))
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else 1
+        # Refusals go to stderr, so a caller can tell "nothing to show" from "here is your board".
+        return int(code or 0), out.getvalue() + err.getvalue()
+
+    def test_ui_on_real_state(self) -> None:
+        code, out = self._run("ui", "--state-dir", str(self.root), "--width", "100")
+        self.assertIn("clamp never applies the upper bound", out)
+        self.assertNotIn("demo data", out)
+        self.assertEqual(code, 1, "findings exit with 1")
+
+    def test_ship_ui_on_real_state(self) -> None:
+        """The regression: this raised AttributeError on args.json."""
+        code, out = self._run("ship-ui", "--state-dir", str(self.root))
+        self.assertIn("clamp never applies the upper bound", out)
+        self.assertIn(code, (0, 1))
+
+    def test_ship_ui_demo_is_labelled(self) -> None:
+        code, out = self._run("ship-ui", "findings", "--demo")
+        self.assertIn("demo data", out)
+
+    def test_status_on_real_state(self) -> None:
+        code, out = self._run("status", "--state-dir", str(self.root))
+        self.assertIn("#7", out)
+        self.assertIn("Fix 1 important finding", out)
+        self.assertNotIn("No findings at this head", out)
+
+    def test_status_demo_is_labelled(self) -> None:
+        code, out = self._run("status", "--demo")
+        self.assertIn("demo data", out)
+
+    def test_status_json_on_real_state(self) -> None:
+        code, out = self._run("status", "--state-dir", str(self.root), "--json")
+        payload = json.loads(out)
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["repo"], "o/r")
+        self.assertEqual(payload[0]["pr"], 7)
+
+    def test_status_honours_repo_filter(self) -> None:
+        _write_review(self.root, repo="other/repo", pr=99)
+        code, out = self._run("status", "--state-dir", str(self.root), "--repo", "o/r")
+        self.assertIn("#7", out)
+        self.assertNotIn("#99", out)
+
+    def test_ship_page_on_real_state(self) -> None:
+        out_path = self.root / "page.html"
+        code, out = self._run("ship-page", "--state-dir", str(self.root), "--out", str(out_path))
+        html = out_path.read_text()
+        self.assertIn("clamp never applies the upper bound", html)
+        self.assertNotIn("demo data", html)
+
+    def test_a_named_state_without_demo_is_refused(self) -> None:
+        code, out = self._run("ui", "findings")
+        self.assertNotEqual(code, 0, "a named state without --demo must not silently draw fiction")
+
+    def test_no_stored_state_explains_instead_of_drawing_a_clean_board(self) -> None:
+        empty = Path(tempfile.mkdtemp(prefix="cs-empty-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(empty, ignore_errors=True))
+        code, out = self._run("ui", "--state-dir", str(empty))
+        self.assertNotEqual(code, 0)
+        self.assertIn("no reviews have been stored", out)
