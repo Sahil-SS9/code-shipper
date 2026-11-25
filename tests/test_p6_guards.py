@@ -458,5 +458,38 @@ class ServiceHonoursTheGuardTests(unittest.TestCase):
         self.assertEqual(request.compare_status, "ahead")
 
 
+class CreatePrGateTests(unittest.TestCase):
+    """Opening a PR is not a PR-scoped operation, and passing 0 for its number is refused.
+
+    Found on the first real publish run: `create_pr` passed pr=0 to the gate, which refused it as
+    bad_pr. The gate was right. None means "not about an existing pull request".
+    """
+
+    def setUp(self) -> None:
+        from code_shipper.broker.roles import Broker, CountingTransport
+
+        self.transport = CountingTransport()
+        self.broker = Broker(token="fake", repo="o/r", transport=self.transport,
+                             allowed_repos=frozenset({"o/r"}))
+
+    def test_opening_a_pull_request_is_allowed(self) -> None:
+        self.broker.create_pr(title="t", head="feat", base="main")
+        self.assertEqual(self.transport.count, 1)
+
+    def test_pr_zero_would_be_refused(self) -> None:
+        from code_shipper.broker.roles import BrokerRefused
+
+        with self.assertRaises(BrokerRefused) as caught:
+            self.broker.update_comment(pr=0, comment_id=1, body="x")
+        self.assertEqual(caught.exception.code, "bad_pr")
+
+    def test_the_create_call_sends_no_pr_number(self) -> None:
+        from code_shipper.broker.roles import Broker
+
+        source = inspect.getsource(Broker.create_pr)
+        self.assertIn("pr=None", source)
+        self.assertNotIn("pr=0", source)
+
+
 if __name__ == "__main__":
     unittest.main()

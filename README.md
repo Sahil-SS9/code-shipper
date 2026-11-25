@@ -2,12 +2,12 @@
 
 Review, fix and get pull requests ready to merge, with any agent harness. Hermes Agent first.
 
-Status: **spec pack and feasibility spikes only — the plugin is not built.**
-Build approved 24/11/2026: spec revision folded in and CLI/TUI/Desktop wireframes approved
-(`docs/ux/`). Implementation starts with Phase 0 (`docs/HANDOFF.md`). The canonical
-documents below are consistent with `docs/REVISION-2.md`, whose body remains as the audit trail.
-Anything described here is a design goal, not a verified guarantee. Code-Shipper will expose no
-merge action on any surface.
+Status: **Phases 0-7 built against a sandbox repository. Not published.** Readers and writers are
+exercised on `Sahil-SS9/code-shipper-sandbox`; the TUI and Desktop surfaces are awaiting a redesign
+and visual sign-off and are not part of any distribution yet. The canonical documents are
+`docs/HANDOFF.md`, `docs/tech-spec.md`, `docs/decisions.md` and the per-phase reports in
+`docs/reports/`. Code-Shipper exposes no merge action on any surface, and that is asserted by tests
+rather than promised by documentation.
 
 Code-Shipper is an open-source take on the workflow Anthropic calls Claude Ship, built to work
 across agent harnesses (Hermes, Claude Code, Codex, OpenCode, or a direct model API):
@@ -21,8 +21,15 @@ across agent harnesses (Hermes, Claude Code, Codex, OpenCode, or a direct model 
 - **Approvals**: a policy file in your repo (`.code-shipper/approvals.yml`) says how many people
   must approve which paths. Observe mode first. Letting the agent approve low-risk changes is an
   opt-in flag, off by default, and needs a separate approver identity.
-- **Triggers**: `/ship` (or `code-shipper ship`) on your current change, or opt-in watching of
-  chosen repositories on your machine or in GitHub Actions.
+- **Triggers**: `/ship` (or `code-shipper ship`) on your current change, or opt-in polling of
+  chosen pull requests while you run it.
+
+**Polling, precisely.** There are no webhooks in v1 and no public endpoint. When you start a
+watcher it checks each pull request **once every N seconds** (30 by default) for a new head, and
+does nothing between checks. It is not a continuous stream, it does not react instantly, and a push
+made one second after a check is seen on the next one. The watcher stops itself at a deadline you
+set, on `@code-shipper stop`, or when you remove the stop label — and it checks those signals at the
+start of every round, never mid-round.
 
 GitHub only in v1; other code hosts come later through the same interface.
 

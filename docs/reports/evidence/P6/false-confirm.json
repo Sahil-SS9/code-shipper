@@ -1,0 +1,71 @@
+{
+  "method": "five seeded PRs reviewed end to end with the real harness on the sandbox",
+  "caveat": "the seeds were not all clean: adjudication was done by hand against the code, after the fact",
+  "prs": [
+    {
+      "pr": 26,
+      "complete": true,
+      "findings": [],
+      "seed_label": "clean",
+      "adjudication": "no findings"
+    },
+    {
+      "pr": 27,
+      "complete": true,
+      "findings": [],
+      "seed_label": "clean",
+      "adjudication": "no findings"
+    },
+    {
+      "pr": 28,
+      "complete": true,
+      "findings": [
+        {
+          "sev": "important",
+          "path": "clean2.py",
+          "line": 3,
+          "title": "slugify keeps punctuation, path separators and non-ASCII characters, so its output is not a safe slug"
+        }
+      ],
+      "seed_label": "clean",
+      "adjudication": "FALSE CONFIRM: finding demands behaviour (punctuation, non-ASCII, path separators) beyond the stated docstring contract"
+    },
+    {
+      "pr": 29,
+      "complete": true,
+      "findings": [
+        {
+          "sev": "important",
+          "path": "clean3.py",
+          "line": 3,
+          "title": "A negative size silently returns [] and drops every item"
+        }
+      ],
+      "seed_label": "defective",
+      "adjudication": "TRUE POSITIVE: chunk(items, -1) returns [] via range(0,n,-1); my seed was not clean"
+    },
+    {
+      "pr": 30,
+      "complete": true,
+      "findings": [
+        {
+          "sev": "nit",
+          "path": "clean4.py",
+          "line": 3,
+          "title": "Generators and other one-pass iterators fail with a confusing TypeError instead of being handled or clearly rejected"
+        }
+      ],
+      "seed_label": "defective",
+      "adjudication": "TRUE POSITIVE: mean(generator) raises TypeError after the emptiness check exhausts it; my seed was not clean"
+    }
+  ],
+  "summary": {
+    "prs_reviewed": 5,
+    "actually_clean": 3,
+    "actually_defective": 2,
+    "clean_prs_with_any_finding": 1,
+    "false_confirm_rate": "1/3"
+  },
+  "honest_limitation": "five inputs is a smoke test. A precision figure needs tens of PRs across repos and languages with independently known defects.",
+  "completion": "all five reviews returned complete=True"
+}

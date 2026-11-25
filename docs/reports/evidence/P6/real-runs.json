@@ -1,0 +1,68 @@
+{
+  "publish_leg": {
+    "pr": 26,
+    "url": "https://github.com/Sahil-SS9/code-shipper-sandbox/pull/26",
+    "state": "open",
+    "merged": false,
+    "head": "da45c148a7d7514a6c50a978d6a02cab67bfb619",
+    "base": "main",
+    "files": [
+      "publish_leg.py"
+    ],
+    "author": {
+      "name": "Sahil Saghir",
+      "email": "218421507+Sahil-SS9@users.noreply.github.com",
+      "date": "2026-11-25T16:50:11Z"
+    },
+    "steps": [
+      "plan",
+      "scan",
+      "authorise",
+      "branch",
+      "commit",
+      "push",
+      "pr"
+    ]
+  },
+  "sustained_poll": {
+    "rounds": 5,
+    "elapsed_seconds": 102.9,
+    "stopped": "deadline",
+    "interval": 20.0,
+    "reviews": 0,
+    "note": "no head movement during the window; the deadline stopped it without an event"
+  },
+  "live_push_and_stop": {
+    "events": [
+      [
+        "round",
+        0.5
+      ],
+      [
+        "round",
+        11.0
+      ],
+      [
+        "round",
+        21.9
+      ],
+      [
+        "pushed",
+        27.2
+      ],
+      [
+        "new-head",
+        32.3
+      ],
+      [
+        "round",
+        32.3
+      ]
+    ],
+    "detected_change": "db57b527 -> da45c148",
+    "stopped": "stopped",
+    "reviews": 1,
+    "elapsed_seconds": 42.3,
+    "note": "a real push during the loop was detected within one interval; the stop was honoured at the next round boundary"
+  }
+}

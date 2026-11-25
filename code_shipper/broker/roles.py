@@ -381,11 +381,13 @@ class Broker:
             raise BrokerRefused("empty_head")
         if not isinstance(base, str) or not base.strip():
             raise BrokerRefused("empty_base")
-        self._authorise(role, "open_pr", repo=self.repo, pr=0)
+        # `pr=None`, not 0: opening a pull request is not about an existing one, and the gate reads
+        # None as "not a PR-scoped operation". 0 is a malformed number and is refused as bad_pr.
+        self._authorise(role, "open_pr", repo=self.repo, pr=None)
         return self._send(
             role=role,
             op="open_pr",
-            pr=0,
+            pr=None,
             expected_head=None,
             path=f"/repos/{self.repo}/pulls",
             payload={"title": title, "head": head, "base": base, "body": body, "draft": bool(draft)},
@@ -444,7 +446,7 @@ class Broker:
         *,
         role: str,
         op: str,
-        pr: int,
+        pr: int | None,
         expected_head: str | None,
         path: str,
         payload: dict[str, Any],
