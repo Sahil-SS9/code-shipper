@@ -28,6 +28,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..steward.cancel import CancelToken, Cancelled, run_with_cancel
 from .spec import APP_MOUNT, ContainerSpec
 
 DOCKER_CONTEXT = "rootless"
@@ -51,6 +52,8 @@ class ContainerRun:
     hermes: dict = field(default_factory=dict)
     image_id: str = ""
     run_dir_mode: str = ""
+    ledger_lines_at_start: int = 0
+    ledger_lines_at_end: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -67,6 +70,8 @@ class ContainerRun:
             "hermes": self.hermes,
             "image_id": self.image_id,
             "run_dir_mode": self.run_dir_mode,
+            "ledger_lines_at_start": self.ledger_lines_at_start,
+            "ledger_lines_at_end": self.ledger_lines_at_end,
         }
 
 
@@ -93,12 +98,14 @@ def run_in_container(
     host_credential: str = "synthetic-not-a-real-key",
     repo_root: Path | None = None,
     keep: bool = False,
+    cancel: CancelToken | None = None,
 ) -> ContainerRun:
     """One contained fix run. Returns what happened; never raises for a worker failure."""
     from ..inference.broker import Broker
     from ..inference.upstream import OpenAICompatUpstream
 
     repo_root = repo_root or Path(__file__).resolve().parents[2]
+    cancel = cancel or CancelToken()
     root = work_dir.parent
     app_dir = root / "app"
     app_dir.mkdir(exist_ok=True)
@@ -190,18 +197,54 @@ def run_in_container(
     result = ContainerRun(image_id=image_id(image))
     result.run_dir_mode = oct(os.stat(root).st_mode & 0o777)
 
+    # How many model calls had the broker served when the run ended? Comparing this to the ceiling
+    # is what shows a cancel landed mid-work rather than after the harness had finished.
+    def _ledger_calls() -> int:
+        path = root / "ledger.jsonl"
+        try:
+            return len([line for line in path.read_text().splitlines() if line.strip()])
+        except OSError:
+            return 0
+
+    result.ledger_lines_at_start = _ledger_calls()
+
     started = time.time()
     try:
-        proc = subprocess.run(
-            spec.to_argv(container_name=name) + ["-c", script],
-            capture_output=True,
-            text=True,
-            timeout=timeout_s + 180,
-        )
-        result.returncode = proc.returncode
-        result.seconds = round(time.time() - started, 1)
-        result.stdout_tail = proc.stdout[-3000:]
-        result.stderr_tail = proc.stderr[-2000:]
+        # Run under our own cancel token rather than subprocess.run: a container that ignores its
+        # timeout and keeps working has to be killable mid-request, and `subprocess.run` can only
+        # wait. Without this, a cancel during a fix was noticed only after the container finished.
+        argv = spec.to_argv(container_name=name) + ["-c", script]
+        try:
+            proc_outcome = run_with_cancel(
+                argv, token=cancel, timeout_s=timeout_s + 180
+            )
+            result.returncode = proc_outcome["returncode"]
+            result.stdout_tail = proc_outcome["stdout"][-3000:]
+            result.stderr_tail = proc_outcome["stderr"][-2000:]
+            if proc_outcome.get("cancelled"):
+                result.stderr_tail = (
+                    "cancelled and the container was killed mid-run; "
+                    + result.stderr_tail[-1500:]
+                )
+            elif proc_outcome.get("timed_out"):
+                result.stderr_tail = (
+                    f"container exceeded {timeout_s + 180}s and was killed; "
+                    + result.stderr_tail[-1500:]
+                )
+        except Cancelled as exc:
+            result.returncode = -9
+            result.seconds = round(time.time() - started, 1)
+            result.stderr_tail = "cancelled: the container was killed before it finished"
+            # Carry the kill evidence up: when it was issued, how long the container had been alive,
+            # and which signal it took. That is what distinguishes "killed mid-work" from "noticed
+            # after it had already finished".
+            detail = dict(exc.detail or {})
+            detail["container_seconds_alive"] = result.seconds
+            detail["container"] = result.as_dict()
+            raise Cancelled(exc.reason, detail) from None
+        finally:
+            result.seconds = round(time.time() - started, 1)
+            result.ledger_lines_at_end = _ledger_calls()
 
         canary_file = work_dir / "canary.json"
         if canary_file.exists():
@@ -216,10 +259,11 @@ def run_in_container(
             result.adapter_refused = payload.get("adapter_refused", 0)
             result.hermes = payload.get("hermes", {})
 
-        result.ok = proc.returncode == 0 and bool(result.changed)
-    except subprocess.TimeoutExpired:
-        result.stderr_tail = f"container exceeded {timeout_s + 180}s and was killed"
-        _docker("kill", name)
+        result.ok = result.returncode == 0 and bool(result.changed)
+    except Cancelled:
+        # The kill already happened inside run_with_cancel; the container must not survive it.
+        _docker("rm", "-f", name)
+        raise
     finally:
         server.stop()
         _docker("rm", "-f", name)

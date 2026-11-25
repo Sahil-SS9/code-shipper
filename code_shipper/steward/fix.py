@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from ..budget import BudgetExceeded, RunBudget
+from .cancel import Cancelled
 from ..contain import fixloop
 from .classify import WorkItem, actionable
 from .policy import ScopePolicy
@@ -177,6 +178,15 @@ def run_fix(
             receipt.problems = [str(exc)]
             receipt.budget = budget.as_dict()
             return receipt
+        except Cancelled as exc:
+            # A cancellation is not a failure: it is an instruction, and the receipt must say so
+            # rather than reporting the harness as broken.
+            receipt.stage = "worker"
+            receipt.verdict = "cancelled"
+            receipt.problems = [f"cancelled: {exc.reason}"]
+            receipt.worker = dict(exc.detail or {})
+            receipt.budget = budget.as_dict()
+            return receipt
         except Exception as exc:  # noqa: BLE001 - a worker failure must not escape as a crash
             receipt.stage = "worker"
             receipt.verdict = "worker_failed"
@@ -216,8 +226,12 @@ def run_fix(
 
         # Cancellation is checked here, after scope and before the push, because this is the only
         # irreversible step. A cancel that arrives while the worker runs must not result in a push.
-        if cancel is not None:
-            cancel.check()
+        if cancel is not None and cancel.cancelled:
+            receipt.stage = "pre-push"
+            receipt.verdict = "cancelled"
+            receipt.problems = [f"cancelled before the push: {cancel.reason}"]
+            receipt.budget = budget.as_dict()
+            return receipt
 
         try:
             budget.record_push()

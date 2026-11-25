@@ -13,6 +13,7 @@ import sys
 import stat
 import subprocess
 import tempfile
+import time
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
@@ -487,6 +488,82 @@ class WiringTests(unittest.TestCase):
         )
         self.assertFalse(receipt.ok)
         self.assertEqual(receipt.verdict, "no_token")
+
+
+    def test_a_cancel_during_the_worker_prevents_the_push(self) -> None:
+        """The defect this exists for: the container finished, then the cancel was noticed.
+
+        `run_in_container` used `subprocess.run`, which can only wait, so a cancel at 10s was noticed
+        only when a 41.7s container exited. Nothing was pushed either way, but "cancelled" was a lie
+        about when it took effect.
+        """
+        import threading
+
+        from code_shipper.steward.cancel import CancelToken, Cancelled
+
+        cancel = CancelToken()
+
+        class SlowWorker:
+            def run(self, *, workspace, item, prompt, budget):
+                # a worker that keeps going well past the cancel
+                timer = threading.Timer(0.2, lambda: cancel.cancel("test", by="unit"))
+                timer.start()
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    if cancel.cancelled:
+                        raise Cancelled(cancel.reason, {"where": "worker"})
+                    time.sleep(0.02)
+                (workspace.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+                return {"changed": ["calc/__init__.py"]}
+
+        receipt = run_fix(
+            items=[WorkItem(WorkKind.FAILING_CHECK, "x")],
+            repo_dir=self.repo,
+            base_sha=self.sha,
+            head_sha=self.sha,
+            head_branch="feature",
+            worker=SlowWorker(),
+            policy=POLICY,
+            budget=RunBudget(fix_rounds=1, pushes_per_day=1, wall_clock_seconds=60),
+            token="ghp_fake",
+            push=True,
+            staging_root=self.root / "staging",
+            cancel=cancel,
+        )
+        self.assertFalse(receipt.ok)
+        self.assertEqual(receipt.verdict, "cancelled", "a cancel is not a worker failure")
+        self.assertIn("cancelled", receipt.problems[0])
+        self.assertEqual(receipt.push, {}, "a cancelled run must not reach the push stage")
+
+    def test_a_cancel_after_the_scope_check_still_blocks_the_push(self) -> None:
+        # the narrowest window: the fix succeeded and scope passed, then someone stopped it
+        from code_shipper.steward.cancel import CancelToken
+
+        cancel = CancelToken()
+
+        class FixerThatCancels:
+            def run(self, *, workspace, item, prompt, budget):
+                (workspace.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+                cancel.cancel("stopped after the fix", by="alice")
+                return {"changed": ["calc/__init__.py"]}
+
+        receipt = run_fix(
+            items=[WorkItem(WorkKind.FAILING_CHECK, "x")],
+            repo_dir=self.repo,
+            base_sha=self.sha,
+            head_sha=self.sha,
+            head_branch="feature",
+            worker=FixerThatCancels(),
+            policy=POLICY,
+            budget=RunBudget(fix_rounds=1, pushes_per_day=1, wall_clock_seconds=60),
+            token="ghp_fake",
+            push=True,
+            staging_root=self.root / "staging",
+            cancel=cancel,
+        )
+        self.assertFalse(receipt.ok)
+        self.assertEqual(receipt.push, {}, "no push may happen after a cancel")
+        self.assertEqual(receipt.budget["pushes_used"], 0, "the push budget must be untouched")
 
 
 class PromptTests(unittest.TestCase):

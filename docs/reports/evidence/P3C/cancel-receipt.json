@@ -1,0 +1,131 @@
+{
+  "adapter_calls_at_end": 0,
+  "branch_unchanged": true,
+  "calls_after_cancel": null,
+  "calls_after_cancel_note": "unknown: the container was killed before it wrote its count. The kill evidence and the unchanged branch are what prove nothing happened after the cancel point.",
+  "cancel_after_s": 0.0,
+  "cancel_mark": {
+    "adapter_calls_at_cancel": 1,
+    "at": 1795575353.6442747,
+    "fired": true
+  },
+  "cancelled": true,
+  "containers_left": 0,
+  "fix": {
+    "budget": {
+      "daily_usd": null,
+      "elapsed_seconds": 19.8,
+      "fix_rounds": 1,
+      "pushes_per_day": 1,
+      "pushes_used": 0,
+      "rounds_used": 1,
+      "spend_used": 0.0,
+      "unknown_cost_runs": 0,
+      "wall_clock_seconds": 600
+    },
+    "changed": [],
+    "item": {
+      "actionable": true,
+      "kind": "failing_check",
+      "paths": [],
+      "reason": "divide() returns a string and the test expects a number",
+      "reply_only": false,
+      "source_id": ""
+    },
+    "ok": false,
+    "problems": [
+      "cancelled: scheduled cancellation during the fix"
+    ],
+    "push": {},
+    "removed": [],
+    "scope_policy": {
+      "allowed": [
+        "calc/**/*.py",
+        "tests/**/*.py"
+      ],
+      "forbidden": [
+        ".github/**",
+        "**/conftest.py"
+      ],
+      "max_files": 5
+    },
+    "stage": "worker",
+    "verdict": "cancelled",
+    "worker": {
+      "cancelled": true,
+      "cancelled_at": 1795575353.644282,
+      "cancelled_by": "p3c-cancel-probe",
+      "container": {
+        "adapter_calls": 0,
+        "adapter_refused": 0,
+        "canary": {},
+        "changed": [],
+        "hermes": {},
+        "image_id": "sha256:4ffb7a8b30543d148d8ec92bdc8b7ecc50d4a9a051cdba9c15ea8c7189356433",
+        "ledger_lines_at_end": 0,
+        "ledger_lines_at_start": 0,
+        "ok": false,
+        "removed": [],
+        "returncode": -9,
+        "run_dir_mode": "0o700",
+        "seconds": 18.8,
+        "stderr_tail": "cancelled: the container was killed before it finished",
+        "stdout_tail": ""
+      },
+      "container_seconds_alive": 18.8,
+      "kill": {
+        "exited_after": "sigterm",
+        "pid": 2594139,
+        "returncode": -9,
+        "was_running": true
+      },
+      "reason": "scheduled cancellation during the fix"
+    },
+    "workspace": {
+      "base_sha": "1f69e23ea8761d0ea1d8817929fa61875de91615",
+      "branch": "p3c-cancel",
+      "file_count": 42,
+      "head_sha": "2bc644d040a6027dad620358dca878db570de6ff",
+      "pristine": "/home/kensei/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq/pristine",
+      "root": "/home/kensei/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq",
+      "work": "/home/kensei/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq/work"
+    }
+  },
+  "head_after": "2bc644d040a6027dad620358dca878db570de6ff",
+  "head_before": "2bc644d040a6027dad620358dca878db570de6ff",
+  "pr": 24,
+  "pushed": false,
+  "started": 1795575335.754836,
+  "verdict": "PASS",
+  "work_root": "/home/kensei/repos/code-shipper/.staging/p3c-nl8y6xfg",
+  "worker": {
+    "cancelled": true,
+    "cancelled_at": 1795575353.644282,
+    "cancelled_by": "p3c-cancel-probe",
+    "container": {
+      "adapter_calls": 0,
+      "adapter_refused": 0,
+      "canary": {},
+      "changed": [],
+      "hermes": {},
+      "image_id": "sha256:4ffb7a8b30543d148d8ec92bdc8b7ecc50d4a9a051cdba9c15ea8c7189356433",
+      "ledger_lines_at_end": 0,
+      "ledger_lines_at_start": 0,
+      "ok": false,
+      "removed": [],
+      "returncode": -9,
+      "run_dir_mode": "0o700",
+      "seconds": 18.8,
+      "stderr_tail": "cancelled: the container was killed before it finished",
+      "stdout_tail": ""
+    },
+    "container_seconds_alive": 18.8,
+    "kill": {
+      "exited_after": "sigterm",
+      "pid": 2594139,
+      "returncode": -9,
+      "was_running": true
+    },
+    "reason": "scheduled cancellation during the fix"
+  }
+}

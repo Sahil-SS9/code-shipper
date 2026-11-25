@@ -44,19 +44,34 @@ class ContainedWorker:
         self.cancel.check()
 
         budget.check_clock()
-        result = run_in_container(
-            image=self.image,
-            work_dir=workspace.work,
-            source_dir=workspace.pristine,
-            broker_dir=workspace.broker_dir,
-            prompt=prompt,
-            timeout_s=self.timeout_s,
-            max_requests=self.max_requests,
-            upstream_url=self.upstream_url,
-            host_credential=self.host_credential,
-            repo_root=self.repo_root,
-            keep=False,
-        )
+        try:
+            result = run_in_container(
+                image=self.image,
+                work_dir=workspace.work,
+                source_dir=workspace.pristine,
+                broker_dir=workspace.broker_dir,
+                prompt=prompt,
+                timeout_s=self.timeout_s,
+                max_requests=self.max_requests,
+                upstream_url=self.upstream_url,
+                host_credential=self.host_credential,
+                repo_root=self.repo_root,
+                keep=False,
+                cancel=self.cancel,
+            )
+        except Cancelled as exc:
+            # Keep the container's own evidence — how long it was alive, which signal killed it —
+            # rather than replacing it with a summary. That detail is the proof.
+            self.last_run = {
+                "cancelled": True,
+                "reason": self.cancel.reason,
+                "cancelled_at": self.cancel.requested_at,
+                "cancelled_by": self.cancel.requested_by,
+                "container_seconds_alive": (exc.detail or {}).get("container_seconds_alive"),
+                "kill": (exc.detail or {}).get("kill"),
+                "container": (exc.detail or {}).get("container"),
+            }
+            raise Cancelled(exc.reason, self.last_run) from None
         self.last_run = result.as_dict()
 
         # After: the container has exited, but a cancel that arrived mid-run means this work does not
