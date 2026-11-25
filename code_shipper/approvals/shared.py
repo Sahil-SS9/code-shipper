@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .policy import Policy, PolicyError
+from .policy import Policy, PolicyError, glob_match
 
 # Which direction each security key tightens in. Keys not listed are not security keys, so a repo may
 # set them freely.
@@ -67,17 +67,43 @@ def _budget_tightens(central: dict, local: dict) -> bool:
     return True
 
 
+def _covered_by(local_pattern: str, central_patterns: set[str]) -> bool:
+    """Whether a local allowlist pattern is already permitted by the central list.
+
+    A string subset test is wrong here: `src/a.py` is narrower than `src/**` but not a subset of it,
+    so a genuine tightening was refused as a loosening. Instead, treat the local pattern as a path and
+    ask whether the central globs match it — plus the equality case, for patterns containing wildcards
+    that match each other exactly.
+
+    Limitation, stated rather than hidden: this compares patterns as strings, so a local pattern that is
+    *semantically* narrower than a central one but textually unlike it (for example `src/[ab].py` under
+    a central `src/**`) is accepted only because `src/[ab].py` happens to match `src/**` as a path. A
+    pattern that a central glob would not match textually is treated as a loosening, which fails safe.
+    """
+    return local_pattern in central_patterns or any(
+        glob_match(central, local_pattern) for central in central_patterns
+    )
+
+
 def _scope_tightens(central: dict, local: dict) -> bool:
-    """A narrower allowlist tightens; a broader one loosens."""
+    """A narrower allowlist tightens; a broader one loosens.
+
+    For `allowed`: every local pattern must already be permitted centrally. For `forbidden`: everything
+    central forbids must stay forbidden, so a repo may add to the list but never drop from it.
+    """
     central_allowed = set(central.get("allowed") or [])
-    local_allowed = set(local.get("allowed") or [])
-    if central_allowed and not central_allowed.issubset(local_allowed):
-        return False
+    local_allowed = [str(item) for item in (local.get("allowed") or [])]
+    if central_allowed and local_allowed:
+        for pattern in local_allowed:
+            if not _covered_by(pattern, central_allowed):
+                return False  # something the repo now permits was not permitted centrally
+
     central_forbidden = set(central.get("forbidden") or [])
     local_forbidden = set(local.get("forbidden") or [])
-    # Fewer forbidden paths is a loosening.
-    if central_forbidden and not central_forbidden.issubset(local_forbidden):
-        return False
+    if central_forbidden and not all(
+        _covered_by(str(pattern), local_forbidden) for pattern in central_forbidden
+    ):
+        return False  # a central forbidden path was dropped
     return True
 
 
@@ -105,7 +131,12 @@ def merge(central: Policy | None, local: Policy | None, *, repo: str = "") -> Me
 
     result = Policy(
         version=max(central.version, local.version),
-        rules=local.rules or central.rules,
+        # The central rules ALWAYS apply. A repo adds requirements; it never replaces them. This was
+        # `local.rules or central.rules`, which let a repo replace a count-2 rule with a count-1 rule,
+        # name its own approvers, or mark a rule observe and thereby retire it — with `refused` empty,
+        # so the merge claimed to have refused nothing. Approval rules are the most important security
+        # key in the file, so wholesale replacement was the worst possible place to have a hole.
+        rules=tuple(central.rules) + tuple(local.rules),
         protected_paths=central.protected_paths,
         allow_agent_approval=central.allow_agent_approval,
         budget=dict(central.budget),
@@ -114,7 +145,36 @@ def merge(central: Policy | None, local: Policy | None, *, repo: str = "") -> Me
         scope=dict(central.scope),
         source="merged",
     )
-    merged.provenance["approvals"] = "repo" if local.rules else "central"
+    merged.provenance["approvals"] = (
+        "central + repo (added)" if local.rules else "central"
+    )
+
+    # Name every attempt to weaken a central rule. The central rule still applies, so these are
+    # ineffective — but a silently ineffective override is indistinguishable from an applied one, and
+    # a repo would believe it had relaxed a rule it had not.
+    for local_rule in local.rules:
+        for central_rule in central.rules:
+            if not _rules_overlap(central_rule, local_rule):
+                continue
+            if local_rule.observe and not central_rule.observe:
+                merged.refused.append(
+                    "approvals: the repo marked a rule observe where the central config enforces it; "
+                    "the central rule still applies"
+                )
+            if local_rule.count < central_rule.count:
+                merged.refused.append(
+                    f"approvals: the repo asked for {local_rule.count} approval(s) where the central "
+                    f"config requires {central_rule.count}; the central rule still applies"
+                )
+            if central_rule.approvers and not set(local_rule.approvers) & set(
+                central_rule.approvers
+            ):
+                merged.refused.append(
+                    "approvals: the repo named approvers "
+                    f"({', '.join(local_rule.approvers) or 'none'}) who cannot satisfy the central "
+                    f"rule, which requires {', '.join(central_rule.approvers)}; those approvals are "
+                    "still required"
+                )
 
     # allow_agent_approval: the central value wins unless the repo turns it off, which is tightening.
     if local.allow_agent_approval != central.allow_agent_approval:
@@ -186,6 +246,18 @@ def merge(central: Policy | None, local: Policy | None, *, repo: str = "") -> Me
         merged.provenance["repo"] = repo
     merged.policy = result
     return merged
+
+
+def _rules_overlap(central_rule: Any, local_rule: Any) -> bool:
+    """Whether two rules could be talking about the same pull requests.
+
+    A local rule that scopes itself to `docs/**` is not trying to weaken a central rule for `auth/**`,
+    so it should not be reported as a loosening attempt. Two unscoped rules always overlap, which is
+    the case that matters: an unscoped local rule is a direct competitor to every central rule.
+    """
+    if not central_rule.files or not local_rule.files:
+        return True
+    return bool(set(central_rule.files) & set(local_rule.files))
 
 
 def _key_names(policy: Policy | None) -> list[str]:

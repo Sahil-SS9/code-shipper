@@ -14,11 +14,11 @@ import unittest
 
 from code_shipper.approvals.comment import MARKER, find_existing, render, should_update
 from code_shipper.approvals.evaluate import Facts, evaluate, refuses_agent_approval
-from code_shipper.approvals.policy import PolicyError, glob_match, parse
+from code_shipper.approvals.policy import Policy, PolicyError, glob_match, parse
 from code_shipper.approvals.shared import effective, merge
 
 
-def policy_of(text: str, *, source: str = "") -> "object":
+def policy_of(text: str, *, source: str = "") -> Policy:
     return parse(text, source=source)
 
 
@@ -290,6 +290,139 @@ class AdversarialTests(unittest.TestCase):
         self.assertFalse(verdict.satisfied)
 
 
+class ApprovalRulesCannotBeLoosenedTests(unittest.TestCase):
+    """The blocker: approval rules were the one security key shared.merge did not protect.
+
+    `rules=local.rules or central.rules` let a repo replace central wholesale, so a count-2 rule could
+    become count-1, or be re-pointed at approvers central never named, or be marked observe and thereby
+    retired — with `refused` empty. Approval rules are the most important security key in the file.
+    """
+
+    CENTRAL = "version: 1\napprovals:\n  - count: 2\n    approvers: [alice, bob, carol]\n"
+
+    def _merged(self, local_text: str, approvals: tuple[str, ...]):
+        merged = merge(policy_of(self.CENTRAL, source="central"),
+                       policy_of(local_text, source="repo"))
+        return merged, evaluate(merged.policy, Facts(approvals=approvals))
+
+    def test_a_repo_cannot_lower_the_count(self) -> None:
+        merged, verdict = self._merged(
+            "version: 1\napprovals:\n  - count: 1\n    approvers: [alice, bob, carol]\n",
+            ("alice",),
+        )
+        self.assertFalse(verdict.satisfied, "one approval must not satisfy a central count-2 rule")
+        self.assertEqual(verdict.required, 2)
+        self.assertTrue(merged.refused, "the loosening must be named")
+        self.assertIn("1 approval(s)", merged.refused[0])
+        self.assertIn("requires 2", merged.refused[0])
+
+    def test_a_repo_cannot_name_its_own_approvers(self) -> None:
+        merged, verdict = self._merged(
+            "version: 1\napprovals:\n  - count: 2\n    approvers: [mallory, mallory2]\n",
+            ("mallory", "mallory2"),
+        )
+        self.assertFalse(verdict.satisfied,
+                         "approvals from people central never named must not satisfy it")
+        self.assertTrue(merged.refused)
+        self.assertIn("mallory", merged.refused[0])
+
+    def test_a_repo_cannot_mark_a_central_rule_observe(self) -> None:
+        merged, verdict = self._merged(
+            "version: 1\napprovals:\n  - count: 2\n    approvers: [alice, bob, carol]\n"
+            "    observe: true\n",
+            (),
+        )
+        self.assertFalse(verdict.observe_only, "a central enforced rule cannot be retired by observe")
+        self.assertFalse(verdict.satisfied)
+        self.assertTrue(merged.refused)
+        self.assertIn("observe", merged.refused[0])
+
+    def test_a_repo_may_tighten_the_count(self) -> None:
+        merged, verdict = self._merged(
+            "version: 1\napprovals:\n  - count: 3\n    approvers: [alice, bob, carol]\n",
+            ("alice", "bob"),
+        )
+        self.assertFalse(verdict.satisfied, "two approvals must not satisfy a tightened count of three")
+        self.assertEqual(verdict.required, 3)
+        self.assertFalse(merged.refused, "tightening is not a loosening")
+
+        _, satisfied = self._merged(
+            "version: 1\napprovals:\n  - count: 3\n    approvers: [alice, bob, carol]\n",
+            ("alice", "bob", "carol"),
+        )
+        self.assertTrue(satisfied.satisfied)
+
+    def test_the_central_rule_is_always_present_after_a_merge(self) -> None:
+        merged = merge(policy_of(self.CENTRAL, source="central"),
+                       policy_of("version: 1\napprovals:\n  - count: 1\n    approvers: [a]\n",
+                                 source="repo"))
+        self.assertGreaterEqual(len(merged.policy.rules), 1)
+        counts = [rule.count for rule in merged.policy.rules]
+        self.assertIn(2, counts, "the central count-2 rule must survive the merge")
+
+    def test_a_local_rule_touching_other_files_is_not_flagged(self) -> None:
+        # a docs-only rule is not trying to weaken an auth rule
+        merged = merge(
+            policy_of("version: 1\napprovals:\n  - count: 2\n    approvers: [alice, bob]\n"
+                      "    files: [\"auth/**\"]\n", source="central"),
+            policy_of("version: 1\napprovals:\n  - count: 1\n    approvers: [carol]\n"
+                      "    files: [\"docs/**\"]\n", source="repo"),
+        )
+        self.assertFalse(merged.refused, "a rule scoped to different files is not a loosening")
+        self.assertEqual(len(merged.policy.rules), 2, "both rules apply, disjoint by file scope")
+
+    def test_the_effective_preview_names_an_approval_loosening(self) -> None:
+        merged = merge(policy_of(self.CENTRAL, source="central"),
+                       policy_of("version: 1\napprovals:\n  - count: 1\n    approvers: [a]\n",
+                                 source="repo"),
+                       repo="o/r")
+        text = effective(merged)
+        self.assertIn("refused", text)
+        self.assertIn("approvals", text.split("refused")[1])
+
+
+class ScopeDirectionTests(unittest.TestCase):
+    """Two bugs the field-by-field audit of merge() found, both in the direction of the test."""
+
+    CENTRAL = ('version: 1\nscope:\n  allowed: ["src/**"]\n'
+               '  forbidden: ["secrets/**"]\n')
+
+    def _refused(self, local_text: str) -> bool:
+        return bool(merge(policy_of(self.CENTRAL, source="central"),
+                          policy_of(local_text, source="repo")).refused)
+
+    def test_narrowing_the_allowlist_is_allowed(self) -> None:
+        # `src/a.py` is narrower than `src/**`, but not a string subset, so the first version refused
+        # a genuine tightening — the one case the rule exists to permit.
+        self.assertFalse(self._refused(
+            'version: 1\nscope:\n  allowed: ["src/a.py"]\n  forbidden: ["secrets/**"]\n'
+        ))
+
+    def test_narrowing_deeper_is_allowed(self) -> None:
+        self.assertFalse(self._refused(
+            'version: 1\nscope:\n  allowed: ["src/x/y.py"]\n  forbidden: ["secrets/**"]\n'
+        ))
+
+    def test_broadening_the_allowlist_is_refused(self) -> None:
+        self.assertTrue(self._refused(
+            'version: 1\nscope:\n  allowed: ["**"]\n  forbidden: ["secrets/**"]\n'
+        ))
+
+    def test_adding_an_unrelated_path_is_refused(self) -> None:
+        self.assertTrue(self._refused(
+            'version: 1\nscope:\n  allowed: ["src/**", "other/**"]\n  forbidden: ["secrets/**"]\n'
+        ))
+
+    def test_dropping_a_forbidden_path_is_refused(self) -> None:
+        self.assertTrue(self._refused('version: 1\nscope:\n  allowed: ["src/**"]\n'))
+
+    def test_adding_to_forbidden_is_allowed(self) -> None:
+        self.assertFalse(self._refused(
+            'version: 1\nscope:\n  allowed: ["src/**"]\n'
+            '  forbidden: ["secrets/**", "keys/**"]\n'
+        ))
+
+
 class SharedSettingsTests(unittest.TestCase):
     """D15d: a repo may tighten but never loosen."""
 
@@ -355,13 +488,15 @@ class SharedSettingsTests(unittest.TestCase):
         merged = merge(central, local)
         self.assertEqual(merged.policy.agents["mode"], "separated")
 
-    def test_non_security_keys_may_be_set_freely(self) -> None:
+    def test_approval_rules_are_added_not_replaced(self) -> None:
+        """This test used to assert replacement, which was the bug. Approval rules are a security
+        key, so a local rule is added and the central one always survives."""
         central = policy_of("version: 1\napprovals:\n  - count: 1\n    approvers: [a]\n")
         local = policy_of("version: 1\napprovals:\n  - count: 2\n    approvers: [a, b]\n")
         merged = merge(central, local)
-        self.assertEqual(len(merged.policy.rules), 1)
-        self.assertEqual(merged.provenance["approvals"], "repo")
-        self.assertFalse(merged.refused)
+        self.assertEqual(len(merged.policy.rules), 2, "both rules apply")
+        self.assertEqual(merged.provenance["approvals"], "central + repo (added)")
+        self.assertFalse(merged.refused, "adding a stricter rule is not a loosening")
 
     def test_a_repo_without_local_settings_inherits_central(self) -> None:
         central = policy_of(BASE)
