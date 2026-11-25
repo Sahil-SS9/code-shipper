@@ -159,6 +159,29 @@ def build_parser() -> argparse.ArgumentParser:
     poll.add_argument("--state-dir", default="", help="where review state lives")
     poll.add_argument("--json", action="store_true", help="machine-readable output")
 
+    ui = sub.add_parser("ship-ui", help="render the TUI board for a state (no network)")
+    ui.add_argument(
+        "state",
+        nargs="?",
+        default="findings",
+        choices=["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
+                 "approvals-satisfied", "observe", "paused", "stopped", "error"],
+        help="which state to draw",
+    )
+    ui.add_argument("--width", type=int, default=113, help="columns")
+    ui.add_argument("--height", type=int, default=30, help="rows")
+
+    page = sub.add_parser("ship-page", help="write the Desktop page for a state as self-contained HTML")
+    page.add_argument(
+        "state",
+        nargs="?",
+        default="findings",
+        choices=["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
+                 "approvals-satisfied", "observe", "paused", "stopped", "error"],
+        help="which state to draw",
+    )
+    page.add_argument("--out", required=True, help="where to write the HTML")
+
     config = sub.add_parser("config", help="inspect configuration")
     config.add_argument(
         "action",
@@ -758,6 +781,29 @@ def _reevaluate_approvals(
     return comment.as_dict()
 
 
+def cmd_ship_ui(args: argparse.Namespace) -> int:
+    """Draw the TUI board for a state. Pure rendering: no network, no credentials, no writes."""
+    from .surfaces import fixtures, tui
+
+    projection = fixtures.ALL[args.state]()
+    for line in tui.render(projection, width=args.width, height=args.height):
+        print(line)
+    return 0
+
+
+def cmd_ship_page(args: argparse.Namespace) -> int:
+    """Write the Desktop page for a state as one self-contained HTML file."""
+    from .surfaces import desktop, fixtures
+
+    projection = fixtures.ALL[args.state]()
+    html = desktop.render(projection)
+    target = Path(args.out).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(html, encoding="utf-8")
+    print(f"wrote {target} ({len(html)} bytes)")
+    return 0
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     """`config effective`: the merged policy, with the source of every value (C13, D15d).
 
@@ -973,6 +1019,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_stop(args)
     if args.command == "config":
         return cmd_config(args)
+    if args.command == "ship-ui":
+        return cmd_ship_ui(args)
+    if args.command == "ship-page":
+        return cmd_ship_page(args)
     if args.command == "ship":
         return cmd_ship(args)
     if args.command == "poll":
