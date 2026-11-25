@@ -308,6 +308,25 @@ class GitHubHost:
             raise HostError("unexpected payload for labels")
         return [str(entry.get("name", "")) for entry in data if isinstance(entry, dict)]
 
+    def approvals(self, repo: str, number: int) -> list[str]:
+        """Logins whose latest review on this PR is an approval.
+
+        The *latest* review per author, not any approval ever given: a reviewer who approved and then
+        requested changes has not approved the current head, and counting the earlier approval is how
+        a stale approval gets mistaken for a current one. Only the newest state per login counts.
+        """
+        latest: dict[str, str] = {}
+        order: list[str] = []
+        for review in self.list_reviews(repo, number):
+            login = str(getattr(review, "author", "") or "")
+            state = str(getattr(review, "state", "") or "").upper()
+            if not login:
+                continue
+            if login not in latest:
+                order.append(login)
+            latest[login] = state
+        return [login for login in order if latest.get(login) == "APPROVED"]
+
     def permission_of(self, repo: str, login: str) -> str:
         owner, name = split_slug(repo)
         try:

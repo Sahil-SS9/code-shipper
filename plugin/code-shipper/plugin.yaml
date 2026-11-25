@@ -1,0 +1,21 @@
+name: code-shipper
+version: 0.1.0
+manifest_version: 2
+description: "Review a pull request, fix it in a contained environment, and get it ready to merge. Never approves and never merges: a human does that."
+author: Sahil Saghir
+license: MIT
+homepage: https://github.com/Sahil-SS9/code-shipper
+requires_hermes: ">=0.23.0"
+tags: [review, github, automation]
+provides_tools: []
+provides_hooks: []
+requires_env: []
+config_schema:
+  binary: {type: str, default: "code-shipper", label: "CLI binary", description: "The code-shipper executable to call. Default assumes it is on PATH."}
+  token_path: {type: str, default: "~/.config/code-shipper/tokens/fixer", label: "Token file", description: "Where the GitHub token is read from. The token is never passed on the command line, where it would appear in a process listing."}
+  default_profile: {type: str, default: "standard", choices: [quiet, standard, assertive], label: "Review profile", description: "How much the reviewer reports: quiet is high-bar, assertive is low-bar and noisier."}
+  allow_ship: {type: bool, default: false, label: "Allow /ship to publish", description: "Off by default. With it off, /ship plans and scans only and refuses to publish. Turning it on allows a command to create a branch, a commit and a pull request, which is a publish you cannot take back."}
+commands:
+  - name: ship
+    description: "Review, fix or publish a pull request. Usage: /ship <owner/repo> <pr> [review|fix|watch|stop|status|publish]"
+    argument_hint: "<owner/repo> <pr> [subcommand]"

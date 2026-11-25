@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import Any
 from pathlib import Path
 
 from . import __version__
@@ -115,6 +116,48 @@ def build_parser() -> argparse.ArgumentParser:
     stop.add_argument("pr", type=int, help="pull request number")
     stop.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     stop.add_argument("--json", action="store_true", help="machine-readable output")
+
+    ship = sub.add_parser("ship", help="take a local change to an open pull request")
+    ship.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
+    ship.add_argument("--branch", required=True, help="branch to create and push")
+    ship.add_argument("--base", required=True, help="base branch for the pull request")
+    ship.add_argument("--title", required=True, help="pull request title")
+    ship.add_argument("--body", default="", help="pull request body")
+    ship.add_argument(
+        "--add",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="a file to include, relative to --workdir (repeatable)",
+    )
+    ship.add_argument("--workdir", required=True, help="local checkout to commit in")
+    ship.add_argument("--author-name", required=True, help="commit author name")
+    ship.add_argument("--author-email", required=True, help="commit author email")
+    ship.add_argument("--draft", action="store_true", help="open the pull request as a draft")
+    ship.add_argument("--dry-run", action="store_true", help="plan and scan only; write nothing")
+    ship.add_argument(
+        "--i-authorise-publish",
+        nargs="?",
+        const="i-authorise-publish",
+        default=None,
+        help="record authorisation to publish (required in a non-interactive run)",
+    )
+    ship.add_argument("--json", action="store_true", help="machine-readable output")
+
+    poll = sub.add_parser("poll", help="watch for new heads and review each one")
+    poll.add_argument("pr", type=int, help="pull request number")
+    poll.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
+    poll.add_argument("--interval", type=float, default=30.0, help="seconds between polls")
+    poll.add_argument("--minutes", type=float, default=0.0, help="stop after this long (0 = no limit)")
+    poll.add_argument("--rounds", type=int, default=0, help="stop after this many rounds")
+    poll.add_argument(
+        "--stop-label",
+        default="code-shipper:stop",
+        help="stop when this label is absent or a stop command is present",
+    )
+    poll.add_argument("--dry-run", action="store_true", help="review without posting")
+    poll.add_argument("--state-dir", default="", help="where review state lives")
+    poll.add_argument("--json", action="store_true", help="machine-readable output")
 
     config = sub.add_parser("config", help="inspect configuration")
     config.add_argument(
@@ -353,6 +396,323 @@ def cmd_lessons(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ship(args: argparse.Namespace) -> int:
+    """`ship`: plan, scan, require authorisation, then branch/commit/push/PR.
+
+    The interactive path asks for confirmation when a terminal is attached. With no terminal it
+    refuses unless `--i-authorise-publish` was passed — it never blocks waiting for input that cannot
+    arrive.
+    """
+    from . import secrets as secrets_mod
+    from .ship import Authorisation, Plan, ShipRefused, make_plan, ship
+
+    workdir = Path(args.workdir).expanduser()
+    if not workdir.is_dir():
+        print(f"workdir {workdir} is not a directory", file=sys.stderr)
+        return 2
+
+    files: dict[str, str] = {}
+    for relative in args.add:
+        candidate = workdir / relative
+        try:
+            files[relative] = candidate.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"cannot read {relative}: {exc}", file=sys.stderr)
+            return 2
+
+    try:
+        plan = make_plan(
+            repo=args.repo,
+            branch=args.branch,
+            base=args.base,
+            title=args.title,
+            body=args.body,
+            files=files,
+            author_name=args.author_name,
+            author_email=args.author_email,
+            draft=args.draft,
+        )
+    except ShipRefused as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+
+    print(plan.render())
+    print()
+
+    # Authorisation: explicit flag, or an interactive confirmation when a terminal is attached. Never
+    # a default, and never a silent wait in a non-TTY run.
+    value = args.i_authorise_publish
+    if value is None and not args.dry_run:
+        if sys.stdin.isatty():
+            try:
+                answer = input("Publish this? Type 'yes' to continue: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                answer = ""
+            value = "yes" if answer == "yes" else "no"
+        else:
+            print(
+                "refused: no terminal is attached and no authorisation was recorded. Pass "
+                "--i-authorise-publish to record one.",
+                file=sys.stderr,
+            )
+            return 2
+
+    authorisation = Authorisation.from_flag(value, by=args.author_name or "cli")
+
+    token = _read_token_quietly()
+    broker = None
+    if token and not args.dry_run:
+        from .broker.roles import Broker
+
+        broker = Broker(token=token, repo=args.repo)
+
+    try:
+        result = ship(
+            plan,
+            workdir=workdir,
+            authorisation=authorisation,
+            broker=broker,
+            dry_run=args.dry_run,
+            log=lambda message: print(f"  {message}"),
+        )
+    except secrets_mod.SecretFound as found:
+        # Already reported by the flow; exit non-zero so a script cannot mistake it for success.
+        return 3
+    except ShipRefused as exc:
+        print(f"refused [{exc.code}]: {exc.detail}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001
+        print(f"ship failed: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+    else:
+        print()
+        print(f"branch: {result.branch}")
+        print(f"commit: {result.commit[:12] if result.commit else '(none)'}")
+        print(f"pushed: {result.pushed}")
+        print(f"pr:     {('#' + str(result.pr)) if result.pr else '(none)'}")
+        print()
+        print("Nothing was merged and nothing was approved. A human merges.")
+    return 0
+
+
+def cmd_poll(args: argparse.Namespace) -> int:
+    """`poll`: review every new head until the deadline, a stop, or the round count.
+
+    Stop is checked at the top of each round, before the head is read: a stop honoured only between
+    rounds is honoured late, and one honoured at the end is not honoured at all.
+    """
+    from .hosts.github import GitHubHost, split_slug
+    from .review.cache import ReviewCache
+    from .review.service import ReviewRequest, run as run_service
+    from .review.state import ReviewStore
+    from .harness.hermes import HermesHarness
+    from .steward import commands as commands_mod
+    from .steward.poll import poll
+    from .steward.watch import read_stop_signals
+
+    token = _read_token_quietly()
+    if not token:
+        print("no GitHub token found; cannot poll.", file=sys.stderr)
+        return 2
+
+    owner, name = split_slug(args.repo)
+    host = GitHubHost(token)
+    repo = f"{owner}/{name}"
+    state_root = Path(args.state_dir).expanduser() if args.state_dir else _state_dir()
+    store = ReviewStore(state_root)
+    cache = ReviewCache(state_root)
+    harness = HermesHarness()
+
+    def current_head() -> str:
+        return host.get_pr(repo, args.pr).head_sha
+
+    def is_stopped() -> bool:
+        # Signals are read fresh each round, never remembered: a label removed a second ago or a stop
+        # comment posted a second ago must take effect in this round, not the next one.
+        comments = host.list_comments(repo, args.pr)
+        parsed = [
+            commands_mod.evaluate(comment, lambda login: host.permission_of(repo, login))
+            for comment in comments
+        ]
+        labels = {str(label) for label in host.list_labels(repo, args.pr)}
+        stopped, why = commands_mod.should_stop(
+            commands=parsed, labelled=args.stop_label in labels
+        )
+        if stopped:
+            print(f"  stop: {why}")
+        return stopped
+
+    def on_new_head(old: str, new: str) -> None:
+        pr = host.get_pr(repo, args.pr)
+        existing = store.load(repo, args.pr)
+        since_diff = None
+        if existing.has_baseline:
+            try:
+                since_diff = host.compare(repo, existing.last_reviewed_head, new)
+            except Exception:  # noqa: BLE001 - fall back to a full review rather than skip commits
+                since_diff = None
+        result = run_service(
+            ReviewRequest(
+                repo=repo,
+                pr=args.pr,
+                head_sha=new,
+                diff=host.get_diff(repo, args.pr),
+                since_diff=since_diff,
+                trigger="on-push",
+                intent=intent_block(pr.title, pr.body),
+                workdir=None,
+                env=scrubbed_env(),
+            ),
+            harness=HermesHarness(),
+            store=store,
+            cache=cache,
+        )
+        if not args.dry_run:
+            _post_review(token=token, repo=repo, pr=args.pr, result=result)
+        print(f"  reviewed: {len(result.outcome.findings)} finding(s), "
+              f"{result.model_calls} model call(s)"
+              + (" (cached)" if result.cached else "")
+              + (" (incremental)" if result.incremental else ""))
+        if result.risk.get("summary"):
+            print(f"  {result.risk['summary']}")
+
+        # Approvals re-evaluation happens in the same round as the review, from the same head, so the
+        # comment and the review can never describe different commits.
+        _reevaluate_approvals(host=host, repo=repo, pr=args.pr, token=token, dry_run=args.dry_run)
+
+    outcome = poll(
+        current_head=current_head,
+        is_stopped=is_stopped,
+        on_new_head=on_new_head,
+        on_round=lambda round_: print(
+            f"round {round_.number}: {round_.reason} (head {round_.head[:8] or 'unknown'})"
+        ),
+        interval=args.interval,
+        minutes=args.minutes,
+        max_rounds=args.rounds,
+    )
+
+    if args.json:
+        print(json.dumps(outcome.as_dict(), indent=2, sort_keys=True))
+    else:
+        print()
+        print(f"stopped: {outcome.stopped_reason or 'end of rounds'}")
+        print(f"rounds: {len(outcome.rounds)}, reviews: {outcome.reviewed_count}")
+    return 0
+
+
+def _post_review(*, token: str, repo: str, pr: int, result: Any) -> int:
+    """Post a review through the broker, and record what was posted.
+
+    COMMENT only. The broker refuses any other event for the reviewer role before a request is built,
+    so this cannot become an approval by a caller passing a different event.
+    """
+    from .broker.roles import Broker, BrokerRefused, BrokerError
+
+    comments = []
+    for finding in result.outcome.findings:
+        comments.append({
+            "path": finding.path,
+            "line": finding.line,
+            "body": f"**{finding.title}** ({finding.severity})\n\n{finding.body}",
+        })
+    if not comments:
+        print("  no findings to post")
+        return 0
+
+    broker = Broker(token=token, repo=repo)
+    try:
+        posted = broker.post_review(
+            role="reviewer", pr=pr, head_sha=result.state.last_reviewed_head or "",
+            body=result.outcome.summary() if hasattr(result.outcome, "summary") else "Review",
+            event="COMMENT", comments=comments,
+        )
+    except BrokerRefused as exc:
+        print(f"  review refused by the broker: {exc}", file=sys.stderr)
+        return 2
+    except BrokerError as exc:
+        print(f"  review failed: {exc}", file=sys.stderr)
+        return 2
+    print(f"  posted review {posted.get('id')} ({len(comments)} inline)")
+    return 0
+
+
+def _reevaluate_approvals(
+    *, host: Any, repo: str, pr: int, token: str, dry_run: bool = False
+) -> dict:
+    """Re-evaluate approvals for this PR and create or update the one status comment.
+
+    One comment per PR, edited in place. A push that re-posts would bury the current state under its
+    own history, so an unchanged body is not posted at all.
+    """
+    from .approvals.comment import find_existing, render, should_update
+    from .approvals.evaluate import Facts, evaluate
+    from .approvals.policy import PolicyError, parse
+    from .approvals.shared import merge
+    from .broker.roles import Broker, BrokerError, BrokerRefused
+
+    # The policy comes from the base branch, never from the PR: a PR must not lower its own bar.
+    base = host.default_branch(repo)
+    central_text = ""
+    local_text = ""
+    try:
+        central_text = host.read_file(repo, base, ".code-shipper/approvals.yml").decode() or ""
+    except Exception:  # noqa: BLE001 - absent central config is normal
+        central_text = ""
+    try:
+        local_text = host.read_file(repo, base, "code-shipper.yml").decode() or ""
+    except Exception:  # noqa: BLE001
+        local_text = ""
+
+    try:
+        central = parse(central_text, source="central") if central_text else None
+        local = parse(local_text, source="base") if local_text else None
+    except PolicyError as exc:
+        print(f"  approvals: the policy is invalid: {exc}")
+        return {"state": "error", "reason": str(exc)}
+
+    merged = merge(central, local, repo=repo)
+    for refusal in merged.refused:
+        print(f"  approvals: {refusal}")
+
+    pr_obj = host.get_pr(repo, pr)
+    files = tuple(diff_file.path for diff_file in host.get_diff(repo, pr).files)
+    facts = Facts(
+        changed_files=files,
+        author=pr_obj.author,
+        labels=tuple(pr_obj.labels or ()),
+        draft=bool(pr_obj.draft),
+        approvals=tuple(host.approvals(repo, pr)),
+        edits_policy="code-shipper.yml" in files or ".code-shipper/approvals.yml" in files,
+    )
+    verdict = evaluate(merged.policy, facts)
+    comment = render(verdict, facts=facts, policy=merged.policy)
+    print(f"  approvals: {verdict.summary()}")
+
+    if dry_run:
+        print("  approvals: dry run, nothing posted")
+        return comment.as_dict()
+
+    existing = find_existing(host.list_comments(repo, pr))
+    broker = Broker(token=token, repo=repo)
+    try:
+        if existing is None:
+            broker.post_comment(pr=pr, body=comment.body, role="user")
+            print("  approvals: created the status comment")
+        elif should_update(getattr(existing, "body", ""), comment):
+            broker.update_comment(comment_id=int(getattr(existing, "id")), body=comment.body,
+                                  role="user")
+            print("  approvals: updated the status comment in place")
+        else:
+            print("  approvals: unchanged, nothing posted")
+    except (BrokerRefused, BrokerError) as exc:
+        print(f"  approvals: could not post: {exc}", file=sys.stderr)
+    return comment.as_dict()
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     """`config effective`: the merged policy, with the source of every value (C13, D15d).
 
@@ -360,7 +720,7 @@ def cmd_config(args: argparse.Namespace) -> int:
     an override is invisible unless you can see the effective result and why a value stayed central.
     """
     from .approvals.policy import PolicyError, parse
-    from .approvals.shared import effective, merge
+    from .approvals.shared import merge
 
     def read(path_text: str, label: str) -> object | None:
         if not path_text:
@@ -568,6 +928,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_stop(args)
     if args.command == "config":
         return cmd_config(args)
+    if args.command == "ship":
+        return cmd_ship(args)
+    if args.command == "poll":
+        return cmd_poll(args)
     if args.command == "lessons":
         return cmd_lessons(args)
     parser.error(f"unknown command: {args.command}")

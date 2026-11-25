@@ -67,6 +67,7 @@ class BrokerError(Exception):
 class Transport(Protocol):
     def post(self, url: str, body: dict, headers: dict[str, str]) -> tuple[int, dict]: ...
     def delete(self, url: str, headers: dict[str, str]) -> tuple[int, dict]: ...
+    def patch(self, url: str, body: dict, headers: dict[str, str]) -> tuple[int, dict]: ...
 
 
 class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
@@ -101,6 +102,32 @@ class UrllibTransport:
             ) from None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             # A transport failure is uncertain for the same reason.
+            raise BrokerError(f"transport failure: {exc}", uncertain=True) from None
+
+    def patch(self, url: str, body: dict, headers: dict[str, str]) -> tuple[int, dict]:
+        """A real PATCH, used to edit a comment in place instead of adding a second one."""
+        data = json.dumps(body).encode()
+        request = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                **headers,
+                "Content-Type": "application/json",
+                "Content-Length": str(len(data)),
+                "User-Agent": USER_AGENT,
+            },
+            method="PATCH",
+        )
+        try:
+            with self._opener.open(request, timeout=self._timeout) as response:
+                payload = response.read() or b"{}"
+                return response.status, json.loads(payload or b"{}")
+        except urllib.error.HTTPError as exc:
+            detail = self._detail(exc)
+            uncertain = exc.code >= 500
+            raise BrokerError(f"HTTP {exc.code}: {detail}", status=exc.code,
+                              uncertain=uncertain) from None
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise BrokerError(f"transport failure: {exc}", uncertain=True) from None
 
     def delete(self, url: str, headers: dict[str, str]) -> tuple[int, dict]:
@@ -333,6 +360,67 @@ class Broker:
             payload={"labels": [label]},
         )
 
+    def create_pr(
+        self,
+        *,
+        title: str,
+        head: str,
+        base: str,
+        body: str = "",
+        draft: bool = False,
+        role: str = "user",
+    ) -> dict[str, Any]:
+        """Open a pull request. The only path by which this tool creates one.
+
+        `head` and `base` are both required: a default base would let a caller open a PR against a
+        branch nobody intended, which is the same class of mistake as a default push branch.
+        """
+        if not isinstance(title, str) or not title.strip():
+            raise BrokerRefused("empty_title")
+        if not isinstance(head, str) or not head.strip():
+            raise BrokerRefused("empty_head")
+        if not isinstance(base, str) or not base.strip():
+            raise BrokerRefused("empty_base")
+        self._authorise(role, "open_pr", repo=self.repo, pr=0)
+        return self._send(
+            role=role,
+            op="open_pr",
+            pr=0,
+            expected_head=None,
+            path=f"/repos/{self.repo}/pulls",
+            payload={"title": title, "head": head, "base": base, "body": body, "draft": bool(draft)},
+        )
+
+    def post_comment(self, *, pr: int, body: str, role: str = "user") -> dict[str, Any]:
+        """Post a PR comment. COMMENT only — there is no approve or merge path here."""
+        if not isinstance(body, str) or not body.strip():
+            raise BrokerRefused("empty_body")
+        self._authorise(role, "comment", repo=self.repo, pr=pr)
+        return self._send(
+            role=role,
+            op="comment",
+            pr=pr,
+            expected_head=None,
+            path=f"/repos/{self.repo}/issues/{pr}/comments",
+            payload={"body": body},
+        )
+
+    def update_comment(self, *, comment_id: int, body: str, role: str = "user") -> dict[str, Any]:
+        """Edit a comment in place. Used for the approvals status comment, so a push updates it rather
+        than adding a second one."""
+        if not isinstance(body, str) or not body.strip():
+            raise BrokerRefused("empty_body")
+        self._authorise(role, "comment", repo=self.repo, pr=0)
+        return self._send(
+            role=role,
+            op="update_comment",
+            pr=0,
+            expected_head=None,
+            path=f"/repos/{self.repo}/issues/comments/{int(comment_id)}",
+            payload={"body": body},
+            method="PATCH",
+        )
+
     def _inline(self, entry: dict[str, Any]) -> dict[str, Any]:
         path = entry.get("path")
         line = entry.get("line")
@@ -368,6 +456,10 @@ class Broker:
             if method == "DELETE":
                 status, data = self.transport.delete(
                     f"{self.api_root}{path}", self._headers()
+                )
+            elif method == "PATCH":
+                status, data = self.transport.patch(
+                    f"{self.api_root}{path}", payload, self._headers()
                 )
             else:
                 status, data = self.transport.post(
@@ -484,6 +576,12 @@ class CountingTransport:
 
     def delete(self, url: str, headers: dict[str, str]) -> tuple[int, dict]:
         self.requests.append((url, {}, headers))
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+    def patch(self, url: str, body: dict, headers: dict[str, str]) -> tuple[int, dict]:
+        self.requests.append((url, body, headers))
         if self._error is not None:
             raise self._error
         return self._response
