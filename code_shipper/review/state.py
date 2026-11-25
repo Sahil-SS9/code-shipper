@@ -21,6 +21,7 @@ State lives next to the review cache, keyed on (repo, pr), and is written only o
 from __future__ import annotations
 
 import json
+import tempfile
 import os
 import time
 from dataclasses import dataclass, field
@@ -117,12 +118,40 @@ class ReviewStore:
         return state
 
     def save(self, state: ReviewState) -> None:
+        """Write the state atomically.
+
+        A plain `write_text` truncates the file before writing it, so a crash, a full disk or a killed
+        process between the two leaves a half-written file. `load` survives that (it falls back to a
+        fresh state), but the consequence is silent: the next review is a full one, and nobody learns that
+        the incremental baseline was lost. Writing to a sibling temp file and renaming it means a reader
+        sees either the old file or the new one, never a torn one — `os.replace` is atomic on POSIX and on
+        Windows.
+
+        The write is still best-effort: losing it means a full review next time, which is safe, so it is
+        never a reason to fail a review.
+        """
         path = self._path(state.repo, state.pr)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(state.as_dict(), indent=2, sort_keys=True), encoding="utf-8")
+            payload = json.dumps(state.as_dict(), indent=2, sort_keys=True)
+            handle = tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=str(path.parent),
+                prefix=path.name + ".", suffix=".tmp", delete=False,
+            )
+            try:
+                with handle:
+                    handle.write(payload)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(handle.name, path)
+            except BaseException:
+                # A temp file left behind would accumulate on every failure.
+                try:
+                    os.unlink(handle.name)
+                except OSError:
+                    pass
+                raise
         except OSError:
-            # Losing the write means the next review is a full one; never a reason to fail a review.
             pass
 
 
