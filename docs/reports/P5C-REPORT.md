@@ -1,7 +1,7 @@
 # Phase 5c report — the approved redesign
 
-Status: **awaiting Sahil's visual sign-off.** Commit `3de76a4`. Tests **1085, OK**. D13 is a separate
-commit, `73c2d7c`.
+Status: **awaiting Sahil's visual sign-off.** Commits `73c2d7c` (D13), `3de76a4` (the redesign),
+`f25e903` (a CI-found fix). Tests **1086, OK**.
 
 ## Done / Not done against the instruction
 
@@ -148,11 +148,39 @@ scp sahil@<rig>:/home/kensei/shared/code-shipper-review/phase5c-surfaces.html .
 - Carried and unchanged: a real hosted-provider auth run, macOS/Windows containment of an actual fix run,
   concurrency, PSI isolation. The false-confirm figure is still 1-in-3 from three clean PRs.
 
+## The CI matrix caught a real bug, and that is the most useful thing in this stop
+
+`45670855049` came back **3/6**: all three py3.11 jobs red, all three py3.12 jobs green. One line in
+`cli_view.py` nested an f-string inside another f-string's replacement field, reusing the same quote
+character:
+
+```python
+f"{paint(f'· head {projection.head[:8] or "—"} · ...', 'dim')}"
+```
+
+PEP 701 legalised that in 3.12. On 3.11 the inner quote terminates the outer f-string, so the remainder is
+lexed as code — which is why the error read `invalid character '—' (U+2014)` at the position of an em dash
+that was inside what looked like a string. Fixed by building the string in a step of its own.
+
+**Two guards for it were written and thrown away**, and that is the part worth recording:
+
+| Attempt | Verdict |
+|---|---|
+| `ast.parse(..., feature_version=(3, 11))` | **Useless.** Run against the actual broken file, it accepted it. The tokenizer rejects this before `ast` is reached. It would have sat in the suite catching nothing. |
+| Regex for "reused quote inside an f-string" | **Useless.** Matched ~30 innocent lines per file. |
+| Compile every file with a real 3.11 interpreter | **Works.** Verified against the pre-fix file from git history: reports line 107, `invalid character '—'`, exactly as CI did. |
+
+It also found a stale untracked `build/lib/` copy of the old file, now removed.
+
+The lesson is narrower than "test on 3.11": it is that the first two guards *looked* like protection. I
+only found out they were inert by feeding them the known-bad file. A guard that has never been shown to
+fail on the bug it exists for is not yet a guard.
+
 ## Test output (real)
 
 ```
 $ ./scripts/run_tests.sh
-Ran 1085 tests in 332.759s
+Ran 1086 tests in 336.069s
 
 OK
 ```
@@ -172,4 +200,10 @@ a concurrent Hermes update, and that is a real (small) fragility rather than a f
 
 ## Checkpoint CI
 
-Run ID in the header of my reply, from the runtime.
+| Run | Result |
+|---|---|
+| `45670855049` (on `3de76a4`) | **3/6** — all three py3.11 jobs red, all three py3.12 green |
+| `45674080586` (on `f25e903`, after the fix) | **6/6** — ubuntu, macOS, Windows × py3.11 and py3.12 |
+
+The first run is included deliberately: it is the one that found the bug, and a report that listed only
+the green run would be describing a different stop.
