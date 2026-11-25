@@ -18,6 +18,7 @@ from ..hosts.base import Diff
 from .framing import untrusted_block
 from .lenses import FINDINGS_SCHEMA, Lens, select
 from .rank import PostingPlan, plan
+from .fingerprint import merge_by_root_cause
 from .verify import Finding, Verdict, apply_verdicts, batch, build_prompt, parse_verdicts
 
 MAX_DIFF_CHARS = 60_000
@@ -263,6 +264,11 @@ def review(
         outcome.errors.extend(errors)
         if errors:
             outcome.complete = False
+        # Merge the same root cause reported at two lines into one posting, naming the other line in
+        # "Also noted". Without this a review of one function with one bug reported at :2 and :4 counts
+        # three important findings when there are two, and a maintainer reading "3" hunts for a third
+        # bug that does not exist.
+        confirmed = apply_root_cause_merge(confirmed)
         outcome.confirmed = len(confirmed)
         outcome.dropped_unverified = len(found) - len(confirmed)
         outcome.plan = plan(confirmed)

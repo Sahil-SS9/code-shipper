@@ -153,6 +153,9 @@ class MergedFinding:
     severity: str = ""
     title: str = ""
     merged_titles: list[str] = field(default_factory=list)
+    # Carried so `enclosing_function` can read the quoted code. Without it the root-cause merge cannot
+    # tell which function a finding is in, and silently merges nothing — which is how this was found.
+    evidence: str = ""
 
     @property
     def merged_count(self) -> int:
@@ -163,6 +166,82 @@ class MergedFinding:
             return ""
         joined = "; ".join(self.merged_titles)
         return f"\n\nAlso noted on this line: {joined}"
+
+
+_DEF = re.compile(r"^\s*(?:async\s+)?(?:def|function|func|fn)\s+([A-Za-z_][\w]*)", re.MULTILINE)
+
+
+def enclosing_function(evidence: str) -> str:
+    """The function name a quoted snippet sits in, or '' if it cannot be told.
+
+    Read from the code the finding quotes rather than from a line number: the whole point of this module
+    is that line numbers move. A `def` in the quoted text is a strong signal; the top-level case (no
+    enclosing def in the snippet) reports '' and is deliberately *not* merged by this rule, because
+    "somewhere in this file" is not a root cause.
+    """
+    matches = _DEF.findall(evidence or "")
+    if not matches:
+        return ""
+    # The last def in a quoted window is the innermost one, which is the function the snippet is about.
+    return matches[-1]
+
+
+def _root_cause_key(item: Any) -> str | None:
+    """A key that groups two findings about the same root cause, or None if it is not safe to guess.
+
+    The case this exists for: one review reported the same missing upper bound at `scn05_clamp.py:2` and
+    `:4`. Identity-by-evidence cannot merge them — the quoted lines differ — so the PR counted three
+    important findings when there were two, and a maintainer reading "3" would look for a third bug.
+
+    The rule is deliberately narrow: same path, same enclosing function, and a normalised title that
+    agrees. Two findings in one function with different claims stay separate; two findings in one file
+    with no enclosing function at all stay separate. Under-merging leaves a duplicate; over-merging hides
+    a bug, and hiding a bug is the worse of the two.
+    """
+    path = str(getattr(item, "path", "") or "")
+    function = enclosing_function(str(getattr(item, "evidence", "") or ""))
+    title = normalise_title(str(getattr(item, "title", "") or ""))
+    if not path or not function or not title:
+        return None
+    return f"{path}::{function}::{title}"
+
+
+def merge_by_root_cause(items: list[Any]) -> list[MergedFinding]:
+    """Merge findings about the same root cause, in addition to the fingerprint merge.
+
+    Applied after `merge_by_fingerprint`, so identical evidence is already collapsed and this only has to
+    catch the same defect quoted at two different lines.
+    """
+    merged = merge_by_fingerprint(items)
+    groups: dict[str, list[MergedFinding]] = {}
+    order: list[str] = []
+    for finding in merged:
+        key = _root_cause_key(finding)
+        if key is None:
+            # No safe key: keep it as its own group, addressed by fingerprint so it cannot collide.
+            key = f"fp::{finding.fingerprint}"
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(finding)
+
+    out: list[MergedFinding] = []
+    for key in order:
+        group = groups[key]
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+        survivor = max(group, key=lambda f: _severity_rank(f.severity))
+        for other in group:
+            if other is survivor:
+                continue
+            if other.title and other.title != survivor.title:
+                survivor.merged_titles.append(other.title)
+            else:
+                # Same normalised title, different line: name the line so the reader knows where else.
+                survivor.merged_titles.append(f"{other.title or 'same finding'} (line {other.line})")
+        out.append(survivor)
+    return out
 
 
 def merge_by_fingerprint(items: list[Any]) -> list[MergedFinding]:
@@ -206,6 +285,7 @@ def merge_by_fingerprint(items: list[Any]) -> list[MergedFinding]:
                 severity=getattr(survivor, "severity", ""),
                 title=getattr(survivor, "title", ""),
                 merged_titles=[title for title in others if title],
+                evidence=getattr(survivor, "evidence", "") or getattr(survivor, "body", ""),
             )
         )
     return merged
@@ -235,3 +315,39 @@ def resolved_since(previous: set[str], current: list[Fingerprinted]) -> set[str]
     """
     present = {item.fingerprint for item in current}
     return set(previous) - present
+
+
+def apply_root_cause_merge(findings: list[Any]) -> list[Any]:
+    """Merge by root cause, returning findings of the caller's own type.
+
+    `merge_by_root_cause` works in `MergedFinding`; this keeps the rest of the pipeline in `Finding` so
+    nothing downstream has to know a merge happened. The survivor keeps its identity and gains the
+    merged titles in `body`, which is what `body_suffix` is for — the posted comment must name them.
+
+    Returns the original list untouched when nothing merged, so a caller can tell the difference.
+    """
+    if len(findings) < 2:
+        return findings
+    merged = merge_by_root_cause(findings)
+    if len(merged) == len(findings):
+        return findings
+
+    by_fingerprint = {_identity_of(item): item for item in findings}
+    out: list[Any] = []
+    for survivor in merged:
+        original = by_fingerprint.get(survivor.fingerprint)
+        if original is None:
+            # Should not happen: the survivor came from this list. Keeping it rather than dropping it
+            # is the safe direction — a lost finding is indistinguishable from one never found.
+            continue
+        suffix = survivor.body_suffix()
+        if suffix and hasattr(original, "body"):
+            # `Finding` is frozen, deliberately — identity must not drift once stamped. A merged body is
+            # a new value, so it is a new finding.
+            import dataclasses
+
+            original = dataclasses.replace(
+                original, body=f"{getattr(original, 'body', '') or ''}{suffix}"
+            )
+        out.append(original)
+    return out
