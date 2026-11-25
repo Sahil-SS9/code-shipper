@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .fingerprint import fingerprint as _compute_fingerprint
+
 
 @dataclass
 class ReviewState:
@@ -149,6 +151,21 @@ def advance(
     seen = set()
     for finding in findings:
         fingerprint = getattr(finding, "fingerprint", "") or ""
+        if not fingerprint:
+            # Stamp it here rather than requiring every caller to: a finding that reaches state
+            # without an identity is invisible to the union rule, which is the failure mode the rule
+            # exists to prevent. Measured on sandbox PR #19, where an important finding was reported
+            # but open_important stayed empty because nothing had computed a fingerprint yet.
+            fingerprint = _compute_fingerprint(
+                path=getattr(finding, "path", ""),
+                title=getattr(finding, "title", ""),
+                evidence=getattr(finding, "evidence", ""),
+            )
+            if fingerprint:
+                try:
+                    object.__setattr__(finding, "fingerprint", fingerprint)
+                except (AttributeError, TypeError):
+                    pass
         if not fingerprint:
             continue
         seen.add(fingerprint)

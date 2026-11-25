@@ -118,6 +118,17 @@ class StateTests(unittest.TestCase):
         self.assertEqual(state.important_fingerprints(), set(),
                          "a pass that covered the file and found nothing has cleared it")
 
+    def test_an_important_finding_enters_the_union_without_a_precomputed_fingerprint(self) -> None:
+        """Measured on sandbox PR #19: the finding was reported, the union stayed empty.
+
+        Nothing had computed a fingerprint yet at the point state was updated, so the finding was
+        invisible to the union rule — exactly what that rule exists to prevent.
+        """
+        state = ReviewState(repo="o/r", pr=1)
+        unstamped = Finding("f1", "limits.py", 3, "important", "clamp ignores high", "b", "+return max(low, value)")
+        advance(state, head_sha="aaa", complete=True, findings=[unstamped], covered_paths=["limits.py"])
+        self.assertEqual(len(state.important_fingerprints()), 1)
+
     def test_the_union_spans_multiple_passes(self) -> None:
         state = ReviewState(repo="o/r", pr=1)
         advance(state, head_sha="aaa", complete=True,
