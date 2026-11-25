@@ -849,6 +849,10 @@ def cmd_ship_ui(args: argparse.Namespace) -> int:
     learned the first; keeping two implementations would have been the bug — this one kept drawing
     fixtures long after `ui` was rewired.
     """
+    # `ship-ui` has no --json flag, so `cmd_ui`'s attribute read would raise AttributeError. Default it
+    # rather than adding a flag the older name never had.
+    if not hasattr(args, "json"):
+        args.json = False
     return cmd_ui(args)
 
 
@@ -1228,7 +1232,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fix":
         return cmd_fix(args)
     if args.command == "ui":
-        return cmd_ui(args)
+        # `ship-ui` has no --json flag, so `cmd_ui`'s attribute read would raise AttributeError. Default it
+    # rather than adding a flag the older name never had.
+    if not hasattr(args, "json"):
+        args.json = False
+    return cmd_ui(args)
     if args.command == "status":
         return cmd_status(args)
     if args.command == "ship-ui":
