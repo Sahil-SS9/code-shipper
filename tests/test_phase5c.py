@@ -537,3 +537,232 @@ class PortableSyntaxTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "",
                          f"files that do not compile under 3.11:\n{result.stdout}")
+
+
+class IncompleteNeverClaimsCleanTests(unittest.TestCase):
+    """Fix 1: in a review that did not finish, "no findings" is the most misleading line possible.
+
+    It reads as a clean result when the truth is that nothing was examined. This is swept across all
+    three surfaces and all five non-complete states.
+    """
+
+    NOT_COMPLETE = ("error", "reviewing", "paused", "stopped", "incomplete")
+    PLACEHOLDER = "The review didn't finish, so nothing was checked."
+
+    def _texts(self, name: str) -> dict[str, str]:
+        projection = fixtures.ALL[name]()
+        return {
+            "desktop": desktop.render(projection),
+            "tui-wide": "\n".join(tui.render(projection, width=124)),
+            "tui-narrow": "\n".join(tui.render(projection, width=60)),
+            "cli": "\n".join(cli_view.render_review(projection)),
+        }
+
+    def test_no_non_complete_state_says_no_findings_in_any_surface(self) -> None:
+        for name in self.NOT_COMPLETE:
+            for surface, text in self._texts(name).items():
+                self.assertNotIn("No findings at this head", text,
+                                 f"{name}/{surface} claims there are no findings")
+
+    def test_every_non_complete_state_with_no_findings_says_nothing_was_checked(self) -> None:
+        """Only applies where there is nothing to show.
+
+        `incomplete` carries the findings the finished lenses did return, which is the honest thing to
+        show — a partial review's partial output, clearly labelled. The placeholder is for the case where
+        a surface would otherwise print "no findings" over an empty list.
+        """
+        for name in self.NOT_COMPLETE:
+            if fixtures.ALL[name]().findings:
+                continue
+            for surface, text in self._texts(name).items():
+                self.assertIn(self.PLACEHOLDER, text, f"{name}/{surface} does not say so")
+
+    def test_a_partial_review_shows_its_findings_and_never_claims_clean(self) -> None:
+        """The other half of the same rule: partial output is shown, not replaced by a reassuring line."""
+        projection = fixtures.state_incomplete()
+        self.assertTrue(projection.findings, "the incomplete fixture has findings from the lenses that ran")
+        for surface, text in self._texts("incomplete").items():
+            self.assertNotIn("No findings at this head", text, surface)
+            self.assertIn(projection.findings[0].title, text, surface)
+
+    def test_a_completed_clean_review_still_says_no_findings(self) -> None:
+        """The other half: a review that finished with nothing to report must be allowed to say so.
+
+        Only states with an empty findings list are relevant — a state that has findings shows them.
+        """
+        for name in ("approvals-satisfied", "observe"):
+            projection = fixtures.ALL[name]()
+            self.assertEqual(projection.findings, [], f"{name} is expected to have no findings")
+            self.assertIn("No findings at this head", self._texts(name)["desktop"], name)
+
+    def test_the_placeholder_comes_from_the_projection(self) -> None:
+        """It must not be written out in three surfaces: that is how they drift."""
+        for module in (desktop, tui, cli_view):
+            self.assertNotIn(self.PLACEHOLDER, inspect.getsource(module),
+                             f"{module.__name__} hardcodes the placeholder")
+
+
+class ErrorCopyTests(unittest.TestCase):
+    """Fix 1: a plain headline, the cause as detail, one Retry."""
+
+    def test_the_stack_trace_sentence_is_gone(self) -> None:
+        """Scoped to the rendered copy.
+
+        The projection's own source contains the phrase in a comment explaining why it was removed —
+        which is exactly where it should stay. Checking rendered output is the honest test of a copy
+        change.
+        """
+        for surface, text in (("desktop", desktop.render(fixtures.state_error())),
+                              ("tui", "\n".join(tui.render(fixtures.state_error()))),
+                              ("cli", "\n".join(cli_view.render_review(fixtures.state_error())))):
+            self.assertNotIn("plain cause", text, surface)
+
+    def test_the_projection_source_no_longer_emits_it(self) -> None:
+        source = inspect.getsource(proj)
+        code_lines = [line for line in source.splitlines()
+                      if "plain cause" in line and not line.strip().startswith("#")]
+        self.assertEqual(code_lines, [], "the sentence must not be emitted, only explained in a comment")
+
+    def test_the_headline_is_short_and_plain(self) -> None:
+        headline, sub, action, label = fixtures.state_error().next_bar()
+        self.assertEqual(headline, "Your approval rule can't be met")
+        self.assertLessEqual(len(headline), 48, "the headline is a short line, not a sentence")
+        self.assertIn("count (2) exceeds", sub, "the cause is the detail below it")
+        self.assertEqual((action, label), ("review", "Retry"), "one Retry, nothing else")
+
+    def test_the_error_state_offers_exactly_one_primary_action(self) -> None:
+        _h, _s, action, _l = fixtures.state_error().next_bar()
+        self.assertEqual(action, "review")
+        self.assertIn(action, fixtures.state_error().actions())
+
+
+class LaneLabelTests(unittest.TestCase):
+    """Fix 2: the two group labels, and a spinner only for work actually running."""
+
+    def test_the_tui_shows_both_group_labels(self) -> None:
+        for name in fixtures.SCREENSHOT_ORDER:
+            lines = "\n".join(tui.render(fixtures.ALL[name](), width=124))
+            self.assertIn("CODE-SHIPPER", lines, name)
+            self.assertIn("YOU AND GITHUB", lines, name)
+
+    def test_the_lanes_line_fits_the_board(self) -> None:
+        for name in fixtures.SCREENSHOT_ORDER:
+            for line in tui.render(fixtures.ALL[name](), width=124):
+                if "CODE-SHIPPER" in line:
+                    self.assertLessEqual(len(line.rstrip()), 124)
+                    self.assertIn("YOU AND GITHUB", line, f"{name} clipped the right-hand label")
+
+    def test_only_a_running_step_uses_the_spinner(self) -> None:
+        for name in fixtures.SCREENSHOT_ORDER:
+            for step, state, _sub in fixtures.ALL[name]().lanes():
+                if state == "waiting":
+                    self.assertEqual(tui.LANE_ICON[state], "▸",
+                                     f"{name}/{step} shows a waiting decision as running")
+
+    def test_fix_is_a_waiting_decision_in_the_findings_state(self) -> None:
+        steps = fixtures.state_findings().lanes()
+        fix = next(s for s in steps if s[0] == "Fix")
+        self.assertEqual(fix[1], "waiting", "Fix waits for a person's decision; it is not running")
+
+    def test_the_running_state_does_use_the_spinner(self) -> None:
+        steps = fixtures.state_reviewing().lanes()
+        review = next(s for s in steps if s[0] == "Review")
+        self.assertEqual(review[1], "running")
+        self.assertEqual(tui.LANE_ICON["running"], "◐")
+
+    def test_desktop_and_tui_agree_on_every_icon(self) -> None:
+        for state, (_cls, icon) in desktop.ICON_TO_CLASS.items():
+            self.assertEqual(tui.LANE_ICON[state], icon, state)
+
+
+class WrapTests(unittest.TestCase):
+    """Fix 3: wrap in the wide layout, clip only when narrow."""
+
+    def test_the_wide_next_sub_line_is_not_ellipsised(self) -> None:
+        for name in fixtures.SCREENSHOT_ORDER:
+            lines = tui.render(fixtures.ALL[name](), width=124)
+            next_rows = [line for line in lines if "▌" in line]
+            for row in next_rows:
+                self.assertNotIn("…", row, f"{name} clipped the Next bar")
+
+    def test_the_wide_finding_explanation_is_not_ellipsised(self) -> None:
+        projection = fixtures.state_findings()
+        lines = tui.render(projection, width=124)
+        joined = "\n".join(lines)
+        # The full explanation survives somewhere in the output, wrapped.
+        why = projection.findings[0].why
+        tail = why.split()[-3:]
+        for word in tail:
+            self.assertIn(word, joined, f"the explanation lost {word!r}")
+
+    def test_the_wide_layout_wraps_rather_than_widening(self) -> None:
+        for name in fixtures.SCREENSHOT_ORDER:
+            for line in tui.render(fixtures.ALL[name](), width=124):
+                self.assertEqual(len(line), 124)
+
+    def test_the_narrow_layout_clips(self) -> None:
+        lines = tui.render(fixtures.state_findings(), width=60)
+        joined = "\n".join(lines)
+        self.assertIn("…", joined, "the narrow layout should clip, not wrap")
+        for line in lines:
+            self.assertEqual(len(line), 60)
+
+
+class StatusColumnTests(unittest.TestCase):
+    """Fix 4: the short reason, never a headline cut mid-word."""
+
+    def _rows(self) -> list[str]:
+        return [line for line in cli_view.render_status(fixtures.status_board())
+                if "●" in line]
+
+    def test_the_reason_column_uses_the_short_inbox_reason(self) -> None:
+        board = fixtures.status_board()
+        rows = self._rows()
+        for projection, row in zip(board, rows):
+            short = projection.rows[0].reason
+            self.assertIn(short[:20], row, f"#{projection.pr} does not show its inbox reason")
+
+    def test_no_reason_is_cut_mid_word_by_the_headline(self) -> None:
+        """The old defect: the Next headline truncated at 36 characters, mid-word."""
+        for row in self._rows():
+            self.assertNotRegex(row, r"\b\w+ pr\s{2,}", "a word was cut mid-syllable")
+            self.assertNotIn("Merge on GitHub when", row)
+
+    def test_the_age_uses_the_board_format(self) -> None:
+        """1d, not 24h — the board and the list must not disagree about a duration."""
+        joined = "\n".join(self._rows())
+        self.assertNotIn("24h", joined)
+        self.assertIn("1d", joined)
+
+    def test_the_age_formatter_matches_the_board(self) -> None:
+        for seconds, expected in ((90, "1m"), (7200, "2h"), (86400, "1d"), (172800, "2d")):
+            self.assertEqual(cli_view._age(seconds), expected, seconds)
+            self.assertEqual(tui._age(seconds), expected, seconds)
+
+
+class ExitCodeDocTests(unittest.TestCase):
+    """Fix 5: the codes in --help and the README, as the spec's acceptance requires."""
+
+    def test_help_lists_all_four_codes(self) -> None:
+        from code_shipper import cli
+
+        help_text = cli.build_parser().format_help()
+        for line in ("0  clean", "1  findings", "2  error", "3  incomplete"):
+            self.assertIn(line, help_text)
+
+    def test_the_readme_lists_all_four_codes(self) -> None:
+        import pathlib as _pathlib
+
+        readme = (_pathlib.Path(__file__).resolve().parent.parent / "README.md").read_text()
+        self.assertIn("## Exit codes", readme)
+        for code, word in (("0", "clean"), ("1", "findings"), ("2", "error"),
+                           ("3", "incomplete")):
+            self.assertIn(f"`{code}`", readme)
+            self.assertIn(f"**{word}**", readme)
+
+    def test_help_and_the_code_agree(self) -> None:
+        from code_shipper import cli
+
+        help_text = cli.build_parser().format_help()
+        for word, code in cli_view.EXIT_CODES.items():
+            self.assertIn(f"{code}  {word}", help_text, word)
