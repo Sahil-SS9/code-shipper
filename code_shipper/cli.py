@@ -63,6 +63,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=".",
         help="directory the agent runs in (default: the current directory)",
     )
+    review.add_argument(
+        "--profile",
+        default="standard",
+        choices=["quiet", "standard", "assertive"],
+        help="how much to report: quiet hides nits, assertive lowers the bar (default: standard)",
+    )
+    review.add_argument(
+        "--trigger",
+        default="manual",
+        choices=["manual", "open", "on-push"],
+        help="what caused this review; on-push and open review only commits since the last complete "
+             "review (default: manual)",
+    )
+    review.add_argument(
+        "--state-dir",
+        default="",
+        help="where review state and the cache live (default: ~/.local/state/code-shipper)",
+    )
+    review.add_argument(
+        "--max-reviews",
+        type=int,
+        default=20,
+        help="stop reviewing this PR after this many reviews, with a stated reason (default: 20)",
+    )
 
     watch = sub.add_parser("watch", help="watch a pull request and fix it within a budget")
     watch.add_argument("pr", type=int, help="pull request number")
@@ -149,15 +173,46 @@ def cmd_review(args: argparse.Namespace) -> int:
         print(f"harness unavailable: {reason}", file=sys.stderr)
         return 2
 
-    outcome = run_review(
-        diff=diff,
+    from .review.cache import ReviewCache
+    from .review.service import ReviewRequest, run as run_service
+    from .review.state import ReviewStore
+
+    state_root = Path(args.state_dir).expanduser() if args.state_dir else _state_dir()
+    store = ReviewStore(state_root)
+    cache = ReviewCache(state_root)
+
+    # An on-push or on-open review covers only commits since the last complete review. A manual
+    # review deliberately covers the whole PR: a human asking for a review wants all of it.
+    since_diff = None
+    existing = store.load(args.repo, args.pr)
+    if args.trigger in ("on-push", "open") and existing.has_baseline:
+        try:
+            since_diff = host.compare(args.repo, existing.last_reviewed_head, pr.head_sha)
+        except Exception:  # noqa: BLE001 - fall back to a full review rather than skip commits
+            since_diff = None
+
+    result = run_service(
+        ReviewRequest(
+            repo=args.repo,
+            pr=args.pr,
+            head_sha=pr.head_sha,
+            diff=diff,
+            since_diff=since_diff,
+            level=args.level,
+            profile=args.profile,
+            trigger=args.trigger,
+            intent=intent_block(pr.title, pr.body),
+            workdir=args.workdir,
+            env=scrubbed_env(),
+        ),
         harness=harness,
-        level=args.level,
-        workdir=args.workdir,
-        env=scrubbed_env(),
-        intent=intent_block(pr.title, pr.body),
+        store=store,
+        cache=cache,
+        max_reviews_per_pr=args.max_reviews,
     )
-    outcome_dict = outcome.as_dict()
+    outcome = result.outcome
+
+    outcome_dict = result.as_dict()
     outcome_dict["pr"] = args.pr
     outcome_dict["repo"] = args.repo
     outcome_dict["head_sha"] = pr.head_sha
@@ -165,10 +220,21 @@ def cmd_review(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(outcome_dict, indent=2))
     else:
-        print(f"PR #{args.pr} {pr.title} ({pr.head_sha[:7]}) level={args.level}")
-        print(f"lenses: {', '.join(outcome.lenses_run)}")
+        print(f"PR #{args.pr} {pr.title} ({pr.head_sha[:7]}) level={args.level} "
+              f"profile={args.profile}")
+        if result.cached:
+            print("cached: this head was already reviewed, so no model call was made")
+        if result.incremental and result.scope is not None:
+            print(f"incremental: {result.scope.summary()}")
+        if result.paused:
+            print(f"PAUSED: {result.pause_reason}")
+        if result.ignored_summary:
+            print(result.ignored_summary)
+        print(f"lenses: {', '.join(outcome.lenses_run) or 'none'}")
         print(f"findings: {outcome.raw_findings} raw, {outcome.confirmed} confirmed, "
               f"{len(outcome.findings)} to post")
+        if result.union_important:
+            print(f"important open across the whole PR: {len(result.union_important)}")
         if not outcome.complete:
             print("INCOMPLETE: " + "; ".join(outcome.errors))
         for finding in outcome.findings:
@@ -177,7 +243,16 @@ def cmd_review(args: argparse.Namespace) -> int:
                 print(f"    {finding.body[:300]}")
         if outcome.plan and outcome.plan.summary_line():
             print(f"\n{outcome.plan.summary_line()}")
-    return 0 if outcome.complete else 1
+    return 0 if outcome.complete and not result.paused else 1
+
+
+def _state_dir() -> Path:
+    """Where review state and the cache live. Not under ~/.hermes: that path is refused by the
+    container spec, and a state dir that cannot be mounted next to a run is the wrong dir."""
+    import os
+
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(base) / "code-shipper"
 
 
 def cmd_watch(args: argparse.Namespace) -> int:

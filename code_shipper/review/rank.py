@@ -26,6 +26,21 @@ class PostingPlan:
     omitted_important: int
     omitted_nit: int
 
+    def without_nits(self) -> "PostingPlan":
+        """The same plan with nits dropped, counted rather than discarded silently.
+
+        A quiet profile hides nits from the posted review; the count still goes into the body so a
+        reader knows something was found and is not being shown.
+        """
+        kept = [f for f in self.to_post if (getattr(f, "severity", "") or "").lower() != "nit"]
+        dropped = len(self.to_post) - len(kept)
+        return PostingPlan(
+            to_post=kept,
+            omitted=self.omitted + dropped,
+            omitted_important=self.omitted_important,
+            omitted_nit=self.omitted_nit + dropped,
+        )
+
     def summary_line(self) -> str:
         if not self.omitted:
             return ""

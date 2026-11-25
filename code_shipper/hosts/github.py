@@ -113,6 +113,31 @@ class GitHubHost:
             raise HostError("unexpected payload for PR list")
         return [_to_pr(entry) for entry in data]
 
+    def compare(self, repo: str, base: str, head: str) -> Diff:
+        """The diff between two commits — used to scope an incremental review (D11).
+
+        `base` is the last reviewed head and `head` is the new one, so the result says which files the
+        new commits touched. Content for the review still comes from `get_diff`, because a hunk shown
+        against a moved base loses the context the reviewer needs.
+        """
+        owner, name = split_slug(repo)
+        data, _ = self._get(f"/repos/{owner}/{name}/compare/{base}...{head}")
+        if not isinstance(data, dict):
+            raise HostError("unexpected payload for compare")
+        patches: list[FilePatch] = []
+        for entry in data.get("files") or []:
+            if not isinstance(entry, dict):
+                continue
+            patches.append(
+                FilePatch(
+                    path=str(entry.get("filename", "")),
+                    status=str(entry.get("status", "modified")),
+                    old_path=entry.get("previous_filename"),
+                    patch=str(entry.get("patch", "")),
+                )
+            )
+        return Diff(files=tuple(patches))
+
     def get_diff(self, repo: str, number: int) -> Diff:
         owner, name = split_slug(repo)
         data, _ = self._get(f"/repos/{owner}/{name}/pulls/{int(number)}/files?per_page=100")
