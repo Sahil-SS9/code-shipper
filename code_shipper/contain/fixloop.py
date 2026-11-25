@@ -17,21 +17,12 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Paths a fix may touch. Anything else is out of scope and fails the push.
-ALLOWED_PATTERNS = (
-    re.compile(r"^calc/.*\.py$"),
-    re.compile(r"^tests/.*\.py$"),
-)
-# The CI workflow, package metadata and policy files are never a fix.
-FORBIDDEN_PATTERNS = (
-    re.compile(r"^\.github/"),
-    re.compile(r"(^|/)setup\.cfg$"),
-    re.compile(r"(^|/)pyproject\.toml$"),
-    # A conftest.py anywhere can rewrite collection, fixtures or assertions, so it is never a fix.
-    # Matched on the basename at any depth, not just the repository root.
-    re.compile(r"(^|/)conftest\.py$"),
-    re.compile(r"(^|/)\.code-shipper/"),
-)
+from ..steward.policy import ScopePolicy, weakening
+
+# There are no scope patterns here. Path rules and test-weakening detection live in exactly one place,
+# `code_shipper.steward.policy`, and this module calls it. Two implementations of one rule is how one
+# of them silently stops being enforced — the same reason `broker/write.py` became a re-export of
+# `broker/roles.py` rather than a second copy.
 MAX_FILES = 10
 MAX_TOTAL_BYTES = 200_000
 
@@ -61,61 +52,23 @@ def snapshot(root: Path) -> dict[str, str]:
     return digests
 
 
-def _posix(path: str) -> str:
-    """Normalise a path to forward slashes before any rule is applied.
-
-    The rules are written with '/' because GitHub reports POSIX paths. On Windows a relative path
-    comes back with backslashes, so without this every rule silently stops matching: allowed paths
-    look out of scope, and a forbidden file such as calc\\conftest.py slips through. Normalising here
-    means there is one form for the rules to reason about.
-    """
-    return path.replace("\\", "/")
-
-
-def _allowed(path: str) -> bool:
-    normalised = _posix(path)
-    # search(), not match(): the forbidden patterns are anchored on a path *component*, and match()
-    # only anchors at the start of the string, so "calc/conftest.py" would slip through.
-    if any(pattern.search(normalised) for pattern in FORBIDDEN_PATTERNS):
-        return False
-    return any(pattern.match(normalised) for pattern in ALLOWED_PATTERNS)
-
-
-def _tests_only_tightened(before: bytes, after: bytes) -> list[str]:
-    """A test change must not remove or skip assertions.
-
-    This cannot judge intent; it can refuse the two shapes that make a failing test pass without
-    fixing anything: deleting test functions, and skipping them.
-    """
-    problems: list[str] = []
-    before_text = before.decode("utf-8", "replace")
-    after_text = after.decode("utf-8", "replace")
-
-    removed_defs = set(re.findall(r"^def (test_\w+)", before_text, re.M)) - set(
-        re.findall(r"^def (test_\w+)", after_text, re.M)
-    )
-    if removed_defs:
-        problems.append(f"test functions removed: {sorted(removed_defs)}")
-
-    if re.search(r"@pytest\.mark\.(skip|xfail)", after_text) and not re.search(
-        r"@pytest\.mark\.(skip|xfail)", before_text
-    ):
-        problems.append("a skip/xfail marker was added to a test")
-
-    if after_text.count("assert ") < before_text.count("assert "):
-        problems.append("assertions were removed from a test")
-
-    return problems
-
-
 def check_scope(
-    before: dict[str, str], root: Path, *, original_root: Path | None = None
+    before: dict[str, str],
+    root: Path,
+    *,
+    original_root: Path | None = None,
+    policy: ScopePolicy | None = None,
 ) -> ScopeVerdict:
     """Derive the change from disk and decide whether it is allowed.
+
+    ``policy`` decides which paths may change and what counts as weakening a test. It is required for
+    that judgement to mean anything: the defaults allow nothing, so a caller that omits it gets a
+    refusal rather than a silent pass.
 
     ``original_root`` is the pristine copy the workspace was seeded from, used to compare test files
     against what they were. Without it a test edit cannot be judged at all.
     """
+    policy = policy or ScopePolicy()
     after = snapshot(root)
     changed = sorted(path for path, digest in after.items() if before.get(path) != digest)
     removed = sorted(path for path in before if path not in after)
@@ -125,42 +78,49 @@ def check_scope(
         return ScopeVerdict(False, changed, removed, ["no change was made"])
     if removed:
         problems.append(f"files were deleted: {removed}")
-    if len(changed) > MAX_FILES:
-        problems.append(f"too many files changed: {len(changed)} > {MAX_FILES}")
+    if len(changed) > policy.max_files:
+        problems.append(f"too many files changed: {len(changed)} > {policy.max_files}")
 
     total = 0
     for path in changed:
-        if not _allowed(path):
+        if not policy.path_allowed(path):
             problems.append(f"out of scope: {path}")
             continue
         total += len((root / path).read_bytes())
 
-    if total > MAX_TOTAL_BYTES:
-        problems.append(f"change too large: {total} bytes > {MAX_TOTAL_BYTES}")
+    if total > policy.max_total_bytes:
+        problems.append(f"change too large: {total} bytes > {policy.max_total_bytes}")
 
-    # A change to a test must not be a way to make the test stop testing.
+    # A change to a test must not be a way to make the test stop testing. Decided from the AST, so
+    # class methods, unittest asserts and assert-True padding are all visible.
     if original_root is not None:
         for path in changed:
-            if not path.startswith("tests/"):
+            if not policy.is_test_path(path):
                 continue
             original = original_root / path
-            before_bytes = original.read_bytes() if original.exists() else b""
-            problems.extend(
-                f"{path}: {problem}"
-                for problem in _tests_only_tightened(before_bytes, (root / path).read_bytes())
-            )
+            before_text = original.read_text(encoding="utf-8", errors="replace") if original.exists() else ""
+            after_text = (root / path).read_text(encoding="utf-8", errors="replace")
+            problems.extend(f"{path}: {problem}" for problem in weakening(before_text, after_text))
 
     return ScopeVerdict(not problems, changed, removed, problems)
 
 
-def test_weakening(before_root: Path, after_root: Path) -> list[str]:
-    """Compare the tests directory between two trees for removed asserts or added skips."""
+def test_weakening(
+    before_root: Path, after_root: Path, *, policy: ScopePolicy | None = None
+) -> list[str]:
+    """Compare the tests between two trees for removed assertions or added skips."""
+    policy = policy or ScopePolicy()
     problems: list[str] = []
-    for path in sorted(after_root.glob("tests/**/*.py")):
-        relative = str(path.relative_to(after_root))
+    for path in sorted(after_root.rglob("*.py")):
+        relative = path.relative_to(after_root).as_posix()
+        if not policy.is_test_path(relative):
+            continue
         original = before_root / relative
-        before = original.read_bytes() if original.exists() else b""
-        problems.extend(f"{relative}: {p}" for p in _tests_only_tightened(before, path.read_bytes()))
+        before_text = original.read_text(encoding="utf-8", errors="replace") if original.exists() else ""
+        problems.extend(
+            f"{relative}: {p}"
+            for p in weakening(before_text, path.read_text(encoding="utf-8", errors="replace"))
+        )
     return problems
 
 
@@ -186,16 +146,24 @@ def push(
     token: str,
     hookless_dir: Path,
     author: tuple[str, str],
-    head_branch: str | None = None,
+    head_branch: str,
 ) -> dict:
     """Commit in the worktree and push fast-forward only, at the exact expected head.
 
-    ``head_branch`` is the PR's head branch. When given, a push to any other branch is refused before
-    anything reaches the network: a CI log or a model cannot redirect a fix onto ``main``.
+    ``head_branch`` is the PR's head branch and is **required**: it is the only thing that stops a
+    push landing somewhere else. When it had a default of None, "None means any branch" was the
+    behaviour and the T-ADV-06 protection protected nothing — the one caller did not pass it. A
+    required argument makes that mistake impossible to repeat rather than merely documented.
 
     Returns a receipt. Nothing here can merge: there is no merge operation in this module.
     """
-    if head_branch is not None and branch != head_branch:
+    if not isinstance(head_branch, str) or not head_branch:
+        return {
+            "ok": False,
+            "stage": "branch-scope",
+            "detail": "head_branch is required: refusing to push without knowing the PR head",
+        }
+    if branch != head_branch:
         return {
             "ok": False,
             "stage": "branch-scope",

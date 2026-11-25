@@ -20,6 +20,7 @@ import unittest
 from pathlib import Path
 
 from code_shipper.contain import fixloop
+from code_shipper.steward.policy import ScopePolicy
 
 FAKE_TOKEN = "ghp_FAKEtokenvalueforTestsOnly0123456789"
 # Unix-domain sockets and POSIX file modes do not exist on Windows. These tests are
@@ -104,6 +105,7 @@ def push_with_observer(worktree: Path, bare: Path, *, expected_sha: str, token: 
         receipt = fixloop.push(
             worktree,
             branch="main",
+            head_branch="main",
             expected_sha=expected_sha,
             commit_message="test commit",
             token=token,
@@ -153,6 +155,7 @@ class TokenNotInArgvTests(unittest.TestCase):
         receipt = fixloop.push(
             self.repo.work,
             branch="main",
+            head_branch="main",
             expected_sha="0" * 40,
             commit_message="should not happen",
             token=FAKE_TOKEN,
@@ -171,11 +174,22 @@ class TokenNotInArgvTests(unittest.TestCase):
 
 @posix_only
 class ScopeRuleTests(unittest.TestCase):
-    """The path rules are hard-coded for the sandbox; these pin their current behaviour."""
+    """The path rules now live in steward/policy; these pin their behaviour through that policy."""
+
+    POLICY = ScopePolicy(
+        allowed=("calc/**/*.py", "tests/**/*.py"),
+        forbidden=(
+            ".github/**",
+            "**/setup.cfg",
+            "**/pyproject.toml",
+            "**/conftest.py",
+            "**/.code-shipper/**",
+        ),
+    )
 
     def test_allowed_paths(self) -> None:
-        self.assertTrue(fixloop._allowed("calc/__init__.py"))
-        self.assertTrue(fixloop._allowed("tests/test_calc.py"))
+        self.assertTrue(self.POLICY.path_allowed("calc/__init__.py"))
+        self.assertTrue(self.POLICY.path_allowed("tests/test_calc.py"))
 
     def test_forbidden_paths(self) -> None:
         for path in (
@@ -187,12 +201,12 @@ class ScopeRuleTests(unittest.TestCase):
             "setup.cfg",
         ):
             with self.subTest(path=path):
-                self.assertFalse(fixloop._allowed(path), f"{path} must be refused")
+                self.assertFalse(self.POLICY.path_allowed(path), f"{path} must be refused")
 
     def test_unknown_paths_are_refused(self) -> None:
         for path in ("README.md", "calc/data.json", "src/thing.py"):
             with self.subTest(path=path):
-                self.assertFalse(fixloop._allowed(path))
+                self.assertFalse(self.POLICY.path_allowed(path))
 
 
 @posix_only
@@ -202,6 +216,79 @@ class BasicAuthTests(unittest.TestCase):
 
         expected = base64.b64encode(f"x-access-token:{FAKE_TOKEN}".encode()).decode()
         self.assertEqual(fixloop._basic_auth(FAKE_TOKEN), expected)
+
+
+class HeadBranchRequiredTests(unittest.TestCase):
+    """`head_branch` is required, because when it defaulted to None the protection protected nothing.
+
+    The one real caller did not pass it, so "None means any branch" was the behaviour and T-ADV-06
+    was documentation rather than a control. These tests make that omission impossible to repeat.
+    """
+
+    def test_omitting_head_branch_is_a_type_error(self) -> None:
+        repo = PushRepo()
+        self.addCleanup(repo.cleanup)
+        repo.stage_change()
+        with self.assertRaises(TypeError):
+            fixloop.push(  # type: ignore[call-arg]
+                repo.work,
+                branch="main",
+                expected_sha=repo.base_sha,
+                commit_message="no head branch",
+                token=FAKE_TOKEN,
+                hookless_dir=repo.hooks(),
+                author=("Test", "t@e.invalid"),
+            )
+
+    def test_an_empty_head_branch_cannot_push(self) -> None:
+        repo = PushRepo()
+        self.addCleanup(repo.cleanup)
+        repo.stage_change()
+        receipt = fixloop.push(
+            repo.work,
+            branch="main",
+            head_branch="",
+            expected_sha=repo.base_sha,
+            commit_message="empty head",
+            token=FAKE_TOKEN,
+            hookless_dir=repo.hooks(),
+            author=("Test", "t@e.invalid"),
+        )
+        self.assertFalse(receipt["ok"])
+        self.assertEqual(receipt["stage"], "branch-scope")
+        # and nothing reached the remote
+        head = run(["git", "rev-parse", "main"], repo.bare).stdout.strip()
+        self.assertEqual(head, repo.base_sha)
+
+    def test_a_non_head_branch_cannot_push(self) -> None:
+        repo = PushRepo()
+        self.addCleanup(repo.cleanup)
+        repo.stage_change()
+        receipt = fixloop.push(
+            repo.work,
+            branch="main",
+            head_branch="feature",
+            expected_sha=repo.base_sha,
+            commit_message="wrong branch",
+            token=FAKE_TOKEN,
+            hookless_dir=repo.hooks(),
+            author=("Test", "t@e.invalid"),
+        )
+        self.assertFalse(receipt["ok"])
+        self.assertEqual(receipt["stage"], "branch-scope")
+        head = run(["git", "rev-parse", "main"], repo.bare).stdout.strip()
+        self.assertEqual(head, repo.base_sha, "the remote must not have moved")
+
+    def test_the_signature_has_no_default_for_head_branch(self) -> None:
+        import inspect
+
+        params = inspect.signature(fixloop.push).parameters
+        self.assertIn("head_branch", params)
+        self.assertIs(
+            params["head_branch"].default,
+            inspect.Parameter.empty,
+            "head_branch must not have a default: a default is how the protection stopped applying",
+        )
 
 
 class LeaseTests(unittest.TestCase):
@@ -226,6 +313,7 @@ class LeaseTests(unittest.TestCase):
         receipt = fixloop.push(
             repo.work,
             branch="main",
+            head_branch="main",
             expected_sha="0" * 40,
             commit_message="should not happen",
             token=FAKE_TOKEN,
@@ -242,6 +330,7 @@ class LeaseTests(unittest.TestCase):
         receipt = fixloop.push(
             repo.work,
             branch="main",
+            head_branch="main",
             expected_sha=repo.base_sha,
             commit_message="nothing staged",
             token=FAKE_TOKEN,

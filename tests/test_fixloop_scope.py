@@ -1,8 +1,9 @@
-"""Tests for the host-side fix scope rules.
+"""Fix-loop scope tests: policy-driven, with one implementation of the rules.
 
-The worker runs untrusted code with file-edit tools. Containment stops it reaching credentials or the
-network; it does not stop it rewriting a test so CI goes green without fixing anything. These tests
-cover that case and the ordinary ones, in both directions: real fixes accepted, cheats refused.
+The scope rules used to be hard-coded in fixloop as `calc/**` and `tests/**`, with a text-based
+test-weakening check. They now live only in `code_shipper.steward.policy`, and this module calls them.
+So these tests pass a policy explicitly, and the last class asserts fixloop has no scope logic of its
+own left to drift.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from code_shipper.contain import fixloop
 from code_shipper.contain.fixloop import check_scope, snapshot, test_weakening
+from code_shipper.steward.policy import ScopePolicy
 
 GOOD_SOURCE = """def add(a, b):
     return a + b
@@ -38,6 +40,18 @@ def test_divide():
     assert divide(6, 3) == 2
 """
 
+# What a repository would write in its own config for this layout.
+SANDBOX_POLICY = ScopePolicy(
+    allowed=("calc/**/*.py", "tests/**/*.py"),
+    forbidden=(
+        ".github/**",
+        "**/setup.cfg",
+        "**/pyproject.toml",
+        "**/conftest.py",
+        "**/.code-shipper/**",
+    ),
+)
+
 
 class Workspace:
     """A throwaway repo copy: pristine original plus an editable workspace."""
@@ -55,8 +69,10 @@ class Workspace:
     def before(self) -> dict[str, str]:
         return snapshot(self.work)
 
-    def check(self, before: dict[str, str]):
-        return check_scope(before, self.work, original_root=self.original)
+    def check(self, before: dict[str, str], policy: ScopePolicy | None = None):
+        return check_scope(
+            before, self.work, original_root=self.original, policy=policy or SANDBOX_POLICY
+        )
 
     def cleanup(self) -> None:
         shutil.rmtree(self.root, ignore_errors=True)
@@ -95,6 +111,16 @@ class AcceptsRealFixTests(FixCase):
         self.assertFalse(verdict.ok)
         self.assertIn("no change was made", verdict.problems)
 
+    def test_a_caller_with_no_policy_gets_a_refusal_not_a_pass(self) -> None:
+        # the default policy allows no paths, so forgetting to pass one fails closed
+        before = self.ws.before()
+        (self.ws.work / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+
+        verdict = check_scope(before, self.ws.work, original_root=self.ws.original)
+
+        self.assertFalse(verdict.ok)
+        self.assertTrue(any("out of scope" in p for p in verdict.problems), verdict.problems)
+
 
 class RefusesCheatingTests(FixCase):
     """Each of these makes CI green without fixing the bug."""
@@ -108,18 +134,19 @@ class RefusesCheatingTests(FixCase):
         verdict = self.ws.check(before)
 
         self.assertFalse(verdict.ok)
-        self.assertTrue(any("test functions removed" in p for p in verdict.problems), verdict.problems)
+        self.assertTrue(any("test removed" in p for p in verdict.problems), verdict.problems)
 
     def test_adding_a_skip_marker_is_refused(self) -> None:
         before = self.ws.before()
         (self.ws.work / "tests" / "test_calc.py").write_text(
-            "import pytest\n\n" + GOOD_TESTS.replace("def test_divide():", "@pytest.mark.skip\ndef test_divide():")
+            "import pytest\n\n"
+            + GOOD_TESTS.replace("def test_divide():", "@pytest.mark.skip\ndef test_divide():")
         )
 
         verdict = self.ws.check(before)
 
         self.assertFalse(verdict.ok)
-        self.assertTrue(any("skip" in p for p in verdict.problems), verdict.problems)
+        self.assertTrue(any("skipped" in p for p in verdict.problems), verdict.problems)
 
     def test_removing_assertions_is_refused(self) -> None:
         before = self.ws.before()
@@ -130,7 +157,7 @@ class RefusesCheatingTests(FixCase):
         verdict = self.ws.check(before)
 
         self.assertFalse(verdict.ok)
-        self.assertTrue(any("assertions were removed" in p for p in verdict.problems), verdict.problems)
+        self.assertTrue(any("assertions removed" in p for p in verdict.problems), verdict.problems)
 
     def test_touching_the_ci_workflow_is_refused(self) -> None:
         before = self.ws.before()
@@ -163,16 +190,39 @@ class RefusesCheatingTests(FixCase):
 
     def test_too_many_files_is_refused(self) -> None:
         before = self.ws.before()
-        for index in range(12):
+        policy = ScopePolicy(allowed=("calc/**/*.py", "tests/**/*.py"), max_files=3)
+        for index in range(5):
             (self.ws.work / "calc" / f"extra_{index}.py").write_text("x = 1\n")
 
-        verdict = self.ws.check(before)
+        verdict = self.ws.check(before, policy=policy)
 
         self.assertFalse(verdict.ok)
         self.assertTrue(any("too many files" in p for p in verdict.problems), verdict.problems)
 
+    def test_an_ast_only_cheat_is_caught(self) -> None:
+        # a class method removed: invisible to the old text check, which matched '^def test_'
+        two_tests = (
+            "import unittest\n\n\nclass TestCalc(unittest.TestCase):\n"
+            "    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n\n"
+            "    def test_divide(self):\n        self.assertEqual(divide(6, 3), 2)\n"
+        )
+        one_test = (
+            "import unittest\n\n\nclass TestCalc(unittest.TestCase):\n"
+            "    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n"
+        )
+        # the pristine copy has both tests; the workspace keeps only one
+        (self.ws.original / "tests" / "test_calc.py").write_text(two_tests)
+        (self.ws.work / "tests" / "test_calc.py").write_text(two_tests)
+        before = self.ws.before()
+        (self.ws.work / "tests" / "test_calc.py").write_text(one_test)
 
-class TestWeakeningTests(unittest.TestCase):
+        verdict = self.ws.check(before)
+
+        self.assertFalse(verdict.ok)
+        self.assertTrue(any("test removed" in p for p in verdict.problems), verdict.problems)
+
+
+class TestWeakeningTreeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp(prefix="cs-weak-"))
         self.addCleanup(shutil.rmtree, self.root, True)
@@ -181,14 +231,16 @@ class TestWeakeningTests(unittest.TestCase):
             (self.root / base / "tests" / "test_x.py").write_text(GOOD_TESTS)
 
     def test_identical_trees_report_nothing(self) -> None:
-        self.assertEqual(test_weakening(self.root / "original", self.root / "work"), [])
+        self.assertEqual(
+            test_weakening(self.root / "original", self.root / "work", policy=SANDBOX_POLICY), []
+        )
 
-    def test_removed_test_is_reported(self) -> None:
+    def test_a_removed_test_is_reported(self) -> None:
         (self.root / "work" / "tests" / "test_x.py").write_text(
             GOOD_TESTS.replace("\n\ndef test_divide():\n    assert divide(6, 3) == 2\n", "\n")
         )
-        problems = test_weakening(self.root / "original", self.root / "work")
-        self.assertTrue(any("test functions removed" in p for p in problems), problems)
+        problems = test_weakening(self.root / "original", self.root / "work", policy=SANDBOX_POLICY)
+        self.assertTrue(any("test removed" in p for p in problems), problems)
 
 
 class SnapshotTests(FixCase):
@@ -196,6 +248,11 @@ class SnapshotTests(FixCase):
         (self.ws.work / ".git").mkdir()
         (self.ws.work / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
         self.assertNotIn(".git/HEAD", snapshot(self.ws.work))
+
+    def test_snapshot_keys_are_posix(self) -> None:
+        digests = snapshot(self.ws.work)
+        self.assertIn("calc/__init__.py", digests)
+        self.assertFalse(any("\\" in key for key in digests))
 
     def test_snapshot_detects_a_byte_change(self) -> None:
         before = snapshot(self.ws.work)
@@ -207,15 +264,14 @@ class SnapshotTests(FixCase):
 class PathSeparatorTests(unittest.TestCase):
     """Rules must work on native separators. This was a real hole, not a cosmetic issue.
 
-    On Windows a relative path comes back with backslashes. Before normalisation, 'calc\\\\__init__.py'
-    did not match the allowed patterns (so a genuine fix looked out of scope) and, worse,
-    'calc\\\\conftest.py' did not match the forbidden ones either, so a file that can rewrite test
-    collection would have been accepted.
+    On Windows a relative path comes back with backslashes. Before normalisation, a genuine fix looked
+    out of scope and, worse, `calc\\\\conftest.py` matched no forbidden pattern either, so a file that
+    can rewrite test collection would have been accepted.
     """
 
-    def test_allowed_paths_match_with_backslashes(self) -> None:
-        self.assertTrue(fixloop._allowed("calc\\__init__.py"), "a Windows path must be in scope")
-        self.assertTrue(fixloop._allowed("tests\\test_calc.py"))
+    def test_backslash_paths_are_judged_by_the_same_rules(self) -> None:
+        self.assertTrue(SANDBOX_POLICY.path_allowed("calc\\__init__.py"))
+        self.assertTrue(SANDBOX_POLICY.path_allowed("tests\\test_calc.py"))
 
     def test_forbidden_paths_are_caught_with_backslashes(self) -> None:
         for path in (
@@ -225,29 +281,61 @@ class PathSeparatorTests(unittest.TestCase):
             "calc\\.code-shipper\\approvals.yml",
         ):
             with self.subTest(path=path):
-                self.assertFalse(fixloop._allowed(path), f"{path} must be refused on any platform")
+                self.assertFalse(
+                    SANDBOX_POLICY.path_allowed(path), f"{path} must be refused on any platform"
+                )
 
-    def test_snapshot_keys_are_posix(self) -> None:
-        root = Path(tempfile.mkdtemp(prefix="cs-snap-"))
-        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
-        (root / "calc").mkdir()
-        (root / "calc" / "a.py").write_text("x = 1\n")
-        digests = fixloop.snapshot(root)
-        self.assertIn("calc/a.py", digests)
-        self.assertFalse(any("\\" in key for key in digests), "keys must be POSIX regardless of OS")
-
-    def test_scope_check_accepts_a_fix_on_windows_style_paths(self) -> None:
-        # the whole path from snapshot to _allowed, using the native form for this platform
+    def test_scope_check_works_end_to_end_on_this_platform(self) -> None:
         root = Path(tempfile.mkdtemp(prefix="cs-scope-sep-"))
-        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
         (root / "calc").mkdir()
         source = root / "calc" / "__init__.py"
         source.write_text("return a * b\n")
         before = fixloop.snapshot(root)
         source.write_text("return a / b\n")
-        verdict = fixloop.check_scope(before, root)
+        policy = ScopePolicy(allowed=("calc/**/*.py",))
+        verdict = fixloop.check_scope(before, root, policy=policy)
         self.assertTrue(verdict.ok, verdict.problems)
         self.assertIn("calc/__init__.py", verdict.changed)
+
+
+class SingleImplementationTests(unittest.TestCase):
+    """The rules live in one place. This is the structural test the review asked for."""
+
+    def test_fixloop_has_no_scope_patterns_left(self) -> None:
+        for name in (
+            "ALLOWED_PATTERNS",
+            "FORBIDDEN_PATTERNS",
+            "_tests_only_tightened",
+            "_allowed",
+            "_posix",
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(
+                    hasattr(fixloop, name),
+                    f"fixloop.{name} still exists: scope logic must live only in steward/policy.py",
+                )
+
+    def test_fixloop_source_carries_no_path_rules_of_its_own(self) -> None:
+        import inspect
+
+        source = inspect.getsource(fixloop)
+        for needle in ("calc/", "ALLOWED_PATTERNS", "FORBIDDEN_PATTERNS", "conftest.py",
+                       "@pytest", "assert "):
+            self.assertNotIn(
+                needle, source,
+                f"fixloop mentions {needle!r}: path and test-weakening rules belong in policy.py",
+            )
+
+    def test_the_policy_module_owns_both_rules(self) -> None:
+        import inspect
+
+        from code_shipper.steward import policy
+
+        source = inspect.getsource(policy)
+        self.assertIn("def path_allowed", source)
+        self.assertIn("def weakening", source)
+        self.assertIn("import ast", source)
 
 
 if __name__ == "__main__":

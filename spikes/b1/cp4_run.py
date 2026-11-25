@@ -338,6 +338,7 @@ def main(argv: list[str] | None = None) -> int:
             receipt["push"] = push(
                 repo_copy,
                 branch=prepared["branch"],
+                head_branch=prepared["branch"],
                 expected_sha=prepared["head"],
                 commit_message="Fix divide(): correction by Code-Shipper (contained)\n\n"
                 "Pushed by the host broker after a scope and test check.",
