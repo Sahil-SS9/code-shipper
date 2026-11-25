@@ -1,33 +1,43 @@
-"""The TUI board: a pure renderer of a Projection (Phase 5b).
+"""TUI: the same structure as Desktop, in text (Phase 5c).
 
-`render(projection, width, height)` returns a list of lines and nothing else. No clock, no terminal
-query, no state of its own — which is what makes it screenshot-able, diffable and testable, and what
-stops the TUI accumulating logic the CLI does not have.
+`render(projection, width, height)` returns lines and nothing else — no clock, no terminal query, no
+state. That makes it screenshot-able, diffable and testable, and stops the TUI accumulating logic the
+CLI does not have.
 
-Layout, per the wireframes: a persistent context line on top, attention-sorted inbox left, detail
-right, and a keymap footer that shows only the keys that work in the current state. At narrow widths
-the two regions collapse to a list, and below the floor it degrades to a plain text summary rather than
-clipping the actions.
+Layout: inbox left, detail right, a NEXT bar with a coloured left edge, the lanes line, folded and open
+findings with diff lines, and a key bar whose keys are only the ones live in this state. Under 70
+columns it collapses to one column — detail with `← list` back — rather than clipping its own keys.
+
+Everything textual comes from the projection. This module decides layout only.
 """
 
 from __future__ import annotations
 
 from .projection import Projection
 
-# The floor below which a board would clip its own actions. Text is better than a broken box.
-MIN_BOARD_WIDTH = 72
+# Below this width a two-column board would clip its own key bar.
+MIN_BOARD_WIDTH = 70
+DEFAULT_WIDTH = 124
+DEFAULT_HEIGHT = 34
 
-# Key bindings, per the design notes: `s` stops watching, `x` cancels the run, Escape closes.
+# Keys, from the spec. There is no merge key and no approve key; a test asserts the absence.
 KEYMAP: dict[str, str] = {
-    "stop": "s stop watching",
-    "cancel": "x cancel run",
+    "stop": "s stop",
+    "cancel": "x cancel",
     "fix": "f fix",
     "review": "r review",
-    "open-pr": "o open PR",
-    "explain-policy": "p policy",
+    "open-pr": "o GitHub",
+    "explain-policy": "p rules",
     "refresh": "R refresh",
-    "withdraw-lesson": "w withdraw lesson",
 }
+
+# Navigation keys that are always available (moving, folding, the palette, help, quit).
+STATIC_KEYS = (("j/k", "move"), ("↵", "open"), ("c", "copy"), ("t", "track"),
+               (":", "commands"), ("?", "help"), ("q", "quit"))
+
+LANE_ICON = {"done": "✓", "failed": "✕", "waiting": "◐", "running": "◐",
+             "notstarted": "○", "notneeded": "–"}
+BULLET = {"fail": "●", "warn": "●", "pass": "●", "muted": "●", "flight": "●"}
 
 
 def _clip(text: str, width: int) -> str:
@@ -43,123 +53,153 @@ def _pad(text: str, width: int) -> str:
     return _clip(text, width).ljust(width)
 
 
-def _box(title: str, body: list[str], width: int, height: int) -> list[str]:
-    """A bordered panel. Every returned line is exactly `width` display columns."""
-    inner = max(1, width - 2)
-    lines = ["┌" + _pad(title, inner) + "┐"]
-    for row in body[: max(0, height - 2)]:
-        lines.append("│" + _pad(row, inner) + "│")
-    while len(lines) < height - 1:
-        lines.append("│" + " " * inner + "│")
-    lines.append("└" + "─" * inner + "┘")
+def _age(seconds: int) -> str:
+    if seconds <= 0:
+        return ""
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        return f"{seconds // 3600}h"
+    return f"{seconds // 86400}d"
+
+
+def _next_bar(projection: Projection, width: int) -> list[str]:
+    """The NEXT bar: a coloured left edge and two lines of copy from the projection."""
+    headline, sub, _action, _label = projection.next_bar()
+    inner = max(10, width - 2)
+    return [f"▌{_pad('NEXT  ' + headline, inner)}",
+            f"▌{_pad('      ' + sub, inner)}"]
+
+
+def _lanes_line(projection: Projection, width: int) -> list[str]:
+    steps = projection.lanes()
+    blocking = ""
+    for name, state, _sub in steps:
+        if state not in ("done", "notneeded"):
+            blocking = name
+            break
+    labels = []
+    for name, state, _sub in steps:
+        icon = LANE_ICON.get(state, "○")
+        shown = name.upper() if name == blocking else name
+        labels.append(f"{icon} {shown}")
+    line = f" {labels[0]}  {labels[1]}  │  {labels[2]}  {labels[3]}"
+    return [_pad(line, width)]
+
+
+def _inbox(projection: Projection, width: int) -> list[str]:
+    lines: list[str] = []
+    for name, rows in projection.inbox_groups():
+        lines.append(_clip(f" {name.upper()}  {len(rows)}", width))
+        for row in rows:
+            marker = "▸" if (row.repo == projection.repo and row.pr == projection.pr) else " "
+            age = _age(row.age_seconds)
+            head_width = max(8, width - 9)
+            lines.append(_pad(f"{marker}{BULLET.get(row.level, '●')} "
+                              f"{_clip(row.title, head_width)}", width - len(age) - 1)
+                         + f" {age}")
+            lines.append(_clip(f"   {row.reason}", width))
+    if not lines:
+        lines = [" nothing in the inbox"]
     return lines
-
-
-def _inbox_lines(projection: Projection, width: int) -> list[str]:
-    if not projection.rows:
-        return [f"  {projection.chip}", "  nothing in the inbox"]
-    lines = []
-    for row in projection.rows:
-        marker = "▸" if row.repo == projection.repo and row.pr == projection.pr else " "
-        lines.append(f" {marker} {row.chip:<13} #{row.pr:<4} {_clip(row.title, max(8, width - 26))}")
-        # The reason, in words, on its own line: a chip alone never says why.
-        lines.append(f"     {_clip(row.reason, max(8, width - 8))}")
-    return lines
-
-
-def _signal_lines(projection: Projection) -> list[str]:
-    """The four independent signals, never compressed into one badge."""
-    out = []
-    for signal in projection.signals:
-        mark = "✓" if signal.ok else "·"
-        out.append(f" {mark} {signal.name:<9} {signal.value}")
-    return out
 
 
 def _finding_lines(projection: Projection, width: int) -> list[str]:
     if not projection.findings:
-        return [" no findings"]
-    out = []
-    for finding in projection.findings:
-        out.append(f" {finding.severity[:9]:<10} {_clip(finding.path, width - 30)}:{finding.line}")
-        out.append(f"   {_clip(finding.title, max(8, width - 6))}")
+        return [" No findings at this head."]
+    out: list[str] = []
+    open_index = 0
+    for index, finding in enumerate(projection.findings):
+        if finding.severity.lower() in ("important", "blocking"):
+            open_index = index
+            break
+    for index, finding in enumerate(projection.findings):
+        important = finding.severity.lower() in ("important", "blocking")
+        tag = "IMPORTANT" if important else "NIT"
+        arrow = "▾" if index == open_index else "▸"
+        out.append(_clip(f" {arrow} {tag}  {finding.title}", width))
+        out.append(_clip(f"        {finding.path}:{finding.line}", width))
+        if index == open_index:
+            if finding.why:
+                out.append(_clip(f"    {finding.why}", width))
+            for _kind, number, text in (finding.code or ()):
+                out.append(_clip(f"   {number:>3} │ {text}", width))
+            if finding.suggested_fix:
+                out.append(_clip("       suggested fix · not applied · you decide", width))
+                out.append(_clip(f"   {finding.line:>3} −  {finding.suggested_fix[0].strip()}", width))
+                out.append(_clip(f"   {finding.line:>3} +  {finding.suggested_fix[1].strip()}", width))
+        if finding.also_noted:
+            out.append(_clip(f"        also noted: {', '.join(finding.also_noted)}", width))
     return out
 
 
-def render(projection: Projection, *, width: int = 113, height: int = 30) -> list[str]:
+def _key_bar(projection: Projection, width: int) -> list[str]:
+    """Two rows: the always-available keys, then only the actions live in this state.
+
+    The action row is derived from `projection.actions()`, so a stopped pull request does not advertise a
+    stop key. A key bar that lists dead keys teaches a user to distrust every key on it.
+    """
+    budget = projection.budget
+    live = "  ".join(KEYMAP[a] for a in projection.actions() if a in KEYMAP)
+    nav = "  ".join(f"{key} {label}" for key, label in STATIC_KEYS)
+    tail = f"round {budget.fixed_rounds}/{budget.max_rounds} · {budget.clock_text()}"
+    return [_pad(f" {nav}", width),
+            _pad(f" {live}   {tail}", width),
+            _pad(f" {projection.authority_note}", width)]
+
+
+def render(projection: Projection, *, width: int = DEFAULT_WIDTH,
+           height: int = DEFAULT_HEIGHT) -> list[str]:
     """The board as lines. Pure: same input, same output, always."""
     if width < MIN_BOARD_WIDTH:
-        return render_compact(projection, width=width)
+        return render_narrow(projection, width=width)
 
-    # Context line: connection, profile, runtime owner, sync age.
-    lines = [_pad(projection.context_line(), width)]
+    left_width = max(34, min(42, width // 3))
+    right_width = width - left_width - 1
 
-    header = f" {projection.chip}  {projection.repo}#{projection.pr}  {projection.title}"
-    lines.append(_pad(header, width))
-    if not projection.head_pinned and projection.head:
-        # A verdict computed at a different head must say so rather than look current.
-        lines.append(_pad(
-            f" STALE: verdict is for {projection.reviewed_head[:8] or 'none'}, "
-            f"head is {projection.head[:8]}", width))
+    lines = [_pad(f" code-shipper · {projection.repo} · {projection.who}", width)]
+    lines.append(_pad("─" * left_width + "┬" + "─" * right_width, width))
 
-    left_width = max(34, width // 3)
-    right_width = width - left_width
-    detail_height = height - 6
+    left = _inbox(projection, left_width - 1)
+    right: list[str] = []
+    right.append(_clip(f" #{projection.pr}  {projection.title}   {projection.chip}", right_width))
+    right.append(_clip(f" {projection.branch} → {projection.base_ref} · head "
+                       f"{projection.head[:8] or '—'}", right_width))
+    if projection.head and not projection.head_pinned:
+        right.append(_clip(f" STALE: verdict is for {projection.reviewed_head[:8] or 'none'}, "
+                           f"head is {projection.head[:8]}", right_width))
+    right.append("")
+    right += _next_bar(projection, right_width)
+    right.append("")
+    right += _lanes_line(projection, right_width)
+    right.append("")
+    right += _finding_lines(projection, right_width - 1)
 
-    inbox = _inbox_lines(projection, left_width - 2)
-    detail: list[str] = []
-    detail += _signal_lines(projection)
-    detail.append("")
-    if projection.verdict:
-        detail.append(f" verdict  {projection.verdict}"
-                      + ("" if projection.head_pinned else " (stale)"))
-    if projection.refusal:
-        detail.append(f" blocker  {_clip(projection.refusal, right_width - 4)}")
-    detail.append("")
-    detail += _finding_lines(projection, right_width - 2)
-    detail.append("")
-    detail.append(f" {projection.budget.rounds_text()} · {projection.budget.pushes_text()} · "
-                  f"{projection.budget.clock_text()}")
-    detail.append(f" {projection.budget.spend_text()}")
-    if projection.log:
-        detail.append("")
-        detail += [f" {_clip(line, right_width - 4)}" for line in projection.log[-4:]]
-
-    left = _box(" inbox — needs you first ", inbox, left_width, detail_height)
-    right = _box(" detail ", detail, right_width, detail_height)
-    for index in range(max(len(left), len(right))):
-        lines.append((left[index] if index < len(left) else " " * left_width)
-                     + (right[index] if index < len(right) else " " * right_width))
-
-    # Keymap footer: only the keys that work right now.
-    live = projection.actions()
-    keys = " ".join(KEYMAP[action] for action in live if action in KEYMAP)
-    keys += " esc close"
-    lines.append(_pad(keys, width))
-    lines.append(_pad(f" {projection.authority_note}", width))
+    body_height = max(4, height - 6)
+    for index in range(body_height):
+        left_cell = left[index] if index < len(left) else ""
+        right_cell = right[index] if index < len(right) else ""
+        lines.append(_pad(left_cell, left_width) + "│" + _pad(right_cell, right_width))
+    lines.append(_pad("─" * left_width + "┴" + "─" * right_width, width))
+    lines += _key_bar(projection, width)
     return lines
 
 
-def render_compact(projection: Projection, *, width: int = 70) -> list[str]:
-    """Below the board floor: plain text with the actions still readable.
-
-    Deliberately not a squeezed board. Clipping a board hides actions, and hiding an action is worse
-    than losing the box drawing.
-    """
-    lines = [
-        _pad(projection.context_line(), width),
-        _pad(f" {projection.chip}  {projection.repo}#{projection.pr} {projection.title}", width),
-    ]
-    if projection.verdict:
-        lines.append(_pad(f" verdict: {projection.verdict}", width))
-    if projection.refusal:
-        lines.append(_pad(f" blocker: {projection.refusal}", width))
-    for signal in projection.signals:
-        lines.append(_pad(f"  {'✓' if signal.ok else '·'} {signal.name}: {signal.value}", width))
-    for finding in projection.findings:
-        lines.append(_pad(
-            f"  {finding.severity} {finding.path}:{finding.line} {finding.title}", width))
-    lines.append(_pad("", width))
-    live = " ".join(KEYMAP[action] for action in projection.actions() if action in KEYMAP)
-    lines.append(_pad(f" keys: {live} esc close", width))
+def render_narrow(projection: Projection, *, width: int = 68) -> list[str]:
+    """One column: the selected pull request's detail, with ← back to the list."""
+    lines = [_pad(f" #{projection.pr} {projection.title}   {projection.chip}", width)]
+    lines.append(_pad(f" {projection.branch} → {projection.base_ref} · "
+                      f"{projection.head[:8] or '—'}", width))
+    if projection.head and not projection.head_pinned:
+        lines.append(_pad(f" STALE: computed at {projection.reviewed_head[:8] or 'none'}", width))
+    # Every line is padded to exactly `width`, including the ones built by the shared helpers: a
+    # screenshot or a diff of a board with ragged right edges is unusable.
+    lines += [_pad(line, width) for line in _next_bar(projection, width)]
+    lines += [_pad(line, width) for line in _lanes_line(projection, width)]
+    lines.append(_pad("─" * width, width))
+    lines += [_pad(line, width) for line in _finding_lines(projection, width)]
+    lines.append(_pad("─" * width, width))
+    live = "  ".join(KEYMAP[a] for a in projection.actions() if a in KEYMAP)
+    lines.append(_pad(f" ← list  j/k move  {live}  : commands  ? help", width))
+    lines.append(_pad(f" {projection.authority_note}", width))
     return lines

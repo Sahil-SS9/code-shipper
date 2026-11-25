@@ -1,5 +1,12 @@
 """Phase 5b: the surfaces hold no logic, and no surface offers a merge.
 
+Superseded in part by the approved Phase 5c redesign. The structural claims still hold and are tested
+here; the assertions that described the rejected 5b *look* — text chips like `NEEDS-FIX`, a three-column
+page, disabled Merge/Approve buttons, a 113-column board — were rewritten to the approved design. The
+visual and copy assertions now live in `test_phase5c.py`; what remains here is the parts of 5b that were
+right and must not regress: no merge action, one projection, an incomplete review is never a pass, stale
+verdicts are labelled, and the TUI degrades rather than clipping.
+
 The tests that matter here are structural, because the claims are structural:
 
 * **Merge is absent from the action vocabulary**, not merely disabled — a test walks the whole module
@@ -45,17 +52,18 @@ class NoMergeAnywhereTests(unittest.TestCase):
         for word in ('"merge"', "'merge'", "merge()"):
             self.assertNotIn(word, source)
 
-    def test_the_desktop_merge_control_is_visibly_disabled(self) -> None:
-        # The design notes ask for a disabled control WITH its reason, as a teaching device.
-        html = desktop.render(fixtures.state_approvals_satisfied())
-        self.assertIn("Merge — not available", html)
-        self.assertIn("disabled", html)
-        self.assertIn("A human merges on GitHub", html)
+    def test_the_desktop_has_no_merge_or_approve_control_at_all(self) -> None:
+        """The redesign removed the disabled buttons; the lanes line and footer replace them.
 
-    def test_the_desktop_approve_control_is_disabled_too(self) -> None:
+        Superseded claim: 5b showed disabled controls as a teaching device. The approved design argued
+        that a control you can see but not press invites hunting, and that naming whose job it is does
+        the teaching better. Both designs refused the action; this one states the boundary in words.
+        """
         html = desktop.render(fixtures.state_approvals_satisfied())
-        self.assertIn("Approve — not available", html)
-        self.assertIn("never approves its own work", html)
+        for word in ("Merge — not available", "Approve — not available", "disabled"):
+            self.assertNotIn(word, html)
+        self.assertIn("YOU AND GITHUB", html)
+        self.assertIn("You merge", html)
 
     def test_no_surface_module_imports_a_merge_call(self) -> None:
         for module in (proj, tui, desktop, fixtures):
@@ -108,6 +116,8 @@ class ProjectionTests(unittest.TestCase):
         projection = fixtures.state_findings()
         names = [signal.name for signal in projection.signals]
         self.assertEqual(names, ["review", "checks", "policy", "approval"])
+        # The redesign draws these as four lanes rather than four cards; the rule is the same. What
+        # follows is the substantive part: one green signal must not colour another.
         # a green CI row must not make the other signals look green
         checks = next(s for s in projection.signals if s.name == "checks")
         approval = next(s for s in projection.signals if s.name == "approval")
@@ -128,50 +138,61 @@ class ProjectionTests(unittest.TestCase):
     def test_a_measured_spend_is_shown(self) -> None:
         self.assertIn("$1.20", proj.Budget(spend_usd=1.2).spend_text())
 
-    def test_every_state_has_a_text_chip(self) -> None:
+    def test_every_state_has_a_verdict_except_empty(self) -> None:
         for name in fixtures.SCREENSHOT_ORDER:
             projection = fixtures.ALL[name]()
-            self.assertTrue(projection.chip)
-            self.assertNotEqual(projection.chip, "UNKNOWN", f"{name} has no chip")
+            if name == "empty":
+                self.assertEqual(projection.chip, "", "the empty state has no verdict")
+            else:
+                self.assertTrue(projection.chip, f"{name} has no verdict")
+                self.assertNotEqual(projection.chip, "Unknown", f"{name} has no verdict")
 
-    def test_the_authority_note_is_advisory(self) -> None:
-        self.assertIn("unverified", fixtures.state_findings().authority_note)
+    def test_the_authority_note_is_exact(self) -> None:
+        # Superseded wording: 5b's note said the surfaces were unverified until the sandbox proof landed,
+        # which stopped being true. The approved line is a standing rule, not a status.
+        self.assertEqual(fixtures.state_findings().authority_note,
+                         "Advisory. Code-Shipper never approves or merges.")
 
 
 class TuiTests(unittest.TestCase):
     def test_every_state_renders_at_a_uniform_width(self) -> None:
         for name in fixtures.SCREENSHOT_ORDER:
-            lines = tui.render(fixtures.ALL[name](), width=113, height=30)
-            for line in lines:
-                self.assertEqual(len(line), 113, f"{name} produced an uneven line")
+            for width in (124, 70):
+                lines = tui.render(fixtures.ALL[name](), width=width)
+                for line in lines:
+                    self.assertEqual(len(line), width, f"{name} produced an uneven line")
 
-    def test_a_narrow_terminal_degrades_to_text(self) -> None:
+    def test_a_narrow_terminal_collapses_to_one_column(self) -> None:
         lines = tui.render(fixtures.state_findings(), width=60)
         joined = "\n".join(lines)
-        self.assertNotIn("┌", joined, "below the floor the board must not be drawn")
-        self.assertIn("NEEDS-FIX", joined)
+        # Superseded: 5b degraded to a plain-text summary. The redesign keeps the detail and folds the
+        # list away, with an explicit way back.
+        self.assertNotIn("│", "".join(lines[:4]), "no two-column board below the floor")
+        self.assertIn("← list", joined)
+        self.assertIn(fixtures.state_findings().chip, joined)
 
-    def test_the_footer_shows_only_live_keys(self) -> None:
-        # a stopped PR offers no cancel
-        lines = tui.render(fixtures.state_stopped(), width=113, height=30)
-        footer = "\n".join(lines[-2:])
+    def test_the_key_bar_shows_only_live_keys(self) -> None:
+        # a stopped PR offers no stop
+        lines = tui.render(fixtures.state_stopped(), width=124, height=34)
+        footer = "\n".join(lines[-3:])
         self.assertIn("r review", footer)
-        self.assertNotIn("x cancel", footer)
+        self.assertNotIn("s stop", footer)
 
-    def test_a_running_review_offers_both_stop_and_cancel_separately(self) -> None:
-        lines = tui.render(fixtures.state_reviewing(), width=113, height=30)
-        footer = "\n".join(lines[-2:])
-        self.assertIn("s stop watching", footer)
-        self.assertIn("x cancel run", footer)
+    def test_a_running_review_can_be_stopped(self) -> None:
+        lines = tui.render(fixtures.state_reviewing(), width=124, height=34)
+        footer = "\n".join(lines[-3:])
+        self.assertIn("s stop", footer)
 
     def test_a_stale_verdict_is_labelled(self) -> None:
         projection = fixtures.state_findings()
         projection.head = "a-newer-head"
-        lines = tui.render(projection, width=113, height=30)
+        lines = tui.render(projection, width=124, height=34)
         self.assertIn("STALE", "\n".join(lines))
 
-    def test_the_context_line_is_present(self) -> None:
-        self.assertIn("owner kensei@sandbox", tui.render(fixtures.state_findings())[0])
+    def test_the_identity_line_is_present(self) -> None:
+        first = tui.render(fixtures.state_findings())[0]
+        self.assertIn("code-shipper", first)
+        self.assertIn("code-shipper-sandbox", first)
 
     def test_rendering_is_deterministic(self) -> None:
         first = tui.render(fixtures.state_findings())
@@ -201,26 +222,29 @@ class DesktopTests(unittest.TestCase):
             self.assertNotIn("<img", html)
             self.assertNotIn("@import", html)
 
-    def test_the_palette_matches_the_wireframes(self) -> None:
-        for colour in ("#0a0d0f", "#13181b", "#d4dad5", "#e0a458", "#7fbf7a", "#d96a5f", "#7ba7bc"):
+    def test_the_palette_matches_the_approved_redesign(self) -> None:
+        # Superseded: the 5b palette was replaced by the approved 5c tokens.
+        for colour in ("#08090a", "#0e0f11", "#ececec", "#e3ac5e", "#5fc992", "#e8686e", "#80aef0"):
             self.assertIn(colour, desktop.CSS)
 
-    def test_the_four_signals_render_as_four_cards(self) -> None:
+    def test_the_four_lanes_render(self) -> None:
         html = desktop.render(fixtures.state_findings())
-        self.assertEqual(html.count('class="card"'), 4)
+        self.assertEqual(html.count('class="step'), 4, "four lanes: Review, Fix, Approvals, You merge")
 
-    def test_a_blocker_renders_prominently(self) -> None:
+    def test_an_error_is_stated_plainly(self) -> None:
+        """The redesign puts the plain cause in the Next bar instead of a separate blocker band."""
         html = desktop.render(fixtures.state_error())
-        self.assertIn('class="blocker"', html)
+        self.assertIn("error", html.lower())
+        self.assertIn("count (2) exceeds", html)
 
     def test_a_stale_verdict_warns(self) -> None:
         projection = fixtures.state_findings()
         projection.head = "a-newer-head"
-        self.assertIn("STALE", desktop.render(projection))
+        self.assertIn("Stale verdict", desktop.render(projection))
 
-    def test_the_rail_shows_the_budget_and_the_unknown_spend(self) -> None:
+    def test_the_status_bar_shows_the_budget_and_the_unknown_spend(self) -> None:
         html = desktop.render(fixtures.state_findings())
-        self.assertIn("rounds", html)
+        self.assertIn("round", html)
         self.assertIn("pushes", html)
         self.assertIn("spend unknown", html)
 

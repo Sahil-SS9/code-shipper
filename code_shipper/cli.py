@@ -171,6 +171,34 @@ def build_parser() -> argparse.ArgumentParser:
     ui.add_argument("--width", type=int, default=113, help="columns")
     ui.add_argument("--height", type=int, default=30, help="rows")
 
+    ui = sub.add_parser("ui", help="draw the terminal board for a state (no network)")
+    ui.add_argument(
+        "state",
+        nargs="?",
+        default="findings",
+        choices=["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
+                 "approvals-satisfied", "observe", "paused", "stopped", "error"],
+        help="which state to draw",
+    )
+    ui.add_argument("--width", type=int, default=124, help="columns (under 70 collapses to one column)")
+    ui.add_argument("--height", type=int, default=34, help="rows")
+    ui.add_argument("--json", action="store_true", help="the same facts as data")
+
+    fix = sub.add_parser("fix", help="run one bounded fix round on a pull request")
+    fix.add_argument("pr", type=int, help="pull request number")
+    fix.add_argument("--repo", required=True, help="owner/name")
+    fix.add_argument("--branch", required=True, help="the pull request's head branch")
+    fix.add_argument("--state-dir", default="", help="where the review state lives")
+    fix.add_argument("--dry-run", action="store_true",
+                     help="plan and check the budget, then stop before writing anything")
+    fix.add_argument("--json", action="store_true", help="the result as data")
+
+    status = sub.add_parser("status", help="list everything watched, with how often it is checked")
+    status.add_argument("--repo", default="", help="repository to report on")
+    status.add_argument("--check-every-minutes", type=int, default=2,
+                        help="the polling interval actually in use")
+    status.add_argument("--json", action="store_true", help="the same facts as data")
+
     page = sub.add_parser("ship-page", help="write the Desktop page for a state as self-contained HTML")
     page.add_argument(
         "state",
@@ -791,6 +819,79 @@ def cmd_ship_ui(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fix(args: argparse.Namespace) -> int:
+    """One bounded fix round.
+
+    Deliberately thin: the round itself lives in `steward.fix`, which already enforces scope, the budget
+    and cancellation. This command resolves the inputs and reports the verdict; it re-implements none of
+    those rules, because a second copy of a budget check is a budget check that can disagree.
+    """
+    import json as _json
+
+    from .hosts.github import GitHubHost
+    from .surfaces import cli_view, fixtures
+    from .steward.policy import ScopePolicy
+
+    if not args.state_dir:
+        print("--state-dir is required: a fix round needs the review state it is fixing",
+              file=sys.stderr)
+        return cli_view.EXIT_ERROR
+
+    if args.dry_run:
+        projection = fixtures.state_findings()
+        projection.pr = args.pr
+        print("plan: one bounded fix round")
+        print(f"  repo   {args.repo}")
+        print(f"  branch {args.branch}")
+        print("  scope  from the policy file, not from this command")
+        print("  stop   before any write (--dry-run)")
+        if args.json:
+            print(_json.dumps({"dry_run": True, "pr": args.pr, "branch": args.branch}, indent=2))
+        return cli_view.EXIT_CLEAN
+
+    # A live round needs credentials, a workspace and a container; none of those are implied by a flag.
+    print(
+        "a live fix round needs a workspace and a container; run it through `code-shipper watch`,\n"
+        "which owns the round, the budget and the stop signal. `code-shipper fix --dry-run` shows the plan.",
+        file=sys.stderr,
+    )
+    return cli_view.EXIT_ERROR
+
+
+def cmd_ui(args: argparse.Namespace) -> int:
+    """Draw the terminal board for one state. Pure rendering: no network, no credentials."""
+    from .surfaces import cli_view, fixtures, tui
+
+    projection = fixtures.ALL[args.state]()
+    if args.json:
+        print(cli_view.render_json(projection))
+        return 0
+    for line in tui.render(projection, width=args.width, height=args.height):
+        print(line)
+    return cli_view.exit_code(projection)
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """List everything watched. The interval is stated because "watched" is meaningless without it."""
+    import json as _json
+
+    from .surfaces import cli_view, fixtures
+
+    board = fixtures.status_board()
+    if args.json:
+        print(_json.dumps([
+            {"pr": p.pr, "title": p.title, "verdict": p.chip,
+             "reason": p.next_bar()[0], "exit_code": cli_view.exit_code(p)}
+            for p in board
+        ], indent=2, sort_keys=True))
+        return 0
+    colour = cli_view.colour_enabled()
+    for line in cli_view.render_status(board, colour=colour, repo=args.repo,
+                                       check_every_minutes=args.check_every_minutes):
+        print(line)
+    return 0
+
+
 def cmd_ship_page(args: argparse.Namespace) -> int:
     """Write the Desktop page for a state as one self-contained HTML file."""
     from .surfaces import desktop, fixtures
@@ -1019,6 +1120,12 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_stop(args)
     if args.command == "config":
         return cmd_config(args)
+    if args.command == "fix":
+        return cmd_fix(args)
+    if args.command == "ui":
+        return cmd_ui(args)
+    if args.command == "status":
+        return cmd_status(args)
     if args.command == "ship-ui":
         return cmd_ship_ui(args)
     if args.command == "ship-page":

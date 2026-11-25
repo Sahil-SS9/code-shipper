@@ -34,18 +34,20 @@ FORBIDDEN_ACTIONS = frozenset({"merge", "approve", "request-changes", "push-tag"
 
 # States, with the text chip each renders. The chip is the accessible channel; the level selects a
 # colour. A surface must never colour without also showing the chip.
+# Verdict names, from the approved redesign. "Approved" never appears as a verdict: this tool does not
+# approve, and a verdict word is the single place a reader is most likely to misread it.
 STATES: dict[str, tuple[str, str]] = {
-    # state            chip              level
-    "empty": ("NO-PULL-REQUESTS", "muted"),
-    "reviewing": ("REVIEWING", "flight"),
-    "findings": ("NEEDS-FIX", "fail"),
-    "incomplete": ("INCOMPLETE", "warn"),
-    "approvals-blocked": ("NEEDS-HUMAN", "warn"),
-    "approvals-satisfied": ("APPROVED", "pass"),
-    "observe": ("OBSERVE-ONLY", "warn"),
-    "paused": ("PAUSED", "warn"),
-    "stopped": ("STOPPED", "muted"),
-    "error": ("ERROR", "fail"),
+    # state            verdict              level
+    "empty": ("", "muted"),
+    "reviewing": ("Reviewing", "flight"),
+    "findings": ("Needs fixes", "fail"),
+    "incomplete": ("Incomplete, not a pass", "warn"),
+    "approvals-blocked": ("Needs approvals", "warn"),
+    "approvals-satisfied": ("Ready for you to merge", "pass"),
+    "observe": ("Observe only", "muted"),
+    "paused": ("Paused", "warn"),
+    "stopped": ("Stopped", "muted"),
+    "error": ("Error", "fail"),
 }
 
 
@@ -88,10 +90,13 @@ class Row:
     state: str
     reason: str
     needs_human: bool = False
+    branch: str = ""
+    age_seconds: int = 0
 
     @property
     def chip(self) -> str:
-        return STATES.get(self.state, ("UNKNOWN", "muted"))[0]
+        """The verdict name. Empty for the empty state, which has no verdict."""
+        return STATES.get(self.state, ("Unknown", "muted"))[0]
 
     @property
     def level(self) -> str:
@@ -105,6 +110,14 @@ class Finding:
     severity: str
     title: str
     evidence_kind: str = "diff"
+    # What a reader needs to judge it in place, per the redesign: why it matters, the code with the hit
+    # line marked, and the fix as a diff. `suggested_fix` is a (old, new) pair and is labelled as not
+    # applied wherever it is drawn.
+    why: str = ""
+    code: tuple[tuple[str, int, str], ...] = ()
+    suggested_fix: tuple[str, str] | None = None
+    evidence: str = ""
+    also_noted: tuple[str, ...] = ()
 
 
 @dataclass
@@ -134,15 +147,29 @@ class Projection:
     budget: Budget = field(default_factory=Budget)
     refusal: str = ""
     log: list[str] = field(default_factory=list)
-    tabs: tuple[str, ...] = ("Overview", "Findings", "Approvals", "Policy", "Activity")
+    # The approved view switcher, in order. "Findings" is the default view.
+    tabs: tuple[str, ...] = ("Findings", "What changed", "Approvals", "Activity")
     profile: str = "standard"
     runtime_owner: str = ""
     sync_age_seconds: int = 0
-    authority_note: str = "advisory — unverified until the sandbox proof lands"
+    authority_note: str = "Advisory. Code-Shipper never approves or merges."
+    branch: str = ""
+    base_ref: str = ""
+    author: str = "kensei"
+    who: str = "kensei · standard"
+    approvers_missing: tuple[str, ...] = ()
+    approvals_have: int = 0
+    approvals_needed_count: int = 0
+    approvals_needed: int = 0
+    reviews_posted: int = 0
+    review_cap: int = 0
+    stopped_by: str = ""
+    stopped_at_round: int = 0
 
     @property
     def chip(self) -> str:
-        return STATES.get(self.state, ("UNKNOWN", "muted"))[0]
+        """The verdict name. Empty for the empty state, which has no verdict."""
+        return STATES.get(self.state, ("Unknown", "muted"))[0]
 
     @property
     def level(self) -> str:
@@ -152,6 +179,115 @@ class Projection:
     def head_pinned(self) -> bool:
         """Whether the verdict describes the head on screen. A stale verdict must say so."""
         return bool(self.head) and self.head == self.reviewed_head
+
+    def next_bar(self) -> tuple[str, str, str, str]:
+        """(headline, sub-line, primary_action, primary_label) for the NEXT bar.
+
+        One sentence saying who acts and on what, one sub-line, one primary action. The copy is here
+        rather than in a surface because a second copy of a sentence is how two surfaces start telling a
+        reader different things.
+        """
+        count = len([f for f in self.findings if f.severity.lower() in ("important", "blocking")])
+        if self.state == "reviewing":
+            return ("Code-Shipper is reviewing the new commits",
+                    "You can stop it; nothing is posted until the review finishes.", "stop", "Stop")
+        if self.state == "findings":
+            plural = "" if count == 1 else "s"
+            return (f"You decide on {count} important finding{plural}",
+                    "Fix them, or run one bounded fix round. You merge on GitHub.",
+                    "fix", "Try a fix round")
+        if self.state == "incomplete":
+            return ("This review did not finish, so it proves nothing",
+                    "Nothing was posted as an all-clear. Run it again.",
+                    "review", "Review again")
+        if self.state == "approvals-blocked":
+            names = ", ".join(self.approvers_missing) if self.approvers_missing else "people"
+            needed = self.approvals_needed or len(self.approvers_missing) or 1
+            plural = "" if needed == 1 else "s"
+            return (f"{needed} more approval{plural} needed on GitHub",
+                    f"From: {names}. Code-Shipper cannot approve for them.",
+                    "open-pr", "Open on GitHub")
+        if self.state == "approvals-satisfied":
+            return ("Your rules are met. Merge on GitHub when you are ready",
+                    "Code-Shipper has finished. The merge is yours to make.",
+                    "open-pr", "Open on GitHub")
+        if self.state == "observe":
+            return ("Rules are in observe mode. Nothing is blocking",
+                    "These rules report but do not enforce. Change them in the policy file.",
+                    "explain-policy", "Explain the rule")
+        if self.state == "paused":
+            used = self.reviews_posted or 0
+            cap = self.review_cap or 0
+            return (f"Paused at the review cap ({used} of {cap})",
+                    "Raise the cap, or stop watching this pull request.",
+                    "refresh", "Resume")
+        if self.state == "stopped":
+            who = self.stopped_by or "a person"
+            return (f"Stopped by {who} at round {self.stopped_at_round or 1}",
+                    "Nothing runs until you restart it.",
+                    "review", "Review again")
+        if self.state == "error":
+            return (self.refusal or "The review could not run",
+                    "This is a plain cause, not a stack trace.", "review", "Retry")
+        if self.state == "empty":
+            return ("No pull requests to watch yet",
+                    "Initialise, then review or watch a pull request.", "refresh", "Refresh")
+        return ("", "", "refresh", "Refresh")
+
+    def lanes(self) -> list[tuple[str, str, str]]:
+        """The four steps under two labels: (step, icon_state, sub_line).
+
+        `icon_state` is one of done / running / waiting / failed / notstarted / notneeded. The step that
+        blocks progress is the one whose sub-line is not "done"; the surface highlights it.
+        """
+        review_state = {
+            "empty": "notstarted", "reviewing": "running", "findings": "done",
+            "incomplete": "failed", "approvals-blocked": "done",
+            "approvals-satisfied": "done", "observe": "done", "paused": "waiting",
+            "stopped": "notstarted", "error": "failed",
+        }.get(self.state, "notstarted")
+
+        # Fix is "not needed" when there is nothing to fix — not "done", which would imply work happened.
+        important = [f for f in self.findings if f.severity.lower() in ("important", "blocking")]
+        if not important and review_state == "done":
+            fix_state, fix_sub = "notneeded", "not needed"
+        elif important:
+            fix_state, fix_sub = "waiting", f"{len(important)} to fix"
+        else:
+            fix_state, fix_sub = "notstarted", "waits on review"
+
+        if self.state == "approvals-satisfied":
+            ap_state, ap_sub = "done", f"{self.approvals_have} of {self.approvals_needed_count} met"
+        elif self.state == "observe":
+            ap_state, ap_sub = "notneeded", "observe only"
+        elif self.state == "approvals-blocked":
+            ap_state = "waiting"
+            ap_sub = f"{self.approvals_have} of {self.approvals_needed_count}"
+        else:
+            ap_state, ap_sub = "notstarted", "after the review"
+
+        merge_state, merge_sub = "notstarted", "yours to make"
+        if self.state == "approvals-satisfied":
+            merge_state, merge_sub = "waiting", "ready when you are"
+
+        return [
+            ("Review", review_state, "finished" if review_state == "done" else self.state),
+            ("Fix", fix_state, fix_sub),
+            ("Approvals", ap_state, ap_sub),
+            ("You merge", merge_state, merge_sub),
+        ]
+
+    def inbox_groups(self) -> list[tuple[str, list[Row]]]:
+        """Inbox grouping, in the order a reader needs it: needs you, then ready, then stopped."""
+        groups: dict[str, list[Row]] = {"Needs you": [], "Ready for you to merge": [], "Stopped": []}
+        for row in self.rows:
+            if row.state in ("approvals-satisfied",):
+                groups["Ready for you to merge"].append(row)
+            elif row.state in ("stopped", "paused", "observe"):
+                groups["Stopped"].append(row)
+            else:
+                groups["Needs you"].append(row)
+        return [(name, rows) for name, rows in groups.items() if rows]
 
     def actions(self) -> list[str]:
         """The actions that are live in this state. Drawn from ALLOWED_ACTIONS only."""
