@@ -49,6 +49,13 @@ class ReviewRequest:
     workdir: Any = None
     env: dict[str, str] | None = None
     budget: Any = None
+    # Phase 4b. All off by default: risk is advisory, detection is opt-in, memory is shadow.
+    risk_score: bool = True
+    effort_detection: bool = False
+    memory_mode: str = "shadow"
+    commit_message: str = ""
+    lines_changed: int = 0
+    touches_tests: bool | None = None
 
 
 @dataclass
@@ -66,6 +73,8 @@ class ReviewResult:
     profile: str = "standard"
     coverage: dict[str, Any] = field(default_factory=dict)
     union_important: tuple[str, ...] = ()
+    risk: dict[str, Any] = field(default_factory=dict)
+    effort: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         payload = self.outcome.as_dict()
@@ -81,6 +90,8 @@ class ReviewResult:
                 "model_calls": self.model_calls,
                 "coverage": self.coverage,
                 "union_important": list(self.union_important),
+                "risk": dict(self.risk),
+                "effort": dict(self.effort),
             }
         )
         if self.scope is not None:
@@ -232,6 +243,31 @@ def run(
     if store is not None:
         store.save(state)
 
+    # Phase 4b. The risk score is advisory: it is computed for the summary and is not passed to any
+    # approval decision, and cannot be — the evaluator takes only a policy and facts.
+    risk_payload: dict[str, Any] = {}
+    if request.risk_score:
+        from .risk import score as risk_score
+
+        risk_payload = risk_score(
+            changed_files=[patch.path for patch in request.diff.files],
+            lines_changed=request.lines_changed,
+            findings=outcome.findings,
+            touches_tests=request.touches_tests,
+        ).as_dict()
+
+    effort_payload: dict[str, Any] = {}
+    if request.effort_detection:
+        from .effort import detect
+
+        effort_payload = detect(
+            enabled=True,
+            patch="\n".join(patch.patch for patch in request.diff.files),
+            commit_message=request.commit_message,
+            lines_changed=request.lines_changed,
+            touches_tests=request.touches_tests,
+        ).as_dict()
+
     return ReviewResult(
         outcome=outcome,
         state=state,
@@ -243,4 +279,6 @@ def run(
         profile=profile,
         coverage=_coverage(diff, ignored, outcome.findings),
         union_important=tuple(sorted(state.important_fingerprints())),
+        risk=risk_payload,
+        effort=effort_payload,
     )

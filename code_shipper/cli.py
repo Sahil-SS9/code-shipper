@@ -134,6 +134,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="path to a local policy file (default: code-shipper.yml in the repo root)",
     )
     config.add_argument("--json", action="store_true", help="machine-readable output")
+
+    lessons = sub.add_parser("lessons", help="inspect or withdraw review lessons")
+    lessons.add_argument("action", choices=["list", "show", "withdraw"])
+    lessons.add_argument("lesson_id", nargs="?", default="", help="lesson id, for show and withdraw")
+    lessons.add_argument("--state-dir", default="", help="where review state lives")
+    lessons.add_argument("--all", action="store_true", help="include withdrawn lessons")
+    lessons.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
 
 
@@ -274,6 +281,11 @@ def cmd_review(args: argparse.Namespace) -> int:
         print(f"lenses: {', '.join(outcome.lenses_run) or 'none'}")
         print(f"findings: {outcome.raw_findings} raw, {outcome.confirmed} confirmed, "
               f"{len(outcome.findings)} to post")
+        if result.risk.get("summary"):
+            print(result.risk["summary"])
+        if result.effort.get("triggered"):
+            print(f"low-effort signals: {len(result.effort.get('signals', []))} "
+                  f"(label: {result.effort.get('label') or 'none'})")
         if result.union_important:
             print(f"important open across the whole PR: {len(result.union_important)}")
         if not outcome.complete:
@@ -294,6 +306,51 @@ def _state_dir() -> Path:
 
     base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
     return Path(base) / "code-shipper"
+
+
+def cmd_lessons(args: argparse.Namespace) -> int:
+    """`lessons list|show|withdraw`: inspect what the reviewer has learnt, and unlearn it.
+
+    Read-only except `withdraw`. A lesson that cannot be unlearnt is a permanent bias, so removal is a
+    first-class command rather than an edit to a JSON file.
+    """
+    from .review.memory import Store, list_lessons
+
+    root = Path(args.state_dir).expanduser() if args.state_dir else _state_dir()
+    store = Store(root)
+
+    if args.action == "list":
+        rows = list_lessons(store, include_withdrawn=args.all)
+        if args.json:
+            print(json.dumps(rows, indent=2, sort_keys=True))
+        elif not rows:
+            print("no lessons" + ("" if args.all else " (withdrawn lessons are hidden; use --all)"))
+        else:
+            for row in rows:
+                print(f"{row['id']}  [{row['disposition']}]  {row['action']}")
+        return 0
+
+    if not args.lesson_id:
+        print(f"lessons {args.action}: a lesson id is required", file=sys.stderr)
+        return 2
+
+    if args.action == "show":
+        lesson = store.get(args.lesson_id)
+        if lesson is None:
+            print(f"no lesson {args.lesson_id}", file=sys.stderr)
+            return 1
+        print(json.dumps(lesson.as_dict(), indent=2, sort_keys=True) if args.json
+              else f"{lesson.id}\n  cue:      {lesson.cue}\n  action:   {lesson.action}\n"
+                   f"  evidence: {lesson.evidence}\n  source:   {lesson.source}\n"
+                   f"  state:    {lesson.disposition}")
+        return 0
+
+    # withdraw
+    if not store.withdraw(args.lesson_id):
+        print(f"no lesson {args.lesson_id}", file=sys.stderr)
+        return 1
+    print(f"withdrew {args.lesson_id}; it will not affect the next review")
+    return 0
 
 
 def cmd_config(args: argparse.Namespace) -> int:
@@ -511,6 +568,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_stop(args)
     if args.command == "config":
         return cmd_config(args)
+    if args.command == "lessons":
+        return cmd_lessons(args)
     parser.error(f"unknown command: {args.command}")
     return 2
 
