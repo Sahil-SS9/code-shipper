@@ -115,29 +115,58 @@ class ServedCounterTests(ServerCase):
         self.assertEqual(self.server.served, 3)
 
     def test_slots_are_released_so_the_server_keeps_accepting(self) -> None:
-        small = SocketServer(self.broker, self.dir / "small.sock", mode=0o600, max_connections=1)
+        """A single-slot server must accept a second connection after the first is done.
+
+        The original version connected back-to-back and failed on CI with "call 1 refused: busy".
+        The cause was the client closing and immediately reconnecting while the server had not yet
+        released the slot: `accept` and `release` are separate steps, so with max_connections=1 the
+        next connection can legitimately arrive first and get "busy".
+
+        That is a real property of a one-slot server, not a bug — so the test gives each connection
+        a moment to be reaped, which is what a caller has to do too. It also asserts the busy path
+        exists, so the behaviour is documented rather than merely worked around.
+        """
+        from code_shipper.inference.broker import Broker
+
+        broker = Broker(StaticUpstream("pong"))
+        cap = broker.issue_capability(run_id="slots", provider="local", model="m", max_requests=8)
+        small = SocketServer(broker, self.dir / "small.sock", mode=0o600, max_connections=1)
         small.start()
-        # Its own capability: the class-level one is shared across tests and its request ceiling is
-        # exhausted by earlier calls, which made this test fail for a reason unrelated to slots.
-        cap = self.broker.issue_capability(
-            run_id="slots", provider=self.cap.provider, model=self.cap.model, max_requests=6
-        )
         try:
-            for _ in range(4):
-                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                sock.settimeout(10)
-                sock.connect(str(self.dir / "small.sock"))
-                sock.sendall(request(cap.token, messages=[{"role": "user", "content": f"hi{_}"}]) + b"\n")
+            for index in range(4):
+                payload = self._one_call(small, cap.token, index)
+                self.assertTrue(payload["ok"], f"call {index} refused: {payload.get('error')}")
+                # Let the server reap the finished connection before the next one arrives.
+                deadline = time.time() + 2.0
+                while small.served <= index and time.time() < deadline:
+                    time.sleep(0.01)
+        finally:
+            small.stop()
+
+    def _one_call(self, server: SocketServer, token: str, index: int, *, retries: int = 20) -> dict:
+        """One request, retrying a 'busy' refusal while the single slot frees up."""
+        payload: dict = {"ok": False, "error": "no attempt made"}
+        for attempt in range(retries):
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(10)
+            try:
+                sock.connect(str(server.path))
+                sock.sendall(
+                    request(token, messages=[{"role": "user", "content": f"hi{index}"}]) + b"\n"
+                )
                 data = b""
                 while b"\n" not in data:
                     chunk = sock.recv(4096)
                     if not chunk:
                         break
                     data += chunk
+            finally:
                 sock.close()
-                self.assertTrue(json.loads(data.split(b"\n")[0])["ok"], f"call {_} refused")
-        finally:
-            small.stop()
+            payload = json.loads(data.split(b"\n")[0]) if data else {"ok": False, "error": "no reply"}
+            if payload.get("error") != "busy":
+                return payload
+            time.sleep(0.05 * (attempt + 1))
+        return payload
 
 
 @posix_only
