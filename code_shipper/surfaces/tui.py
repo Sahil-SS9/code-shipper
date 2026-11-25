@@ -118,16 +118,30 @@ def _lanes_line(projection: Projection, width: int) -> list[str]:
         if state not in ("done", "notneeded"):
             blocking = name
             break
-    labels = []
-    for name, state, _sub in steps:
-        icon = LANE_ICON.get(state, "○")
-        shown = name.upper() if name == blocking else name
-        labels.append(f"{icon} {shown}")
-    # Kept inside the board width: a lanes line that overflows is clipped by the caller and loses the
-    # label on the right, which is the one naming the reader's own steps.
-    line = (f" CODE-SHIPPER {labels[0]} {labels[1]} │ YOU AND GITHUB "
-            f"{labels[2]} {labels[3]}")
-    return [_pad(line, width)]
+    # Step names, shortest first. The full labels are the clearest, but a lanes line that overflows is
+    # clipped by the caller and loses the *last* step — the one naming the reader's own job — which is
+    # the worst possible thing to lose. So the line degrades deliberately rather than being cut.
+    def build(step_names: tuple[str, str, str, str], groups: tuple[str, str] | None) -> str:
+        labels = []
+        for name, (_step, state, _sub), shown in zip(steps, steps, step_names):
+            icon = LANE_ICON.get(state, "○")
+            text = shown.upper() if name == blocking else shown
+            labels.append(f"{icon} {text}")
+        if groups:
+            return (f" {groups[0]} {labels[0]} {labels[1]} │ {groups[1]} "
+                    f"{labels[2]} {labels[3]}")
+        return f" {labels[0]} {labels[1]} │ {labels[2]} {labels[3]}"
+
+    full = ("Review", "Fix", "Approvals", "You merge")
+    short = ("Review", "Fix", "Appr", "Merge")
+    for names, groups in ((full, ("CODE-SHIPPER", "YOU AND GITHUB")),
+                          (full, None),
+                          (short, ("CS", "YOU"))):
+        candidate = build(names, groups)
+        if len(candidate) <= width:
+            return [_pad(candidate, width)]
+    # Nothing fits: the steps still matter more than the group labels.
+    return [_pad(build(short, None), width)]
 
 
 def _inbox(projection: Projection, width: int) -> list[str]:

@@ -766,3 +766,63 @@ class ExitCodeDocTests(unittest.TestCase):
         help_text = cli.build_parser().format_help()
         for word, code in cli_view.EXIT_CODES.items():
             self.assertIn(f"{code}  {word}", help_text, word)
+
+
+class LanesLineFitsTests(unittest.TestCase):
+    """Fix: the lanes line was clipped at 100 columns, losing the last step ("○ You …").
+
+    The last step is the reader's own job, which is the worst thing on the line to lose. The line now
+    degrades deliberately — full labels, then no group labels, then shortened step names — instead of
+    being cut by the caller.
+    """
+
+    def _lane_line(self, width: int, name: str = "findings") -> str:
+        """The lanes row, located by its group marker.
+
+        It either carries the full group label, the short one, or — when neither fits — no label at all,
+        in which case the step names themselves are the marker. Selecting by group label alone silently
+        found nothing in the states where the label had been dropped, which is precisely the case this
+        test exists for.
+        """
+        lines = tui.render(fixtures.ALL[name](), width=width)
+        # The lanes row is the only line whose right-hand cell carries four lane icons in order. Group
+        # labels come and go with width, so they cannot be the marker; the icons are always there.
+        # Four lane icons, one per step. The `│` separator also appears *inside* the lane groups, so
+        # splitting on it only yields half the row — count the icons across the whole line.
+        marks = ("✓", "◐", "▸", "○", "✕", "–")
+        candidates = [
+            line for line in lines
+            if sum(line.count(mark) for mark in marks) >= 3 and "Review" in line
+        ]
+        self.assertTrue(candidates, f"no lanes line found at width {width} for {name}")
+        return candidates[0].rstrip()
+
+    def test_no_ellipsis_in_the_lanes_line_at_80_or_wider(self) -> None:
+        for width in (80, 90, 100, 110, 124, 140):
+            for name in fixtures.SCREENSHOT_ORDER:
+                line = self._lane_line(width, name)
+                self.assertNotIn("…", line, f"{name} at {width} clipped the lanes line: {line!r}")
+
+    def test_the_last_step_is_visible_at_every_supported_width(self) -> None:
+        for width in (80, 100, 124):
+            line = self._lane_line(width)
+            self.assertTrue(
+                "You merge" in line or "Merge" in line,
+                f"the final step was lost at width {width}: {line!r}",
+            )
+
+    def test_the_lanes_line_never_exceeds_the_board(self) -> None:
+        for width in (70, 80, 100, 124):
+            for name in fixtures.SCREENSHOT_ORDER:
+                for line in tui.render(fixtures.ALL[name](), width=width):
+                    self.assertLessEqual(len(line), width, f"{name} at {width}")
+
+    def test_group_labels_appear_when_there_is_room(self) -> None:
+        self.assertIn("CODE-SHIPPER", self._lane_line(124))
+        self.assertIn("YOU AND GITHUB", self._lane_line(124))
+
+    def test_the_line_degrades_rather_than_clipping(self) -> None:
+        """At 100 the groups are dropped before a step name is."""
+        line = self._lane_line(100)
+        self.assertNotIn("CODE-SHIPPER", line, "at 100 columns the long group label should be dropped")
+        self.assertIn("Approvals", line, "the step name should survive when the group label does not")
