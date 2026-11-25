@@ -124,14 +124,13 @@ class ContainerSpec:
         for path in (self.source_dir, self.work_dir, self.app_dir, self.broker_dir):
             if path is None:
                 continue
-            # Normalise separators before matching. A Windows path is `C:\Users\x\.hermes`, which
-            # never matched the `/`-separated needles, so the guard silently allowed a credential
-            # directory through on that platform.
-            text = str(path).replace("\\", "/").lower()
-            for needle in ("/.hermes", "/.ssh", "/.config", "/.aws", "/.gnupg", "/.docker"):
-                if needle in text:
-                    problems.append(f"refusing to mount a credential-looking path: {path}")
-                    break
+            reason = credential_location(str(path))
+            if reason:
+                problems.append(
+                    f"refusing to mount {path}: {reason}. "
+                    f"These directories hold credentials and must never be mounted into a worker. "
+                    f"Run from a checkout outside them, for example ~/repos/<name>."
+                )
         if not self.entrypoint.startswith("/"):
             problems.append("entrypoint must be an absolute path inside the image")
 
@@ -142,6 +141,60 @@ class ContainerSpec:
 
         if problems:
             raise ValueError("; ".join(problems))
+
+
+# What actually holds credentials, as opposed to anything that merely lives under a directory whose name
+# starts with a dot. The old rule refused every path containing "/.hermes", which meant a checkout at
+# ~/.hermes/repos/x could not run a review at all — a guard that blocks the tool's own users is a guard
+# that gets removed. It also refused "/.config", which is where an ordinary Linux checkout never sits but
+# a vendored config directory often does.
+CREDENTIAL_DIRS = (".ssh", ".aws", ".gnupg", ".docker", ".kube", ".password-store")
+
+# Inside a home directory these hold keys, tokens or session state. The names are exact rather than
+# prefix-matched: `.hermes` on its own is the live install and is refused, while `.hermes/cache` is not.
+CREDENTIAL_FILES = (
+    ".hermes/auth.json", ".hermes/auth", ".hermes/config.yaml", ".hermes/.env",
+    ".netrc", ".git-credentials", ".npmrc", ".pypirc", ".env",
+)
+
+# Credential *directories* inside the agent's own home. Anything else under it — caches, logs, a checkout —
+# is ordinary filesystem and may be mounted.
+HERMES_CREDENTIAL_DIRS = ("auth", "tokens", "secrets", "credentials", "profiles")
+
+
+def credential_location(path_text: str) -> str:
+    """Why this path must not be mounted, or '' if it is fine.
+
+    Deliberately narrower than "any path with a dot directory in it": the rule exists to keep credentials
+    out of a worker, not to make the tool refuse to run. A checkout under `~/.hermes/repos/` is not a
+    credential and is now allowed.
+    """
+    text = path_text.replace("\\", "/")
+    lowered = text.lower()
+    parts = [part for part in lowered.split("/") if part]
+
+    for needle in CREDENTIAL_DIRS:
+        # Match a whole path component, so ".sshfoo" is not refused and "id_rsa" under .ssh is.
+        if any(part == needle for part in parts):
+            return f"it is inside {needle}, which holds credentials"
+
+    for tail in CREDENTIAL_FILES:
+        if lowered.endswith(tail) or f"/{tail}/" in lowered + "/":
+            return f"it is {tail}, which holds a credential"
+
+    # A path *through* .hermes/auth (or tokens, secrets...) is a credential store. A path merely under
+    # ~/.hermes is not.
+    for index, part in enumerate(parts[:-1]):
+        if part != ".hermes":
+            continue
+        following = parts[index + 1]
+        if following in HERMES_CREDENTIAL_DIRS:
+            return f"it is inside .hermes/{following}, which holds credentials"
+
+    if lowered.rstrip("/").endswith("/.hermes") or lowered.rstrip("/") == ".hermes":
+        return "it is the live Hermes home, which holds credentials and session state"
+
+    return ""
 
 
 def workspace_paths(root: Path) -> tuple[Path, Path]:
