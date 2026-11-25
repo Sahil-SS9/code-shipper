@@ -151,6 +151,26 @@ details.how summary{cursor:pointer;list-style:none}
 
 .warnbar{border:1px solid rgba(227,172,94,.35);background:var(--amber-s);border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:13px;color:var(--fg)}
 .warnbar b{color:var(--amber)}
+
+.pwrap{position:absolute;inset:0;display:grid;place-items:start center;padding-top:76px;
+ background:rgba(5,5,6,.72);border-radius:12px}
+.palette{width:560px;background:var(--raised);border:1px solid var(--line2);border-radius:12px;
+ box-shadow:0 24px 64px -20px rgba(0,0,0,.95);overflow:hidden}
+.psearch{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);
+ color:var(--dim);font-size:13px}
+.psearch .k{margin-left:auto}
+.pgroup{padding:10px 14px 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+ color:var(--dim);font-weight:600}
+.pitem{display:flex;align-items:center;gap:10px;padding:8px 14px;font-size:13.5px}
+.pitem:last-child{padding-bottom:14px}
+.plabel{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pkey{flex:none}
+"""
+
+DEMO_CSS = """
+.demobar{background:rgba(227,172,94,.18);color:var(--amber);font:600 11px/1 var(--mono);
+ letter-spacing:.06em;text-transform:uppercase;padding:7px 14px;text-align:center;
+ border-bottom:1px solid rgba(227,172,94,.35)}
 """
 
 LEVEL_TO_PILL = {"fail": "red", "warn": "amber", "pass": "green", "muted": "grey", "flight": "blue"}
@@ -342,6 +362,38 @@ def _empty(projection: Projection) -> str:
     )
 
 
+def _palette(projection: Projection) -> str:
+    """The Ctrl+K command menu, drawn from `palette.py`.
+
+    The desktop advertised the shortcut in its search field from the start while nothing could open it —
+    a hint for a control that does not exist is the same class of untruth as a screen that shows sample
+    data. The menu is now rendered inline: it is a static page, so it is drawn open rather than
+    interactive, and every entry comes from the palette module so the two cannot disagree.
+
+    Merge and approve cannot appear here: `palette.items_for` returns only live actions, and the palette
+    has no entry for either.
+    """
+    from .palette import group_items
+
+    groups = group_items(projection)
+    if not groups:
+        return ""
+    rows = []
+    for name, items in groups:
+        rows.append(f'<div class="pgroup">{_esc(name)}</div>')
+        for item in items:
+            rows.append(
+                f'<div class="pitem"><span class="plabel">{_esc(item.label)}</span>'
+                f'<span class="pkey">{_kbd(item.key)}</span></div>'
+            )
+    return (
+        '<div class="pwrap"><div class="palette">'
+        f'<div class="psearch">Type a command<span class="k">{_kbd("Esc")}</span></div>'
+        f'{"".join(rows)}'
+        '</div></div>'
+    )
+
+
 def _status_bar(projection: Projection) -> str:
     budget = projection.budget
     parts = [
@@ -355,7 +407,7 @@ def _status_bar(projection: Projection) -> str:
     return f'{left}<span class="r">Advisory. Code-Shipper never approves or merges.</span>'
 
 
-def render(projection: Projection, *, title: str = "Code-Shipper") -> str:
+def render(projection: Projection, *, title: str = "Code-Shipper", demo: bool = False) -> str:
     """The 1280x800 page as one self-contained HTML string."""
     if projection.state == "empty":
         main = f'<div class="main" style="grid-template-columns:1fr">{_empty(projection)}</div>'
@@ -374,10 +426,16 @@ def render(projection: Projection, *, title: str = "Code-Shipper") -> str:
                 f'{stale}{refusal}{_seg(projection)}{_findings(projection)}'
                 f'</div></section></div>')
 
+    # The banner is drawn from the same flag that chose the data, so it cannot be forgotten when a new
+    # caller passes --demo through.
+    demo_bar = ('<div class="demobar">demo data &middot; sample values, not a real review</div>'
+                if demo else '')
+    palette = _palette(projection)
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{_esc(title)}</title>
-<style>{CSS}</style></head><body>
-<div class="win">
+<style>{CSS}{DEMO_CSS}</style></head><body>
+<div class="win" style="position:relative">
+  {demo_bar}
   <div class="bar">
     <div class="dots"><i></i><i></i><i></i></div>
     <div class="brand"><b></b>Code-Shipper</div>
@@ -387,5 +445,6 @@ def render(projection: Projection, *, title: str = "Code-Shipper") -> str:
   </div>
   {main}
   <div class="status">{_status_bar(projection)}</div>
+  {palette}
 </div>
 </body></html>"""
