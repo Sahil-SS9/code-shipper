@@ -508,7 +508,7 @@ def cmd_poll(args: argparse.Namespace) -> int:
     from .review.cache import ReviewCache
     from .review.service import ReviewRequest, run as run_service
     from .review.state import ReviewStore
-    from .harness.hermes import HermesHarness
+    from .harness.adapters import HermesHarness
     from .steward import commands as commands_mod
     from .steward.poll import poll
     from .steward.watch import read_stop_signals
@@ -654,8 +654,10 @@ def _reevaluate_approvals(
     from .approvals.shared import merge
     from .broker.roles import Broker, BrokerError, BrokerRefused
 
-    # The policy comes from the base branch, never from the PR: a PR must not lower its own bar.
-    base = host.default_branch(repo)
+    # The policy comes from the PR's BASE branch, never from the PR and never from the repository
+    # default. Reading the default branch applied the wrong policy to every PR against a non-default
+    # base — measured on PR #25, where the policy lived on demo/base and was reported as absent.
+    base = getattr(host.get_pr(repo, pr), "base_ref", "") or host.default_branch(repo)
     central_text = ""
     local_text = ""
     try:
@@ -703,8 +705,8 @@ def _reevaluate_approvals(
             broker.post_comment(pr=pr, body=comment.body, role="user")
             print("  approvals: created the status comment")
         elif should_update(getattr(existing, "body", ""), comment):
-            broker.update_comment(comment_id=int(getattr(existing, "id")), body=comment.body,
-                                  role="user")
+            broker.update_comment(pr=pr, comment_id=int(getattr(existing, "id")),
+                                  body=comment.body, role="user")
             print("  approvals: updated the status comment in place")
         else:
             print("  approvals: unchanged, nothing posted")

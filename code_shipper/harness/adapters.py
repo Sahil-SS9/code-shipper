@@ -118,7 +118,11 @@ class HermesHarness:
             proc = subprocess.run(
                 argv,
                 input=task.prompt,
-                cwd=str(task.workdir),
+                # A reading task has no workdir of its own. Passing None to subprocess did not mean
+                # "inherit": it built the string 'None' and tried to chdir to it, so every lens failed
+                # with "could not start: No such file or directory: 'None'". Inherit the caller's cwd
+                # explicitly instead.
+                cwd=str(task.workdir) if task.workdir else None,
                 env=env,
                 capture_output=True,
                 text=True,
@@ -190,7 +194,11 @@ class CommandHarness:
             proc = subprocess.run(
                 self._argv,
                 input=task.prompt,
-                cwd=str(task.workdir),
+                # A reading task has no workdir of its own. Passing None to subprocess did not mean
+                # "inherit": it built the string 'None' and tried to chdir to it, so every lens failed
+                # with "could not start: No such file or directory: 'None'". Inherit the caller's cwd
+                # explicitly instead.
+                cwd=str(task.workdir) if task.workdir else None,
                 env=env,
                 capture_output=True,
                 text=True,

@@ -405,16 +405,20 @@ class Broker:
             payload={"body": body},
         )
 
-    def update_comment(self, *, comment_id: int, body: str, role: str = "user") -> dict[str, Any]:
+    def update_comment(
+        self, *, pr: int, comment_id: int, body: str, role: str = "user"
+    ) -> dict[str, Any]:
         """Edit a comment in place. Used for the approvals status comment, so a push updates it rather
         than adding a second one."""
         if not isinstance(body, str) or not body.strip():
             raise BrokerRefused("empty_body")
-        self._authorise(role, "comment", repo=self.repo, pr=0)
+        # The PR is required even though the URL only needs the comment id: the gate checks it, and a
+        # placeholder 0 is refused as bad_pr — which it should be.
+        self._authorise(role, "comment", repo=self.repo, pr=pr)
         return self._send(
             role=role,
             op="update_comment",
-            pr=0,
+            pr=pr,
             expected_head=None,
             path=f"/repos/{self.repo}/issues/comments/{int(comment_id)}",
             payload={"body": body},

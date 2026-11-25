@@ -1,0 +1,25 @@
+{
+  "pr": 25,
+  "repo": "Sahil-SS9/code-shipper-sandbox",
+  "base": "demo/base",
+  "head": "9c2eca0aa5011e50acc848fddceaa72d43b92423",
+  "merged": false,
+  "state": "open",
+  "reviews": [
+    {
+      "id": 6057900427,
+      "state": "COMMENTED",
+      "author": "Sahil-SS9",
+      "commit": "9c2eca0aa5"
+    }
+  ],
+  "review_count": 1,
+  "issue_comments": 1,
+  "approvals_comments": [
+    {
+      "id": 7162653496,
+      "created": "2026-11-25T12:38:30Z",
+      "updated": "2026-11-25T12:39:42Z"
+    }
+  ]
+}
