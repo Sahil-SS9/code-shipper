@@ -134,6 +134,12 @@ class ContainerSpec:
                     break
         if not self.entrypoint.startswith("/"):
             problems.append("entrypoint must be an absolute path inside the image")
+
+        # Note: work_dir is intentionally world-writable, because the worker runs as a different uid
+        # inside the container and must edit it. What must be private is the *run directory* holding
+        # the broker socket, and that is enforced by `workspace.require_private_dir` at creation and
+        # again immediately before bind. Checking work_dir's mode here would refuse every real run.
+
         if problems:
             raise ValueError("; ".join(problems))
 

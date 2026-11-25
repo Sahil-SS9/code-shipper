@@ -41,7 +41,11 @@ class SpecTests(unittest.TestCase):
     """The spec is the boundary, so its shape is asserted rather than assumed."""
 
     def _spec(self) -> ContainerSpec:
-        root = Path(tempfile.mkdtemp(prefix="cs-spec-"))
+        # Not the system temp dir: on this rig TMPDIR points inside ~/.hermes, and the spec correctly
+        # refuses to mount anything credential-looking. The repo's .staging is where real runs live.
+        staging = Path(__file__).resolve().parent.parent / ".staging"
+        staging.mkdir(exist_ok=True)
+        root = Path(tempfile.mkdtemp(prefix="cs-spec-", dir=staging))
         self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
         work = root / "work"
         source = root / "source"
@@ -96,13 +100,20 @@ class SpecTests(unittest.TestCase):
             widened.validate()
 
     @unittest.skipUnless(not sys.platform.startswith("win"), "POSIX mode bits only")
-    def test_a_world_writable_run_directory_is_refused(self) -> None:
+    def test_a_world_writable_work_directory_is_allowed_but_the_run_root_is_not(self) -> None:
+        # Two different rules, and conflating them would break every real run.
+        #   /work            must be world-writable: the worker is a different uid and must edit it.
+        #   the run directory must be 0700: it holds the broker socket and nothing else may reach it.
+        from code_shipper.steward.workspace import WorkspaceError, require_private_dir
+
         spec = self._spec()
-        # The directory validate() actually inspects is work_dir, not its parent. Widening the parent
-        # proved nothing and the test passed only where the parent happened to be checked.
         os.chmod(spec.work_dir, 0o777)
-        with self.assertRaises(Exception):
-            spec.validate()
+        spec.validate()  # allowed, and must stay allowed
+
+        run_root = spec.work_dir.parent
+        os.chmod(run_root, 0o777)
+        with self.assertRaises(WorkspaceError):
+            require_private_dir(run_root)
 
 
 class CapabilityTests(unittest.TestCase):
