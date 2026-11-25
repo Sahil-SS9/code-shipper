@@ -141,7 +141,8 @@ def render_review(projection: Projection, *, colour: bool = False) -> list[str]:
         lines.append("")
 
     if not projection.findings:
-        lines.append(f"  {paint('No findings at this head.', 'green')}")
+        colour = "green" if projection.review_completed else "amber"
+        lines.append(f"  {paint(projection.findings_placeholder(), colour)}")
         lines.append("")
 
     summary = [f"Review {_state_word(projection)}"]
@@ -170,16 +171,16 @@ def render_status(projections: list[Projection], *, colour: bool = False,
     for projection in projections:
         dot = {"fail": "red", "warn": "amber", "pass": "green",
                "flight": "blue", "muted": "dim"}.get(projection.level, "dim")
-        age = projection.rows[0].age_seconds if projection.rows else 0
-        age_text = f"{age // 60}m" if age < 3600 else f"{age // 3600}h"
-        # Fixed columns, and the reason column is clipped rather than allowed to run into the age.
-        title = projection.title[:24]
-        verdict = projection.chip
-        reason = projection.next_bar()[0]
+        row = projection.rows[0] if projection.rows else None
+        age_text = _age(row.age_seconds if row else 0)
+        # The reason column is the inbox's short reason ("not a pass: review again"), not the Next
+        # headline: a headline is a sentence and clipping it mid-word reads as a rendering fault. The
+        # short reason is written to fit.
+        reason = row.reason if row and row.reason else projection.findings_placeholder()
         lines.append(
             f"  {paint('●', dot)} {paint('#' + str(projection.pr), 'bold'):<6} "
-            f"{title:<24}  {paint(f'{verdict:<22}', dot)}  "
-            f"{reason[:36]:<36} {paint(age_text, 'dim')}"
+            f"{projection.title[:24]:<24}  {paint(f'{projection.chip:<22}', dot)}  "
+            f"{_clip(reason, 38):<38} {paint(age_text, 'dim')}"
         )
     lines.append("")
     lines.append(paint("Open one: code-shipper status #25   Board: code-shipper ui   "
@@ -195,6 +196,25 @@ def render_json(projection: Projection) -> str:
     payload["next"] = {"headline": headline, "sub": sub, "action": action}
     payload["lanes"] = [{"step": n, "state": s, "detail": d} for n, s, d in projection.lanes()]
     return json.dumps(payload, indent=2, sort_keys=True)
+
+
+def _age(seconds: int) -> str:
+    """The same format the board uses: 2m, 3h, 1d — never 24h."""
+    if seconds <= 0:
+        return ""
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        return f"{seconds // 3600}h"
+    return f"{seconds // 86400}d"
+
+
+def _clip(text: str, width: int) -> str:
+    if width <= 1:
+        return ""
+    if len(text) <= width:
+        return text
+    return text[: width - 1] + "…"
 
 
 def _verb(action: str) -> str:

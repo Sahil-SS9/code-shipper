@@ -44,6 +44,21 @@ the platform doctor reports that container VERIFIED. What is measured is the con
 (twenty controls, `docs/reports/M0-ROOTLESS.md`); a contained harness run with the host inference
 broker is UNVERIFIED, so secure fixing is not yet proven. Details: `docs/tech-spec.md` §2.4, §6.1.
 
+## Exit codes
+
+Every command that reports a review result uses the same four codes, so a wrapper can branch on them:
+
+| Code | Meaning |
+|---|---|
+| `0` | **clean** — the review completed and found nothing to fix |
+| `1` | **findings** — the review completed and found something to fix |
+| `2` | **error** — the run failed; nothing was reviewed |
+| `3` | **incomplete** — the review did not finish; this is not a clean result |
+
+`3` is deliberately distinct from `2`. An incomplete review is not a tool failure and it is not a clean
+result: it can be retried, and treating it as either success or error would be wrong in opposite
+directions. `code-shipper --help` prints the same list.
+
 ## Protect your default branch
 
 **Do this before you let Code-Shipper fix anything on a repository you care about.**

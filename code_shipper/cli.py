@@ -16,10 +16,23 @@ from pathlib import Path
 from . import __version__
 
 
+# The exit-code contract, in one place: --help and the README both quote these.
+EXIT_CODES_HELP = """exit codes:
+  0  clean         the review completed and found nothing to fix
+  1  findings      the review completed and found something to fix
+  2  error         the run failed; nothing was reviewed
+  3  incomplete    the review did not finish; this is not a clean result
+
+  Incomplete is deliberately distinct from error: an incomplete review can be retried, but must
+  never be treated as clean."""
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="code-shipper",
         description="Review, fix and get pull requests ready to merge, with any agent harness.",
+        epilog=EXIT_CODES_HELP,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"code-shipper {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
