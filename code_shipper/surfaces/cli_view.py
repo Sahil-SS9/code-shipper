@@ -159,10 +159,12 @@ def render_review(projection: Projection, *, colour: bool = False) -> list[str]:
 
 
 def render_status(projections: list[Projection], *, colour: bool = False,
-                  repo: str = "", check_every_minutes: int = 2) -> list[str]:
+                  repo: str = "", check_every_minutes: int = 2, demo: bool = False) -> list[str]:
     """Everything watched, one row per pull request, and how often it is checked."""
     paint = _Painter(colour)
     lines = []
+    if demo:
+        lines.append(paint(demo_banner(), "amber"))
     lines.append(f"{paint(repo or 'watching', 'bold')}  "
                  f"{paint(f'· watching {len(projections)} · checked every {check_every_minutes} min', 'dim')}")
     lines.append("")
@@ -186,6 +188,15 @@ def render_status(projections: list[Projection], *, colour: bool = False,
     lines.append(paint("Open one: code-shipper status #25   Board: code-shipper ui   "
                        "Script: --json", "dim"))
     return lines
+
+
+def demo_banner() -> str:
+    """One line, on every surface that draws sample data.
+
+    The surfaces spent two stops looking finished while showing fixtures. A label is the cheapest thing
+    that makes that impossible to repeat.
+    """
+    return "-- demo data: sample values, not a real review --"
 
 
 def render_json(projection: Projection) -> str:
