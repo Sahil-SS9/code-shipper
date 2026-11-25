@@ -117,12 +117,17 @@ class ServedCounterTests(ServerCase):
     def test_slots_are_released_so_the_server_keeps_accepting(self) -> None:
         small = SocketServer(self.broker, self.dir / "small.sock", mode=0o600, max_connections=1)
         small.start()
+        # Its own capability: the class-level one is shared across tests and its request ceiling is
+        # exhausted by earlier calls, which made this test fail for a reason unrelated to slots.
+        cap = self.broker.issue_capability(
+            run_id="slots", provider=self.cap.provider, model=self.cap.model, max_requests=6
+        )
         try:
             for _ in range(4):
                 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 sock.settimeout(10)
                 sock.connect(str(self.dir / "small.sock"))
-                sock.sendall(request(self.cap.token, messages=[{"role": "user", "content": f"hi{_}"}]) + b"\n")
+                sock.sendall(request(cap.token, messages=[{"role": "user", "content": f"hi{_}"}]) + b"\n")
                 data = b""
                 while b"\n" not in data:
                     chunk = sock.recv(4096)

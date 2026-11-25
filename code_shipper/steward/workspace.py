@@ -77,8 +77,23 @@ class Workspace:
         }
 
     def cleanup(self) -> None:
-        """Remove the run directory. Silently ignores a workspace that is already gone."""
-        shutil.rmtree(self.root, ignore_errors=True)
+        """Remove the run directory. Silently ignores a workspace that is already gone.
+
+        `chmod` to 0o666 makes files read-only on Windows, where write permission does not imply
+        delete permission, so `shutil.rmtree` fails there. The handler restores write access and
+        retries rather than leaving a workspace behind for the sake of an OS quirk.
+        """
+        def _on_error(func, path, _exc_info):  # noqa: ANN001
+            try:
+                os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+                func(path)
+            except OSError:
+                pass
+
+        if os.name == "nt":
+            shutil.rmtree(self.root, onerror=_on_error)
+        else:
+            shutil.rmtree(self.root, ignore_errors=True)
 
 
 def _git(cwd: Path, *args: str) -> str:

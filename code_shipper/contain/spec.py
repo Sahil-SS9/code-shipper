@@ -124,9 +124,14 @@ class ContainerSpec:
         for path in (self.source_dir, self.work_dir, self.app_dir, self.broker_dir):
             if path is None:
                 continue
-            text = str(path)
-            if "/.hermes" in text or "/.ssh" in text or "/.config" in text:
-                problems.append(f"refusing to mount a credential-looking path: {path}")
+            # Normalise separators before matching. A Windows path is `C:\Users\x\.hermes`, which
+            # never matched the `/`-separated needles, so the guard silently allowed a credential
+            # directory through on that platform.
+            text = str(path).replace("\\", "/").lower()
+            for needle in ("/.hermes", "/.ssh", "/.config", "/.aws", "/.gnupg", "/.docker"):
+                if needle in text:
+                    problems.append(f"refusing to mount a credential-looking path: {path}")
+                    break
         if not self.entrypoint.startswith("/"):
             problems.append("entrypoint must be an absolute path inside the image")
         if problems:

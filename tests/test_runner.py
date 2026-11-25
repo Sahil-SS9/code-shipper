@@ -98,7 +98,9 @@ class SpecTests(unittest.TestCase):
     @unittest.skipUnless(not sys.platform.startswith("win"), "POSIX mode bits only")
     def test_a_world_writable_run_directory_is_refused(self) -> None:
         spec = self._spec()
-        os.chmod(spec.work_dir.parent, 0o777)
+        # The directory validate() actually inspects is work_dir, not its parent. Widening the parent
+        # proved nothing and the test passed only where the parent happened to be checked.
+        os.chmod(spec.work_dir, 0o777)
         with self.assertRaises(Exception):
             spec.validate()
 
