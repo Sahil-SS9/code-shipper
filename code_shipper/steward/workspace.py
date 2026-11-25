@@ -46,10 +46,21 @@ class Workspace:
     branch: str = ""
     files: list[str] = field(default_factory=list)
     detail: dict[str, object] = field(default_factory=dict)
+    keep: bool = False
 
     @property
     def socket_path(self) -> Path:
         return self.broker_dir / "broker.sock"
+
+    @property
+    def checkout(self) -> Path:
+        """The tree the worker edits and the scope check judges.
+
+        `/work` is scratch (task.json, capability, the harness's own home); `/work/repo` is the
+        checkout. The distinction matters: judging `/work` would include the worker's own scratch
+        files, and pushing from it would commit them.
+        """
+        return self.work / "repo"
 
     def describe(self) -> dict[str, object]:
         return {
@@ -118,6 +129,8 @@ def prepare(
     staging_root: Path | None = None,
     run_id: str = "",
     reference_dir: Path | None = None,
+    remote: str = "",
+    keep: bool = False,
 ) -> Workspace:
     """Build the editable copy plus a pristine reference of the same tree.
 
@@ -139,9 +152,15 @@ def prepare(
         for target in (work, pristine, broker_dir):
             target.mkdir()
 
+        # Inside the container /work is scratch and the checkout lives at /work/repo, which is the
+        # layout fix_worker.py reads. Build the same shape here so the host sees what the worker does.
+        work_repo = work / "repo"
+        work_repo.mkdir()
+
         # The pristine copy is taken first, from the head tree, so it can never include the fix.
+        # The pristine copy is only ever read, so it needs neither a remote nor the real commit.
         _materialise(source, pristine, head_sha)
-        _materialise(source, work, head_sha)
+        _materialise(source, work_repo, head_sha, remote=remote)
 
         # The worker runs as uid 65534 in the container, so it must be able to write /work.
         _make_readable(work)
@@ -151,8 +170,8 @@ def prepare(
         require_private_dir(root)
 
         files = sorted(
-            str(path.relative_to(work)).replace(os.sep, "/")
-            for path in work.rglob("*")
+            str(path.relative_to(work_repo)).replace(os.sep, "/")
+            for path in work_repo.rglob("*")
             if path.is_file()
         )
         return Workspace(
@@ -165,9 +184,11 @@ def prepare(
             branch=branch,
             files=files,
             detail={"staging_root": str(staging_root)},
+            keep=keep,
         )
     except Exception:
-        shutil.rmtree(root, ignore_errors=True)
+        if not keep:
+            shutil.rmtree(root, ignore_errors=True)
         raise
 
 
@@ -178,12 +199,15 @@ def _mkdtemp(parent: Path, run_id: str) -> str:
     return tempfile.mkdtemp(prefix=prefix, dir=str(parent))
 
 
-def _materialise(source: Path, target: Path, sha: str) -> None:
+def _materialise(source: Path, target: Path, sha: str, *, remote: str = "") -> None:
     """Copy the checkout at ``sha`` into ``target``.
 
     A worktree would be cheaper, but it writes to the source repository's `.git` and the worker's copy
     must be disposable. Copying the working tree and then checking out the exact commit keeps the
     source repository untouched.
+
+    ``remote`` is set as ``origin`` when given, because the push stage authenticates against a real
+    remote and a checkout with no origin cannot be pushed at all.
     """
     for entry in source.iterdir():
         if entry.name in (".git", ".staging") or entry.name.startswith(".staging"):
@@ -195,8 +219,41 @@ def _materialise(source: Path, target: Path, sha: str) -> None:
             shutil.copy2(entry, destination)
 
     # A `.git` is needed so the copy can be committed from; it is initialised fresh and never shares
-    # objects with the source checkout.
+    # objects with the source checkout. It is also set to the **exact head commit**, because the push
+    # stage is fast-forward only: a local commit whose parent is not the remote head cannot be pushed,
+    # and inventing a base commit would make every push a non-fast-forward.
     subprocess.run(["git", "init", "-q"], cwd=str(target), check=True, capture_output=True)
+    if remote:
+        subprocess.run(
+            ["git", "remote", "add", "origin", remote],
+            cwd=str(target), check=True, capture_output=True,
+        )
+        if sha and len(sha) == 40:
+            subprocess.run(
+                ["git", "fetch", "-q", "--depth", "1", "origin", sha],
+                cwd=str(target), check=True, capture_output=True,
+            )
+            # --mixed, not --soft: the index must be rebuilt from the *fetched tree*, not carried over
+            # from the empty fresh repository. With --soft the index still listed no files, so the
+            # push committed every file as deleted. Caught on sandbox PR #23, where a one-file fix
+            # arrived as a diff that removed the whole repository.
+            subprocess.run(
+                ["git", "reset", "-q", "--mixed", "FETCH_HEAD"],
+                cwd=str(target), check=True, capture_output=True,
+            )
+            # The working tree already holds the head content (copied above); assert that, because a
+            # mismatch here is what silently turns a fix into a deletion patch.
+            missing = [
+                entry.name for entry in source.iterdir()
+                if entry.name not in (".git", ".staging")
+                and not entry.name.startswith(".staging")
+                and not (target / entry.name).exists()
+            ]
+            if missing:
+                raise WorkspaceError(
+                    f"workspace is missing {missing} after checkout; refusing to continue"
+                )
+            return
     subprocess.run(["git", "add", "-A"], cwd=str(target), check=True, capture_output=True)
     subprocess.run(
         ["git", "-c", "user.name=Code-Shipper", "-c", "user.email=bot@invalid",

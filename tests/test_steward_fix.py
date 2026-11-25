@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from code_shipper.budget import RunBudget
+from code_shipper.contain import fixloop
 from code_shipper.steward import classify
 from code_shipper.steward.classify import WorkItem, WorkKind
 from code_shipper.steward.fix import build_prompt, run_fix
@@ -164,6 +165,100 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(len(items), 3)
 
 
+class DeletionRegressionTests(unittest.TestCase):
+    """A fix must never arrive as a deletion patch.
+
+    Measured on sandbox PR #23: the workspace was built with `git reset --soft` against a freshly
+    initialised repository, so the index listed no files and the push committed every file as
+    deleted. The one-character fix arrived on GitHub as a diff that removed the whole repository.
+    These tests pin the cause and the guard.
+    """
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="cs-del-"))
+        self.addCleanup(lambda: shutil.rmtree(self.root, ignore_errors=True))
+        self.bare = self.root / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(self.bare)], check=True,
+                       capture_output=True)
+        seed = self.root / "seed"
+        seed.mkdir()
+        (seed / "calc").mkdir()
+        (seed / "calc" / "__init__.py").write_text(BUGGY_SOURCE)
+        (seed / "README.md").write_text("# repo\n")
+        (seed / "tests").mkdir()
+        (seed / "tests" / "test_calc.py").write_text(GOOD_TESTS)
+        for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
+                    ["git", "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "base"],
+                    ["git", "branch", "-M", "main"],
+                    ["git", "remote", "add", "origin", str(self.bare)],
+                    ["git", "push", "-q", "origin", "main"]):
+            subprocess.run(cmd, cwd=str(seed), check=True, capture_output=True)
+        self.seed = seed
+        self.sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(seed),
+                                  capture_output=True, text=True).stdout.strip()
+
+    def test_a_fix_does_not_commit_every_file_as_deleted(self) -> None:
+        ws = prepare(
+            self.seed,
+            base_sha=self.sha,
+            head_sha=self.sha,
+            branch="main",
+            staging_root=self.root / "staging",
+            remote=str(self.bare),
+        )
+        self.addCleanup(ws.cleanup)
+
+        # the fix: one line
+        (ws.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+        before = fixloop.snapshot(ws.checkout)
+        verdict = fixloop.check_scope(before, ws.checkout, policy=POLICY)
+
+        # scope must see one changed file and zero deletions, given the change is already applied
+        (ws.checkout / "calc" / "__init__.py").write_text(BUGGY_SOURCE)
+        verdict = fixloop.check_scope(fixloop.snapshot(ws.checkout), ws.checkout, policy=POLICY)
+        self.assertEqual(verdict.removed, [], "the workspace lost files")
+
+        # and the pushed commit must touch one file, not delete the tree
+        (ws.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+        hooks = ws.root / "empty-hooks"
+        hooks.mkdir()
+        receipt = fixloop.push(
+            ws.checkout,
+            branch="main",
+            head_branch="main",
+            expected_sha=self.sha,
+            commit_message="one line fix",
+            token="ghp_fake",
+            hookless_dir=hooks,
+            author=("T", "t@e.invalid"),
+        )
+        self.assertTrue(receipt["ok"], receipt)
+
+        stat = subprocess.run(
+            ["git", "--git-dir", str(self.bare), "show", "--stat", "--oneline", "main"],
+            capture_output=True, text=True,
+        ).stdout
+        self.assertIn("calc/__init__.py", stat)
+        self.assertNotIn("deleted file", stat, "the fix arrived as a deletion patch")
+        # and the other files survived
+        files = subprocess.run(
+            ["git", "--git-dir", str(self.bare), "ls-tree", "-r", "--name-only", "main"],
+            capture_output=True, text=True,
+        ).stdout.split()
+        self.assertIn("README.md", files)
+        self.assertIn("tests/test_calc.py", files)
+
+    def test_the_workspace_refuses_a_checkout_that_lost_files(self) -> None:
+        # the guard itself: if the working tree does not match the fetched head, stop
+        from code_shipper.steward.workspace import WorkspaceError as WE
+
+        empty = self.root / "empty-source"
+        empty.mkdir()
+        with self.assertRaises((WE, Exception)):
+            prepare(empty, base_sha=self.sha, head_sha=self.sha, branch="main",
+                    staging_root=self.root / "staging2", remote=str(self.bare))
+
+
 class WorkspaceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp(prefix="cs-ws-"))
@@ -185,7 +280,7 @@ class WorkspaceTests(unittest.TestCase):
         ws = prepare(self.repo, base_sha=self.sha, head_sha=self.sha, branch="feature",
                      staging_root=self.root / "staging")
         self.addCleanup(ws.cleanup)
-        self.assertTrue((ws.work / "calc" / "__init__.py").exists())
+        self.assertTrue((ws.checkout / "calc" / "__init__.py").exists())
         self.assertTrue((ws.pristine / "calc" / "__init__.py").exists())
         self.assertEqual(ws.branch, "feature")
         self.assertIn("calc/__init__.py", ws.files)
@@ -211,7 +306,7 @@ class WorkspaceTests(unittest.TestCase):
                      staging_root=self.root / "staging")
         self.addCleanup(ws.cleanup)
         source_objects = (self.repo / ".git" / "objects").resolve()
-        work_objects = (ws.work / ".git" / "objects").resolve()
+        work_objects = (ws.checkout / ".git" / "objects").resolve()
         self.assertNotEqual(source_objects, work_objects)
 
     def test_a_failed_prepare_leaves_nothing_behind(self) -> None:
@@ -228,7 +323,7 @@ class WorkspaceTests(unittest.TestCase):
         ws = prepare(self.repo, base_sha=self.sha, head_sha=self.sha, branch="feature",
                      staging_root=self.root / "staging")
         self.addCleanup(ws.cleanup)
-        mode = stat.S_IMODE((ws.work / "calc" / "__init__.py").stat().st_mode)
+        mode = stat.S_IMODE((ws.checkout / "calc" / "__init__.py").stat().st_mode)
         self.assertTrue(mode & stat.S_IWOTH, f"file is {oct(mode)}, worker could not write it")
 
 
@@ -269,7 +364,7 @@ class WiringTests(unittest.TestCase):
     def test_a_good_fix_is_in_scope_and_not_pushed_in_dry_run(self) -> None:
         class Fixer:
             def run(self, *, workspace, item, prompt, budget):
-                (workspace.work / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+                (workspace.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
                 return {"changed": ["calc/__init__.py"]}
 
         receipt = self.run_fix(Fixer())
@@ -280,7 +375,7 @@ class WiringTests(unittest.TestCase):
     def test_deleting_a_test_is_refused_before_any_push(self) -> None:
         class Cheat:
             def run(self, *, workspace, item, prompt, budget):
-                (workspace.work / "tests" / "test_calc.py").write_text("")
+                (workspace.checkout / "tests" / "test_calc.py").write_text("")
                 return {}
 
         receipt = self.run_fix(Cheat(), push=True)
@@ -293,8 +388,8 @@ class WiringTests(unittest.TestCase):
     def test_editing_outside_the_policy_is_refused(self) -> None:
         class WrongFile:
             def run(self, *, workspace, item, prompt, budget):
-                (workspace.work / ".github").mkdir(exist_ok=True)
-                (workspace.work / ".github" / "workflows.yml").write_text("on: []\n")
+                (workspace.checkout / ".github").mkdir(exist_ok=True)
+                (workspace.checkout / ".github" / "workflows.yml").write_text("on: []\n")
                 return {}
 
         receipt = self.run_fix(WrongFile(), push=True)
@@ -338,7 +433,7 @@ class WiringTests(unittest.TestCase):
     def test_the_budget_stops_a_second_round(self) -> None:
         class Fixer:
             def run(self, *, workspace, item, prompt, budget):
-                (workspace.work / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+                (workspace.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
                 return {}
 
         budget = RunBudget(fix_rounds=1)
@@ -357,7 +452,7 @@ class WiringTests(unittest.TestCase):
 
         class Fixer:
             def run(self, *, workspace, item, prompt, budget):
-                (workspace.work / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+                (workspace.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
                 return {}
 
         self.run_fix(Fixer())
@@ -367,7 +462,7 @@ class WiringTests(unittest.TestCase):
     def test_the_receipt_records_the_scope_policy_used(self) -> None:
         class Fixer:
             def run(self, *, workspace, item, prompt, budget):
-                (workspace.work / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+                (workspace.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
                 return {}
 
         receipt = self.run_fix(Fixer())
@@ -377,7 +472,7 @@ class WiringTests(unittest.TestCase):
     def test_a_push_without_a_token_is_refused(self) -> None:
         class Fixer:
             def run(self, *, workspace, item, prompt, budget):
-                (workspace.work / "calc" / "__init__.py").write_text(GOOD_SOURCE)
+                (workspace.checkout / "calc" / "__init__.py").write_text(GOOD_SOURCE)
                 return {}
 
         receipt = run_fix(

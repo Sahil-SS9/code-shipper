@@ -109,6 +109,8 @@ def run_fix(
     staging_root: Path | None = None,
     commit_message: str = "",
     push: bool = True,
+    keep: bool = False,
+    remote: str = "",
     author: tuple[str, str] = ("Code-Shipper", "noreply@example.invalid"),
 ) -> FixReceipt:
     """One fix attempt, start to finish.
@@ -152,11 +154,13 @@ def run_fix(
             head_sha=head_sha,
             branch=head_branch,
             staging_root=staging_root,
+            remote=remote,
+            keep=keep,
         )
         receipt.workspace = workspace.describe()
 
         # Snapshot before the worker runs: the diff is derived from disk, not from what it claims.
-        before = fixloop.snapshot(workspace.work)
+        before = fixloop.snapshot(workspace.checkout)
 
         try:
             result = worker.run(
@@ -181,7 +185,7 @@ def run_fix(
 
         verdict = fixloop.check_scope(
             before,
-            workspace.work,
+            workspace.checkout,
             original_root=workspace.pristine,
             policy=policy,
         )
@@ -221,7 +225,7 @@ def run_fix(
         hooks = workspace.root / "empty-hooks"
         hooks.mkdir(exist_ok=True)
         receipt.push = fixloop.push(
-            workspace.work,
+            workspace.checkout,
             branch=head_branch,
             head_branch=head_branch,
             expected_sha=head_sha,
@@ -238,5 +242,6 @@ def run_fix(
         receipt.budget = budget.as_dict()
         return receipt
     finally:
-        if workspace is not None:
+        # Kept for inspection when the caller asks; a real run always cleans up.
+        if workspace is not None and not getattr(workspace, "keep", False):
             workspace.cleanup()

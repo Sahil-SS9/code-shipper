@@ -90,12 +90,110 @@ def _touches(changed_files: list[str], path: str) -> bool:
     return False
 
 
+# A path as it appears in a CI log: word-bounded, with a known source extension, optionally with a
+# line number or `::` test selector after it.
+_PATH_IN_LOG = re.compile(
+    r"\b([\w./-]+\.(?:py|pyi|js|jsx|ts|tsx|go|rs|java|rb|php|cs|c|cc|cpp|h|hpp|sh))(?::\d+)?\b"
+)
+
+# A path that identifies a test, by convention. Same conventions the policy uses.
+_TEST_PATH = re.compile(
+    r"(^|/)(tests?|__tests__)/|(^|/)test_[^/]+$|_test\.\w+$|\.test\.\w+$|(^|/)conftest\.py$"
+)
+
+
+def _looks_like_test_path(path: str) -> bool:
+    return bool(_TEST_PATH.search(_norm(path)))
+
+
+def _dedupe(paths: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for path in paths:
+        if path and path not in seen:
+            seen.add(path)
+            out.append(path)
+    return out
+
+
+def _module_names(path: str) -> set[str]:
+    """The import names a file could be referred to by: `calc/__init__.py` -> {"calc", "calc.__init__"}."""
+    normalised = _norm(path)
+    if normalised.endswith(".py"):
+        normalised = normalised[:-3]
+    parts = [p for p in normalised.split("/") if p and p != "."]
+    if not parts:
+        return set()
+    names = {parts[-1], ".".join(parts)}
+    if parts[-1] == "__init__" and len(parts) > 1:
+        names |= {parts[-2], ".".join(parts[:-1])}
+    return {n for n in names if n}
+
+
+def _imports_changed(test_path: str, imports: list[str], changed_files: list[str]) -> bool:
+    """Whether a test file imports any module this PR changed.
+
+    This is the evidence that separates "a test broke because of this change" from "a test broke".
+    Measured on sandbox PR #23: the log names only `tests/test_calc.py`, and the changed file is
+    `calc/__init__.py`; the test's `from calc import divide` is what makes the failure ours. Without
+    that link, a log-named test file is not evidence of anything.
+    """
+    changed_names: set[str] = set()
+    for changed in changed_files:
+        changed_names |= _module_names(changed)
+    for imported in imports or []:
+        root = imported.split(".")[0]
+        if imported in changed_names or root in changed_names:
+            return True
+    return False
+
+
+def imports_of(log: str) -> list[str]:
+    """The test files the log names. The caller resolves each to its real imports from the checkout.
+
+    Returning a path rather than guessing at import names keeps this honest: only the file on disk
+    knows what it imports.
+    """
+    found: list[str] = []
+    for line in (log or "").splitlines():
+        for token in _PATH_IN_LOG.findall(line):
+            if _looks_like_test_path(token) and token not in found:
+                found.append(token)
+    return found
+
+
+def parse_imports(source: str) -> list[str]:
+    """Module names a Python file imports, for the import-link check. Never raises."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            modules.append(node.module)
+            modules.extend(f"{node.module}.{alias.name}" for alias in node.names)
+    return modules
+
+
 def classify_failing_check(
     check: Any, changed_files: list[str], *, max_files: int = 20
 ) -> WorkItem:
     """A failing check is in scope only when it points at code this PR touches.
 
     ``check`` needs ``name``, ``conclusion``/``state`` and optionally ``log_tail`` and ``files``.
+
+    **The failing test file itself counts, and that is not a loophole.** A PR typically changes source
+    and leaves the test alone, so a failure reported at `tests/test_calc.py:11` names a file the PR did
+    not touch — while the cause is plainly in the changed `calc/__init__.py`. Measured on sandbox PR
+    #23: the only changed file was `calc/__init__.py`, the assertion failed in `tests/test_calc.py`, and
+    a changed-files-only rule refused the run with "the cause is probably outside this change". That
+    was wrong, so a log-named path is accepted when it either *is* a changed file or *imports around*
+    one — see `_related_to_change`.
     """
     name = getattr(check, "name", "") or "unnamed check"
     conclusion = (getattr(check, "conclusion", "") or getattr(check, "state", "") or "").lower()
@@ -105,13 +203,28 @@ def classify_failing_check(
     log = getattr(check, "log_tail", "") or ""
     named: list[str] = [f for f in (getattr(check, "files", None) or []) if isinstance(f, str)]
 
-    # Prefer files the log actually names; fall back to any changed file the log mentions.
-    mentioned: list[str] = []
-    for path in changed_files:
-        normalised = _norm(path)
-        if normalised and normalised in log:
-            mentioned.append(normalised)
-    candidates = [p for p in named if _touches(changed_files, p)] or mentioned
+    # Files the log names outright, plus files the check reports.
+    in_log: list[str] = []
+    for line in log.splitlines():
+        for token in _PATH_IN_LOG.findall(line):
+            candidate = _norm(token)
+            if candidate and candidate not in in_log:
+                in_log.append(candidate)
+
+    reported = [_norm(p) for p in named] + in_log
+    changed_norm = {_norm(c) for c in changed_files}
+    direct = [p for p in reported if p in changed_norm or _touches(changed_files, p)]
+
+    # A log-named test file is evidence only when it imports a module this PR changed. Without that
+    # link, any unrelated failing test would look like our problem.
+    imports = list(getattr(check, "test_imports", None) or [])
+    related: list[str] = []
+    for path in reported:
+        if path in direct or not _looks_like_test_path(path):
+            continue
+        if _imports_changed(path, imports, changed_files):
+            related.append(path)
+    candidates = _dedupe(direct + related)
 
     if not candidates:
         return WorkItem(
@@ -120,12 +233,21 @@ def classify_failing_check(
             "the cause is probably outside this change",
         )
 
+    reason = (
+        f"check {name!r} failed and its output points at {len(candidates)} file(s) related to this "
+        "change"
+    )
+    if related and not direct:
+        reason = (
+            f"check {name!r} failed in {related[0]!r}, a test file that exercises code this PR changes; "
+            "the failure is caused by this change"
+        )
     return WorkItem(
         WorkKind.FAILING_CHECK,
-        f"check {name!r} failed and its output points at {len(candidates)} changed file(s)",
+        reason,
         paths=candidates[:max_files],
         source_id=name,
-        detail={"conclusion": conclusion},
+        detail={"conclusion": conclusion, "related_tests": related},
     )
 
 
