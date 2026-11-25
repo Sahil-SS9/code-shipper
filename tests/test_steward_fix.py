@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import stat
 import subprocess
 import tempfile
@@ -285,6 +286,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(ws.branch, "feature")
         self.assertIn("calc/__init__.py", ws.files)
 
+    @unittest.skipUnless(not sys.platform.startswith("win"), "POSIX mode bits only")
     def test_the_run_directory_is_private(self) -> None:
         ws = prepare(self.repo, base_sha=self.sha, head_sha=self.sha, branch="feature",
                      staging_root=self.root / "staging")
@@ -292,6 +294,7 @@ class WorkspaceTests(unittest.TestCase):
         mode = stat.S_IMODE(ws.root.stat().st_mode)
         self.assertEqual(mode & 0o077, 0, f"run dir is {oct(mode)}, must be 0700")
 
+    @unittest.skipUnless(not sys.platform.startswith("win"), "POSIX mode bits only")
     def test_a_widened_run_directory_is_refused(self) -> None:
         ws = prepare(self.repo, base_sha=self.sha, head_sha=self.sha, branch="feature",
                      staging_root=self.root / "staging")
@@ -318,6 +321,7 @@ class WorkspaceTests(unittest.TestCase):
                     branch="x", staging_root=staging)
         self.assertEqual(set(staging.iterdir()), before)
 
+    @unittest.skipUnless(not sys.platform.startswith("win"), "POSIX mode bits only")
     def test_the_worker_can_write_its_copy(self) -> None:
         # the container runs as a different uid, so the copy must be writable by others
         ws = prepare(self.repo, base_sha=self.sha, head_sha=self.sha, branch="feature",

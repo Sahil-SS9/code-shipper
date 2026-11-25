@@ -22,10 +22,13 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 # Copied into /work so a worker can run the suite without network access.
+_POSIX = not sys.platform.startswith("win")
+
 COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", ".staging", "*.egg-info")
 
 
@@ -101,7 +104,14 @@ def require_private_dir(path: Path) -> None:
     The broker socket is 0666 so the worker (a different uid inside the container) can connect. That
     is only safe because this directory is 0700 and owned by us. A world- or group-writable parent
     would let another user replace the socket, which is the whole boundary.
+
+    **POSIX only, deliberately.** Windows has no mode bits in this sense — `mkdtemp` reports 0o777 and
+    ACLs are what actually govern access — so the check is skipped there rather than pretending to
+    pass. Containment on Windows is UNSUPPORTED in v1 (doctor says so), and a check that silently
+    "passed" on a platform whose permissions it cannot read would be worse than no check.
     """
+    if not _POSIX:
+        return
     try:
         info = path.stat()
     except OSError as exc:
@@ -267,7 +277,11 @@ def _make_readable(work: Path) -> None:
 
     `chown` needs root, which is unavailable, so permissions are widened on the workspace instead. The
     directory is 0700 and holds nothing but a disposable copy, so this does not widen the boundary.
+
+    POSIX only: on Windows there is no container worker to write the copy, and chmod is a near-no-op.
     """
+    if not _POSIX:
+        return
     for path in [work, *work.rglob("*")]:
         try:
             if path.is_dir():
@@ -280,6 +294,8 @@ def _make_readable(work: Path) -> None:
 
 def _make_relayable(broker_dir: Path) -> None:
     """The worker must traverse and connect, but not create or replace."""
+    if not _POSIX:
+        return
     try:
         broker_dir.chmod(0o755)
     except OSError:

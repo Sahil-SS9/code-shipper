@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import shutil
 import subprocess
 import tempfile
@@ -94,6 +95,7 @@ class SpecTests(unittest.TestCase):
         with self.assertRaises(Exception):
             widened.validate()
 
+    @unittest.skipUnless(not sys.platform.startswith("win"), "POSIX mode bits only")
     def test_a_world_writable_run_directory_is_refused(self) -> None:
         spec = self._spec()
         os.chmod(spec.work_dir.parent, 0o777)
