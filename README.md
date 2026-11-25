@@ -81,8 +81,28 @@ Two rules:
 The defence does not rely on a token being unable to merge. It relies on the token never reaching the
 agent, and on your branch rules deciding what happens if one ever did.
 
-Surfaces: a scriptable CLI, an interactive TUI inbox and a Hermes Desktop page share one state and
-action service. The owner approved the wireframes on 24/11/2026 (`docs/ux/gallery.html`); UI code follows them.
+Surfaces: a scriptable CLI, a terminal board and a Hermes Desktop page share one state and action
+service. All three read the **stored review state** for a pull request — the same state `review`, `poll`
+and `watch` write. Nothing draws sample data unless you ask for it with `--demo`, and then every surface
+prints "demo data" on the output.
+
+```
+code-shipper status                          # everything reviewed, from stored state
+code-shipper status --repo owner/name        # one repository
+code-shipper ui --repo owner/name --pr 25    # the terminal board for a real review
+code-shipper ship-page --repo owner/name --pr 25 --out board.html
+code-shipper status --demo                   # the sample board, labelled as such
+```
+
+Inside Hermes the plugin provides `/ship <owner/repo> <pr> <subcommand>`, a thin wrapper over the CLI:
+`review`, `board`, `fix`, `watch`, `stop`, `status`, `publish`. `/ship ... board` draws the stored review;
+there is no separate Hermes Desktop panel — the desktop surface is the HTML page `ship-page` writes, or
+the terminal board. That is a deliberate scope line, not an omission: a second UI inside the Hermes
+desktop would be a second place holding presentation logic.
+
+`code-shipper review` reviews and **stores** the result without commenting on GitHub; `watch` and `poll`
+are the posting path and post the same review. `code-shipper fix` without `--dry-run` prints the plan and
+directs you to `watch`, which owns the round, the budget and the stop signal rather than duplicating them.
 
 Related work: Claude Ship (Anthropic, Claude-only) and
 [diaktoros](https://github.com/coe0718/diaktoros) (Hermes-only review loop whose broker design
