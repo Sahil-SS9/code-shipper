@@ -26,6 +26,8 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ..atomic import read_json, write_json_atomic
 from typing import Any
 
 from .fingerprint import fingerprint as _compute_fingerprint
@@ -106,11 +108,7 @@ class ReviewStore:
         A corrupt file is a fresh state rather than a crash: losing the baseline means the next review
         is a full one, which is safe. Reusing a corrupt baseline could skip commits.
         """
-        path = self._path(repo, pr)
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return ReviewState(repo=repo, pr=pr)
+        data = read_json(self._path(repo, pr))
         if not isinstance(data, dict):
             return ReviewState(repo=repo, pr=pr)
         state = ReviewState.from_dict(data)
@@ -118,39 +116,15 @@ class ReviewStore:
         return state
 
     def save(self, state: ReviewState) -> None:
-        """Write the state atomically.
+        """Write the state atomically, best-effort.
 
-        A plain `write_text` truncates the file before writing it, so a crash, a full disk or a killed
-        process between the two leaves a half-written file. `load` survives that (it falls back to a
-        fresh state), but the consequence is silent: the next review is a full one, and nobody learns that
-        the incremental baseline was lost. Writing to a sibling temp file and renaming it means a reader
-        sees either the old file or the new one, never a torn one — `os.replace` is atomic on POSIX and on
-        Windows.
-
-        The write is still best-effort: losing it means a full review next time, which is safe, so it is
-        never a reason to fail a review.
+        Losing this write means the next review is a full one, which is safe — so a failure is swallowed
+        rather than failing the review. The write must still be atomic: a *torn* file is worse than a
+        missing one, because `load` reads it as empty and the incremental baseline disappears with no log
+        line. See `atomic.write_json_atomic`.
         """
-        path = self._path(state.repo, state.pr)
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            payload = json.dumps(state.as_dict(), indent=2, sort_keys=True)
-            handle = tempfile.NamedTemporaryFile(
-                "w", encoding="utf-8", dir=str(path.parent),
-                prefix=path.name + ".", suffix=".tmp", delete=False,
-            )
-            try:
-                with handle:
-                    handle.write(payload)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(handle.name, path)
-            except BaseException:
-                # A temp file left behind would accumulate on every failure.
-                try:
-                    os.unlink(handle.name)
-                except OSError:
-                    pass
-                raise
+            write_json_atomic(self._path(state.repo, state.pr), state.as_dict())
         except OSError:
             pass
 

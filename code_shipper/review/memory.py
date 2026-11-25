@@ -27,6 +27,8 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ..atomic import read_json, write_json_atomic
 from typing import Any
 
 # Modes: nothing is reported, lessons are shown separately (shadow), or lessons affect output (on).
@@ -108,21 +110,21 @@ class Store:
         return Path(self.root) / "review-lessons.json"
 
     def load(self) -> list[Lesson]:
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
+        data = read_json(self.path)
         rows = data.get("lessons") if isinstance(data, dict) else data
         if not isinstance(rows, list):
             return []
         return [Lesson.from_dict(row) for row in rows if isinstance(row, dict)]
 
     def save(self, lessons: list[Lesson]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps({"lessons": [lesson.as_dict() for lesson in lessons]}, indent=2),
-            encoding="utf-8",
-        )
+        """Write the lesson memory atomically.
+
+        Not best-effort: a torn file reads as empty, and the next save writes an empty lesson list over
+        the real one. Learned lessons are the whole value of this store, so a lost write must surface as
+        an error rather than vanishing.
+        """
+        write_json_atomic(self.path, {"lessons": [lesson.as_dict() for lesson in lessons]},
+                          sort_keys=False)
 
     def get(self, lesson_id: str) -> Lesson | None:
         for lesson in self.load():

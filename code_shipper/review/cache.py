@@ -39,6 +39,15 @@ class ReviewCache:
         return payload.get("review")
 
     def put(self, repo: str, head_sha: str, review: dict[str, Any]) -> None:
+        """Write the cache entry with a plain write, deliberately.
+
+        Everywhere else in this tree a plain `write_text` is a bug, because a torn file read as empty and
+        then overwritten destroys data. Here it does not: a torn entry fails to parse, the lookup misses,
+        and the review runs again. A cache miss costs one model call, which is the exact thing a cache
+        exists to absorb. Making this atomic would be work spent protecting data whose loss is the
+        design, so it stays a plain write — and this comment says why, so it is not "fixed" later by
+        someone applying the rule everywhere.
+        """
         path = self._path(repo, head_sha)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

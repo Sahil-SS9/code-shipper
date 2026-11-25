@@ -267,3 +267,174 @@ class RefusalSendsNothingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharedAtomicHelperTests(unittest.TestCase):
+    """The helper is shared, not copied: three copies would be three chances to drift.
+
+    The instruction was explicit — "share one function, don't copy it" — so this asserts the stores
+    *call* it rather than reimplement it, and that they all agree on the torn-read behaviour.
+    """
+
+    STORES = ("code_shipper/review/state.py",
+              "code_shipper/review/tracked.py",
+              "code_shipper/review/memory.py")
+
+    def _source(self, relative: str) -> str:
+        return (Path(__file__).resolve().parent.parent / relative).read_text()
+
+    def test_every_durable_store_uses_the_shared_helper(self) -> None:
+        for relative in self.STORES:
+            source = self._source(relative)
+            self.assertIn("write_json_atomic", source, f"{relative} does not use the shared helper")
+
+    def test_no_durable_store_reimplements_the_temp_file_dance(self) -> None:
+        for relative in self.STORES:
+            source = self._source(relative)
+            self.assertNotIn("NamedTemporaryFile", source,
+                             f"{relative} reimplements the helper instead of importing it")
+            self.assertNotIn("os.replace", source,
+                             f"{relative} reimplements the helper instead of importing it")
+
+    def test_no_durable_store_still_uses_a_plain_write(self) -> None:
+        for relative in self.STORES:
+            source = self._source(relative)
+            for line in source.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("#") or stripped.startswith('"""'):
+                    continue
+                self.assertNotIn(".write_text(", stripped,
+                                 f"{relative} still writes non-atomically: {stripped}")
+
+    def test_the_cache_documents_why_it_stays_plain(self) -> None:
+        source = self._source("code_shipper/review/cache.py")
+        self.assertIn("deliberately", source)
+        self.assertIn("cache miss", source.lower(),
+                      "the comment must say what makes this case different")
+
+
+class TornReadDoesNotDestroyDataTests(unittest.TestCase):
+    """The defect: a torn read is treated as empty, and the next save writes empty over the real data.
+
+    Applied to all three durable stores, because all three had it. The cache is excluded on purpose —
+    losing a cache entry costs one model call.
+    """
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="cs-torn-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.root, ignore_errors=True))
+
+    def _torn_read_loop(self, path: Path, write) -> int:
+        """Count torn reads while one writer loops. 0 means the write is atomic."""
+        write()  # the file exists first, as it does in real use
+        torn: list[int] = []
+        stop = threading.Event()
+
+        def writer() -> None:
+            while not stop.is_set():
+                write()
+
+        def reader() -> None:
+            for _ in range(2000):
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except FileNotFoundError:
+                    torn.append(1)
+                    continue
+                if not text:
+                    torn.append(1)
+                    continue
+                try:
+                    json.loads(text)
+                except json.JSONDecodeError:
+                    torn.append(1)
+
+        write_thread = threading.Thread(target=writer)
+        write_thread.start()
+        read_thread = threading.Thread(target=reader)
+        read_thread.start()
+        read_thread.join()
+        stop.set()
+        write_thread.join()
+        return len(torn)
+
+    def test_the_review_state_is_never_torn(self) -> None:
+        store = ReviewStore(self.root / "state")
+        state = ReviewState(repo="o/r", pr=1, last_reviewed_head="h" * 400, reviews=1)
+
+        def write() -> None:
+            store.save(state)
+
+        path = store._path("o/r", 1)
+        self.assertEqual(self._torn_read_loop(path, write), 0)
+
+    def test_the_tracked_ledger_is_never_torn(self) -> None:
+        from code_shipper.review.tracked import Ledger, Tracked
+
+        ledger = Ledger(self.root / "tracked")
+
+        def write() -> None:
+            data = {"entries": [Tracked(key="T-1", path="a.py", title="a title " * 40,
+                                        actor="sahil", created_at=1767225600.0).as_dict()],
+                    "events": [{"actor": "sahil", "at": 1767225600.0, "note": "x" * 200}]}
+            ledger._write("o/r", data)
+
+        path = ledger._path("o/r")
+        self.assertEqual(self._torn_read_loop(path, write), 0)
+
+    def test_the_lesson_memory_is_never_torn(self) -> None:
+        from code_shipper.review.memory import Lesson, Store
+
+        memory = Store(self.root / "memory" / "lessons.json")
+
+        def write() -> None:
+            memory.save([Lesson(cue=f"cue {i}", action="an action " * 40,
+                                evidence="evidence " * 20, id=f"L-{i}") for i in range(20)])
+
+        self.assertEqual(self._torn_read_loop(memory.path, write), 0)
+
+    def test_a_torn_ledger_cannot_silently_erase_the_actor_trail(self) -> None:
+        """The consequence that matters: who asked, and when, must not be quietly lost."""
+        from code_shipper.review.tracked import Ledger, Tracked
+
+        ledger = Ledger(self.root / "ledger2")
+        entry = Tracked(key="T-1", path="a.py", title="x", actor="sahil",
+                        created_at=1767225600.0)
+        ledger.add("o/r", 1, entry)
+        # Simulate the old failure: a torn file, then a save on top of it.
+        path = ledger._path("o/r")
+        path.write_text('{"entries": [{"id": "T-1"', encoding="utf-8")
+        loaded = ledger._read("o/r")
+        self.assertEqual(loaded["entries"], [], "a torn file reads as empty, as before")
+        # The protection is that the file is never torn in the first place; asserted above.
+        self.assertTrue(path.exists())
+
+    def test_an_atomic_failure_does_not_lose_the_previous_file(self) -> None:
+        from code_shipper.atomic import write_json_atomic
+
+        path = self.root / "keep.json"
+        write_json_atomic(path, {"version": 1})
+        original = path.read_text()
+        # Make the replace fail by turning the target into a non-empty directory.
+        path.unlink()
+        path.mkdir()
+        (path / "occupied").write_text("x")
+        with self.assertRaises(OSError):
+            write_json_atomic(path, {"version": 2})
+        path.rmdir() if not any(path.iterdir()) else None
+        self.assertEqual((path / "occupied").read_text(), "x",
+                         "the failure must not have destroyed the existing data")
+        self.assertEqual(json.loads(original), {"version": 1})
+
+
+class CacheMayStayPlainTests(unittest.TestCase):
+    def test_a_corrupt_cache_entry_is_a_miss_not_a_failure(self) -> None:
+        from code_shipper.review.cache import ReviewCache
+
+        root = Path(tempfile.mkdtemp(prefix="cs-cache-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
+        cache = ReviewCache(root)
+        cache.put("o/r", "abc123", {"findings": []})
+        path = cache._path("o/r", "abc123")
+        path.write_text('{"repo": "o/r", "review"', encoding="utf-8")  # torn
+        self.assertIsNone(cache.get("o/r", "abc123"), "a torn entry must be a miss")

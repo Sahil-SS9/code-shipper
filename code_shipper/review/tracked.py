@@ -23,6 +23,8 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ..atomic import read_json, write_json_atomic
 from typing import Any
 
 # The cap, named so a test and a report can both cite the same number.
@@ -98,10 +100,7 @@ class Ledger:
         return Path(self.root) / "tracked" / f"{safe}.json"
 
     def _read(self, repo: str) -> dict[str, Any]:
-        try:
-            data = json.loads(self._path(repo).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"entries": [], "events": []}
+        data = read_json(self._path(repo))
         if not isinstance(data, dict):
             return {"entries": [], "events": []}
         data.setdefault("entries", [])
@@ -109,9 +108,14 @@ class Ledger:
         return data
 
     def _write(self, repo: str, data: dict[str, Any]) -> None:
-        path = self._path(repo)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        """Write the ledger atomically.
+
+        This one is NOT best-effort. The ledger records who asked for a finding to be tracked and when;
+        a torn file read as empty and then overwritten by the next `add` destroys that trail silently,
+        and an audit that cannot say who asked is not an audit. `write_json_atomic` is shared with the
+        other stores rather than copied, so the three cannot drift.
+        """
+        write_json_atomic(self._path(repo), data)
 
     def entries(self, repo: str, pr: int) -> list[Tracked]:
         rows = self._read(repo).get("entries", [])
