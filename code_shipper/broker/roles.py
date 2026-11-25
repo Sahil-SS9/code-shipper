@@ -38,8 +38,15 @@ ROLE_OPS: dict[str, frozenset[str]] = {
     "reviewer": frozenset({"review_comment", "comment", "resolve_thread"}),
     "fixer": frozenset({"push_head", "comment", "reply_review", "label"}),
     "approver": frozenset({"set_status", "approve", "dismiss_approval"}),
+    # D13. A deliberately separate role: reviewer must not gain check-writing (one compromised reviewer
+    # path would then both comment and gate), and approver must not either (a role that can both approve
+    # and set the gate is the composition the design forbids). Being separate also means it is separately
+    # revocable without touching the review path.
+    "reporter": frozenset({"write_check_run", "comment"}),
 }
-FORBIDDEN_OPS = frozenset({"merge", "force_push", "delete_branch", "write_check_run", "push_tag"})
+# `write_check_run` is NOT forbidden any more: D13 was approved with ten limits, implemented in
+# `review/check.py` and enforced here. Everything that can end a pull request's life stays forbidden.
+FORBIDDEN_OPS = frozenset({"merge", "force_push", "delete_branch", "push_tag"})
 REVIEW_EVENTS_BY_ROLE = {
     "reviewer": frozenset({"COMMENT"}),
     "approver": frozenset({"APPROVE"}),
@@ -425,6 +432,51 @@ class Broker:
             path=f"/repos/{self.repo}/issues/comments/{int(comment_id)}",
             payload={"body": body},
             method="PATCH",
+        )
+
+    def write_check(
+        self,
+        *,
+        pr: int,
+        head_sha: str,
+        observed_head: str,
+        state: str,
+        complete: bool,
+        title: str = "",
+        summary: str = "",
+        details_url: str = "",
+        role: str = "reporter",
+    ) -> dict[str, Any] | None:
+        """Create or update the review check for this head (D13).
+
+        Returns None when no check should exist (observe mode, or nothing to report) — a passing check
+        for a rule that is not enforced would be worse than no check at all.
+        """
+        from ..review.check import CheckRefused, CheckRequest, assert_sha_is_head
+
+        # Exact head first: a check on a SHA that is not the head describes a tree nobody is merging.
+        try:
+            assert_sha_is_head(requested=head_sha, observed_head=observed_head)
+        except CheckRefused as exc:
+            self._authorise(role, "write_check_run", repo=self.repo, pr=pr)
+            raise BrokerRefused(exc.code, exc.detail) from None
+
+        request = CheckRequest(
+            repo=self.repo, head_sha=head_sha, state=state, complete=complete,
+            title=title, summary=summary, details_url=details_url,
+        )
+        payload = request.as_payload(external_id=f"{self.repo}#{pr}")
+        if payload is None:
+            return None
+
+        self._authorise(role, "write_check_run", repo=self.repo, pr=pr)
+        return self._send(
+            role=role,
+            op="write_check_run",
+            pr=pr,
+            expected_head=head_sha,
+            path=f"/repos/{self.repo}/check-runs",
+            payload=payload,
         )
 
     def _inline(self, entry: dict[str, Any]) -> dict[str, Any]:
