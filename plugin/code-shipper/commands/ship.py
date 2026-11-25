@@ -28,12 +28,17 @@ SUBCOMMANDS: dict[str, str] = {
     "stop": "stop",
     "watch": "poll",
     "status": "config",
+    # The board: the stored review for this pull request, drawn from real state. Distinct from `status`,
+    # which is the approvals policy. Without this the plugin could only ever show policy, never the
+    # review it just ran.
+    "board": "ui",
 }
 
 USAGE = (
-    "usage: /ship <owner/repo> <pr> [review|fix|watch|stop|status|publish]\n"
+    "usage: /ship <owner/repo> <pr> [review|board|fix|watch|stop|status|publish]\n"
     "\n"
     "  review   post a review of the current head (comment only) or status\n"
+    "  board    draw the stored review for this pull request\n"
     "  fix      fix within a budget, in a container, and push to the PR branch\n"
     "  watch    poll for new heads and review each one\n"
     "  stop     stop a running watch loop\n"
@@ -95,6 +100,9 @@ def build_argv(
     argv = [binary, verb]
     if verb == "poll":
         argv += [str(number), "--repo", repo]
+    elif verb == "ui":
+        # The board takes repo and PR as flags, not a positional: it draws one stored review.
+        argv += ["--repo", repo, "--pr", str(number)]
     else:
         argv += ["--repo", repo]
         if verb in ("review", "watch"):
