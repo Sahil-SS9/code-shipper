@@ -102,10 +102,14 @@ def render_review(projection: Projection, *, colour: bool = False) -> list[str]:
     pill_text = f" {projection.chip or 'OK'} "
     pill = paint(pill_text, PILL_COLOURS.get(projection.level, "inverse_grey"))
     budget = projection.budget
+    # Built in steps rather than nested inside the f-string below: a nested f-string in a replacement
+    # field with a reused quote is PEP 701 (3.12+) only, and this project supports 3.11.
+    head_text = projection.head[:8] or "—"
+    detail = (f"· head {head_text} · {len(projection.findings)} finding(s) · "
+              f"{budget.clock_text()}")
     lines = [
         f"{pill} {paint('#' + str(projection.pr) + ' ' + projection.title, 'bold')}  "
-        f"{paint(f'· head {projection.head[:8] or "—"} · {len(projection.findings)} finding(s) · '
-                 f'{budget.clock_text()}', 'dim')}",
+        f"{paint(detail, 'dim')}",
         "",
     ]
 

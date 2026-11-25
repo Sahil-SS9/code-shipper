@@ -478,3 +478,62 @@ class RenderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PortableSyntaxTests(unittest.TestCase):
+    """Compile every source file with the oldest supported interpreter, for real.
+
+    This exists because a nested f-string in `cli_view` broke three py3.11 CI jobs while every local
+    py3.12 run stayed green. Two weaker guards were tried and thrown away first:
+
+    * `ast.parse(..., feature_version=(3, 11))` — does NOT reject this. The construct is caught by the
+      tokenizer before the ast module sees it, so the check passed happily on the broken file.
+    * A regex for "reused quote inside an f-string" — matched roughly thirty innocent lines per file.
+
+    So the guard runs an actual 3.11 interpreter. It compiles only; it does not import, so it needs no
+    dependencies and stays fast. When no 3.11 is present the test skips with a message rather than passing
+    quietly — a guard that silently does nothing is worse than no guard.
+    """
+
+    PYTHONS = (
+        "/home/kensei/.local/bin/python3.11",
+        "/usr/bin/python3.11",
+        "python3.11",
+    )
+
+    def _interpreter(self) -> str | None:
+        import shutil
+
+        for candidate in self.PYTHONS:
+            found = shutil.which(candidate)
+            if found:
+                return found
+        return None
+
+    def test_every_source_file_compiles_under_python_3_11(self) -> None:
+        import pathlib as _pathlib
+        import subprocess
+
+        interpreter = self._interpreter()
+        if interpreter is None:
+            self.skipTest("no python3.11 available; the CI matrix covers this case")
+
+        root = _pathlib.Path(__file__).resolve().parent.parent
+        script = (
+            "import pathlib, sys\n"
+            "bad = []\n"
+            "for p in sorted(pathlib.Path('.').rglob('*.py')):\n"
+            "    t = str(p)\n"
+            "    if any(x in t for x in ('.venv', '.staging', '.git', 'build')):\n"
+            "        continue\n"
+            "    try:\n"
+            "        compile(p.read_text(encoding='utf-8'), str(p), 'exec')\n"
+            "    except SyntaxError as exc:\n"
+            "        bad.append(f'{p}:{exc.lineno}: {exc.msg}')\n"
+            "print('\\n'.join(bad))\n"
+        )
+        result = subprocess.run([interpreter, "-c", script], cwd=str(root),
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "",
+                         f"files that do not compile under 3.11:\n{result.stdout}")
