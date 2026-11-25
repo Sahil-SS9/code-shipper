@@ -361,6 +361,7 @@ def cmd_review(args: argparse.Namespace) -> int:
             repo=args.repo,
             pr=args.pr,
             head_sha=pr.head_sha,
+            title=pr.title or "",
             diff=diff,
             since_diff=since_diff,
             level=args.level,
@@ -643,6 +644,7 @@ def cmd_poll(args: argparse.Namespace) -> int:
                 repo=repo,
                 pr=args.pr,
                 head_sha=new,
+                title=pr.title or "",
                 diff=host.get_diff(repo, args.pr),
                 since_diff=since_diff,
                 trigger="on-push",
@@ -976,6 +978,10 @@ def cmd_status(args: argparse.Namespace) -> int:
         return 0
 
     state_root = Path(args.state_dir).expanduser() if args.state_dir else loader.default_state_dir()
+    # Only a run that is *live* counts as watched, and nothing on disk says that: `watch` holds the loop
+    # in a process, not in the state file. So nothing is claimed. A paused pull request is paused, not
+    # watched either — the loop stopped and is waiting for a person.
+    watched = 0
     repo = args.repo or ""
     if repo:
         # One repository: list every pull request reviewed in it.
@@ -996,12 +1002,11 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     colour = cli_view.colour_enabled()
     for line in cli_view.render_status(board, colour=colour, repo=repo or "all repositories",
-                                       check_every_minutes=args.check_every_minutes):
+                                       check_every_minutes=args.check_every_minutes,
+                                       watched=watched):
         print(line)
-    if not board:
-        print("  No pull requests have been reviewed yet.")
-        print("  Review one: code-shipper review <pr> --repo owner/name")
-        print("  Or see the sample board: code-shipper status --demo")
+    # The empty message belongs to the renderer, which knows the layout. Printing it here too made the
+    # empty state say the same thing twice, in two slightly different wordings.
     return 0
 
 

@@ -159,34 +159,63 @@ def render_review(projection: Projection, *, colour: bool = False) -> list[str]:
 
 
 def render_status(projections: list[Projection], *, colour: bool = False,
-                  repo: str = "", check_every_minutes: int = 2, demo: bool = False) -> list[str]:
-    """Everything watched, one row per pull request, and how often it is checked."""
+                  repo: str = "", check_every_minutes: int = 2, demo: bool = False,
+                  watched: int = 0) -> list[str]:
+    """Everything reviewed, one row per pull request.
+
+    Three things this deliberately gets right:
+
+    * **The footer names a real pull request, or nothing.** It used to say "status #25" always, left over
+      from the example data — advice about a pull request the reader may never have seen.
+    * **"Watched" means watched.** A one-off review is not a watch: nothing polls it, so claiming
+      "checked every 2 min" about it is a lie the reader would rely on. A reviewed pull request shows as
+      reviewed, and only an active watch is counted.
+    * **One empty message.** The empty state used to print "Nothing is being watched." and then the
+      footer, which read as two separate pieces of bad news about the same fact.
+    """
     paint = _Painter(colour)
-    lines = []
+    lines: list[str] = []
     if demo:
         lines.append(paint(demo_banner(), "amber"))
-    lines.append(f"{paint(repo or 'watching', 'bold')}  "
-                 f"{paint(f'· watching {len(projections)} · checked every {check_every_minutes} min', 'dim')}")
+
+    count = len(projections)
+    header = paint(repo or "all repositories", "bold")
+    if count == 0:
+        lines.append(header)
+        lines.append("")
+        lines.append(f"  No pull requests have been reviewed yet.")
+        lines.append(paint(f"  Review one: code-shipper review <pr> --repo owner/name", "dim"))
+        lines.append(paint(f"  Sample board: code-shipper status --demo", "dim"))
+        return lines
+
+    if watched:
+        detail = f"· {count} reviewed · watching {watched} · checked every {check_every_minutes} min"
+    else:
+        # Saying "checked every 2 min" with nothing polling would be false, and it is the kind of false
+        # a reader acts on.
+        detail = f"· {count} reviewed · not watching (reviews run when you ask)"
+    lines.append(f"{header}  {paint(detail, 'dim')}")
     lines.append("")
-    if not projections:
-        lines.append("  Nothing is being watched.")
+
     for projection in projections:
         dot = {"fail": "red", "warn": "amber", "pass": "green",
                "flight": "blue", "muted": "dim"}.get(projection.level, "dim")
         row = projection.rows[0] if projection.rows else None
         age_text = _age(row.age_seconds if row else 0)
         # The reason column is the inbox's short reason ("not a pass: review again"), not the Next
-        # headline: a headline is a sentence and clipping it mid-word reads as a rendering fault. The
-        # short reason is written to fit.
+        # headline: a headline is a sentence and clipping it mid-word reads as a rendering fault.
         reason = row.reason if row and row.reason else projection.findings_placeholder()
         lines.append(
             f"  {paint('●', dot)} {paint('#' + str(projection.pr), 'bold'):<6} "
-            f"{projection.title[:24]:<24}  {paint(f'{projection.chip:<22}', dot)}  "
+            f"{_clip(projection.title, 24):<24}  {paint(f'{projection.chip:<22}', dot)}  "
             f"{_clip(reason, 38):<38} {paint(age_text, 'dim')}"
         )
+
     lines.append("")
-    lines.append(paint("Open one: code-shipper status #25   Board: code-shipper ui   "
-                       "Script: --json", "dim"))
+    # Built from the rows: the first row's number, because that is a pull request that exists.
+    first = projections[0]
+    lines.append(paint(f"Open one: code-shipper ui --repo {first.repo} --pr {first.pr}"
+                       f"   Board: code-shipper ui   Script: --json", "dim"))
     return lines
 
 
