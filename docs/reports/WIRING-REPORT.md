@@ -102,17 +102,48 @@ is matrix-clean.
 
 ```
 $ ./scripts/run_tests.sh
-Ran 1189 tests in 511.480s
+Ran 1199 tests in 513.408s
 
 OK
 ```
 
+## Two more defects found after the first report
+
+Both found by running the committed tree in a clean `git worktree` instead of from the working directory —
+the check I should have been doing throughout, and now do.
+
+1. **`ship-ui` crashed on every invocation.** It delegates to `cmd_ui`, which reads `args.json`; the
+   `ship-ui` subparser has no such flag, so it raised `AttributeError`. Tests passed because they called
+   `tui.render` directly and never went through `main()`. Fixed, and covered by ten tests that invoke the
+   real entry point.
+2. **`cli_view.py` was missing from its commit.** The demo banner helper was left out of `7b7aaf2` while
+   the CLI imported it, so `status --demo` would have failed in the committed tree.
+
+Verified afterwards in a detached worktree of `a61ed47`:
+
+```
+status --demo                              -> exit 0
+status --state-dir <real>                  -> exit 0
+ui --state-dir <real> --width 100          -> exit 1  (findings)
+ship-ui --state-dir <real>                 -> exit 1  (findings)
+ship-ui findings --demo                    -> exit 1
+ship-page --state-dir <real> --out ...     -> exit 0, finding in page, no demo banner, palette drawn
+```
+
 ## Commit hygiene
 
-Five commits, tests in the same commit as the fix they prove — with one exception worth naming: the
-surface tests live in `tests/test_surfaces_real_state.py`, which is in `99bceb6` alongside the loader, not
-split across the later commits that wire each surface. The loader is what the tests exercise, so they
-belong with it; the later commits are wiring that the same file covers.
+Seven commits: `99bceb6` (loader + tests), `7b7aaf2` (CLI wiring), `96b1687` (palette + demo banner),
+`59fe585` (plugin `board`), `ff88bf8` (README), `a9bceab` (the missing `cli_view.py`), `a61ed47`
+(end-to-end tests + the `ship-ui` fix).
+
+Two hygiene failures in this stop, both named rather than amended:
+
+- `cli_view.py` missed `7b7aaf2`. Third stop in a row with a file left out.
+- `a9bceab` was itself committed with broken indentation in `cli.py` — the edit landed outside the
+  function. The suite caught it immediately, which is why the fix went into `a61ed47` with the tests.
+
+The pattern: `git add <named files>` misses what I did not think to name. Committing the tree and reading
+`git status` before pushing is the habit that would have prevented all three.
 
 ## Still unproven
 
