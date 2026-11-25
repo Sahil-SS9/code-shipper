@@ -172,28 +172,39 @@ def build_parser() -> argparse.ArgumentParser:
     poll.add_argument("--state-dir", default="", help="where review state lives")
     poll.add_argument("--json", action="store_true", help="machine-readable output")
 
-    ui = sub.add_parser("ship-ui", help="render the TUI board for a state (no network)")
-    ui.add_argument(
+    ship_ui = sub.add_parser("ship-ui", help="draw the terminal board for a pull request")
+    ship_ui.add_argument(
         "state",
         nargs="?",
-        default="findings",
-        choices=["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
+        default="auto",
+        choices=["auto"] + ["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
                  "approvals-satisfied", "observe", "paused", "stopped", "error"],
-        help="which state to draw",
+        help="a state name draws DEMO data (requires --demo); 'auto' draws a real review",
     )
-    ui.add_argument("--width", type=int, default=113, help="columns")
-    ui.add_argument("--height", type=int, default=30, help="rows")
+    ship_ui.add_argument("--repo", default="", help="owner/name; defaults to the most recent review")
+    ship_ui.add_argument("--pr", type=int, default=None, help="pull request number")
+    ship_ui.add_argument("--state-dir", default="", help="where review state lives")
+    ship_ui.add_argument("--demo", action="store_true",
+                        help="draw sample data instead of a real review (labelled as demo data)")
+    ship_ui.add_argument("--width", type=int, default=113, help="columns")
+    ship_ui.add_argument("--height", type=int, default=30, help="rows")
 
-    ui = sub.add_parser("ui", help="draw the terminal board for a state (no network)")
+    ui = sub.add_parser("ui", help="draw the terminal board for a pull request")
     ui.add_argument(
         "state",
         nargs="?",
-        default="findings",
-        choices=["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
+        default="auto",
+        choices=["auto"] + ["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
                  "approvals-satisfied", "observe", "paused", "stopped", "error"],
-        help="which state to draw",
+        help="a state name draws DEMO data (requires --demo); 'auto' draws a real review",
     )
-    ui.add_argument("--width", type=int, default=124, help="columns (under 70 collapses to one column)")
+    ui.add_argument("--repo", default="", help="owner/name; defaults to the most recent review")
+    ui.add_argument("--pr", type=int, default=None, help="pull request number")
+    ui.add_argument("--state-dir", default="", help="where review state lives")
+    ui.add_argument("--demo", action="store_true",
+                        help="draw sample data instead of a real review (labelled as demo data)")
+    ui.add_argument("--width", type=int, default=124,
+                    help="columns (under 70 collapses to one column)")
     ui.add_argument("--height", type=int, default=34, help="rows")
     ui.add_argument("--json", action="store_true", help="the same facts as data")
 
@@ -211,16 +222,23 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--check-every-minutes", type=int, default=2,
                         help="the polling interval actually in use")
     status.add_argument("--json", action="store_true", help="the same facts as data")
+    status.add_argument("--state-dir", default="", help="where review state lives")
+    status.add_argument("--demo", action="store_true",
+                        help="show the sample board instead of stored state (labelled as demo data)")
 
-    page = sub.add_parser("ship-page", help="write the Desktop page for a state as self-contained HTML")
+    page = sub.add_parser("ship-page", help="write the Desktop page for a real review")
     page.add_argument(
         "state",
         nargs="?",
-        default="findings",
-        choices=["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
-                 "approvals-satisfied", "observe", "paused", "stopped", "error"],
-        help="which state to draw",
+        default="auto",
+        choices=["auto"] + ["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
+                            "approvals-satisfied", "observe", "paused", "stopped", "error"],
+        help="a state name draws DEMO data (requires --demo); 'auto' draws a real review",
     )
+    page.add_argument("--repo", default="", help="owner/name; defaults to the most recent review")
+    page.add_argument("--pr", type=int, default=None, help="pull request number")
+    page.add_argument("--state-dir", default="", help="where review state lives")
+    page.add_argument("--demo", action="store_true", help="draw sample data (labelled as demo data)")
     page.add_argument("--out", required=True, help="where to write the HTML")
 
     config = sub.add_parser("config", help="inspect configuration")
@@ -281,13 +299,6 @@ def cmd_review(args: argparse.Namespace) -> int:
     from .review.engine import intent_block
     from .review.framing import ci_annotations, hint_block
     from .review.engine import review as run_review
-
-    if not args.dry_run:
-        print(
-            "posting a review is not implemented yet (P2-B); use --dry-run",
-            file=sys.stderr,
-        )
-        return 2
 
     token = os.environ.get("CODE_SHIPPER_GITHUB_TOKEN") or _read_token_quietly()
     if not token:
@@ -377,6 +388,13 @@ def cmd_review(args: argparse.Namespace) -> int:
     else:
         print(f"PR #{args.pr} {pr.title} ({pr.head_sha[:7]}) level={args.level} "
               f"profile={args.profile}")
+        if args.dry_run:
+            print("dry run: nothing was posted and no review state was stored")
+        else:
+            # Accurate, rather than a promise: this command reviews and stores; it does not post.
+            # `poll` and `watch` are the posting path, and they post the same review this computed.
+            print("not posted: `review` stores the result but does not comment on GitHub. "
+                  "Run `code-shipper watch` or `poll` to post it.")
         if result.cached:
             print("cached: this head was already reviewed, so no model call was made")
         if result.incremental and result.scope is not None:
@@ -403,6 +421,8 @@ def cmd_review(args: argparse.Namespace) -> int:
                 print(f"    {finding.body[:300]}")
         if outcome.plan and outcome.plan.summary_line():
             print(f"\n{outcome.plan.summary_line()}")
+        if not args.dry_run:
+            print(f"\nsee it: code-shipper ui --repo {args.repo} --pr {args.pr}")
     return 0 if outcome.complete and not result.paused else 1
 
 
@@ -823,13 +843,13 @@ def _reevaluate_approvals(
 
 
 def cmd_ship_ui(args: argparse.Namespace) -> int:
-    """Draw the TUI board for a state. Pure rendering: no network, no credentials, no writes."""
-    from .surfaces import fixtures, tui
+    """Draw the terminal board. The same function as `ui`: two names, one behaviour.
 
-    projection = fixtures.ALL[args.state]()
-    for line in tui.render(projection, width=args.width, height=args.height):
-        print(line)
-    return 0
+    `ship-ui` was the Phase 5b name and `ui` the Phase 5c one. Keeping both is a courtesy to anyone who
+    learned the first; keeping two implementations would have been the bug — this one kept drawing
+    fixtures long after `ui` was rewired.
+    """
+    return cmd_ui(args)
 
 
 def cmd_fix(args: argparse.Namespace) -> int:
@@ -851,8 +871,6 @@ def cmd_fix(args: argparse.Namespace) -> int:
         return cli_view.EXIT_ERROR
 
     if args.dry_run:
-        projection = fixtures.state_findings()
-        projection.pr = args.pr
         print("plan: one bounded fix round")
         print(f"  repo   {args.repo}")
         print(f"  branch {args.branch}")
@@ -871,46 +889,120 @@ def cmd_fix(args: argparse.Namespace) -> int:
     return cli_view.EXIT_ERROR
 
 
-def cmd_ui(args: argparse.Namespace) -> int:
-    """Draw the terminal board for one state. Pure rendering: no network, no credentials."""
-    from .surfaces import cli_view, fixtures, tui
+def _projection_for(args: argparse.Namespace):
+    """The projection a surface should draw: stored state, or the sample board under --demo.
 
-    projection = fixtures.ALL[args.state]()
+    One place decides this, so no surface can quietly keep reading fixtures. `--state` is only meaningful
+    with `--demo`, and saying so is better than silently ignoring it.
+    """
+    from .surfaces import fixtures, loader
+
+    demo = bool(getattr(args, "demo", False))
+    state_name = getattr(args, "state", None)
+    repo = getattr(args, "repo", "") or ""
+    pr = getattr(args, "pr", None)
+
+    if state_name and state_name != "auto":
+        # A named state is a design-review screen. Treating it as real would need a PR to name too.
+        if not demo and (not repo or not pr):
+            raise SystemExit(
+                "a named state draws sample data: pass --demo, or pass --repo and a pull request "
+                "number to draw a real review"
+            )
+        return fixtures.ALL[state_name](), demo
+
+    if demo:
+        return fixtures.status_board()[0], True
+
+    if not repo or not pr:
+        # No pull request named: draw the most recently reviewed one, which is what a person means by
+        # "show me the board" when they have not said which.
+        found = loader.discover(args.state_dir or None)
+        if not found:
+            raise SystemExit(
+                "no reviews have been stored yet. Review one first:\n"
+                "  code-shipper review <pr> --repo owner/name\n"
+                "or see the sample board: --demo"
+            )
+        repo, pr = found[0]
+    return loader.load_projection(repo, int(pr),
+                                  state_dir=args.state_dir or None), False
+
+
+def cmd_ui(args: argparse.Namespace) -> int:
+    """Draw the terminal board: the most recent real review, or a sample state under --demo."""
+    from .surfaces import cli_view, tui
+
+    projection, demo = _projection_for(args)
     if args.json:
         print(cli_view.render_json(projection))
         return 0
-    for line in tui.render(projection, width=args.width, height=args.height):
+    lines = tui.render(projection, width=args.width, height=args.height)
+    if demo:
+        lines.insert(0, cli_view.demo_banner())
+    for line in lines:
         print(line)
     return cli_view.exit_code(projection)
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    """List everything watched. The interval is stated because "watched" is meaningless without it."""
+    """List everything actually reviewed. The interval is stated because "watched" is meaningless
+    without it.
+
+    Real stored state, not fixtures. `--demo` is the only way to see the sample board, and it says so on
+    every line of output — a demo that looks like a real board is how the surfaces came to be mistaken for
+    working in the first place.
+    """
     import json as _json
 
-    from .surfaces import cli_view, fixtures
+    from .surfaces import cli_view, fixtures, loader
 
-    board = fixtures.status_board()
+    if args.demo:
+        board = fixtures.status_board()
+        rows = None
+        colour = cli_view.colour_enabled()
+        for line in cli_view.render_status(board, colour=colour, repo=args.repo or "demo",
+                                           check_every_minutes=args.check_every_minutes,
+                                           demo=True):
+            print(line)
+        return 0
+
+    state_root = Path(args.state_dir).expanduser() if args.state_dir else loader.default_state_dir()
+    repo = args.repo or ""
+    if repo:
+        # One repository: list every pull request reviewed in it.
+        board = [loader.load_projection(repo, pr, state_dir=state_root)
+                 for repo_name, pr in loader.discover(state_root) if repo_name == repo]
+    else:
+        board = [loader.load_projection(name, pr, state_dir=state_root)
+                 for name, pr in loader.discover(state_root)]
+
     if args.json:
         print(_json.dumps([
-            {"pr": p.pr, "title": p.title, "verdict": p.chip,
-             "reason": p.next_bar()[0], "exit_code": cli_view.exit_code(p)}
+            {"pr": p.pr, "repo": p.repo, "title": p.title, "verdict": p.chip,
+             "state": p.state, "reason": loader.short_reason(p),
+             "exit_code": cli_view.exit_code(p)}
             for p in board
         ], indent=2, sort_keys=True))
         return 0
+
     colour = cli_view.colour_enabled()
-    for line in cli_view.render_status(board, colour=colour, repo=args.repo,
+    for line in cli_view.render_status(board, colour=colour, repo=repo or "all repositories",
                                        check_every_minutes=args.check_every_minutes):
         print(line)
+    if not board:
+        print("  No pull requests have been reviewed yet.")
+        print("  Review one: code-shipper review <pr> --repo owner/name")
+        print("  Or see the sample board: code-shipper status --demo")
     return 0
 
 
 def cmd_ship_page(args: argparse.Namespace) -> int:
-    """Write the Desktop page for a state as one self-contained HTML file."""
-    from .surfaces import desktop, fixtures
+    """Write the Desktop page for a real review, or a sample state under --demo."""
+    from .surfaces import desktop
 
-    projection = fixtures.ALL[args.state]()
-    html = desktop.render(projection)
+    projection, demo = _projection_for(args)
+    html = desktop.render(projection, demo=demo)
     target = Path(args.out).expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(html, encoding="utf-8")
