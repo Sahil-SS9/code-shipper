@@ -44,6 +44,66 @@ the platform doctor reports that container VERIFIED. What is measured is the con
 (twenty controls, `docs/reports/M0-ROOTLESS.md`); a contained harness run with the host inference
 broker is UNVERIFIED, so secure fixing is not yet proven. Details: `docs/tech-spec.md` §2.4, §6.1.
 
+## Install
+
+Requires Python 3.11 or newer. No third-party dependencies: the runtime is the standard library only.
+
+```bash
+git clone https://github.com/Sahil-SS9/code-shipper
+cd code-shipper
+python3 -m code_shipper.cli --help
+```
+
+There is nothing to install. `python3 -m code_shipper.cli` is the whole entry point; a wrapper script or a
+`pip install -e .` is optional.
+
+Run it from a checkout **outside** any credential directory. Code-Shipper refuses to mount `~/.ssh`,
+`~/.aws`, `~/.hermes/auth` and similar into a worker, and the error names the path and suggests
+`~/repos/<name>`. A checkout under `~/.hermes/repos/` is fine — only the credential locations are refused.
+
+### Windows
+
+The CLI runs under PowerShell. There is no `./` prefix:
+
+```powershell
+py -3 -m code_shipper.cli status
+```
+
+For the full local gate run (the same checks the GitHub matrix would run):
+
+```powershell
+bash scripts/local-ci.sh
+```
+
+`local-ci.sh` needs a POSIX shell — Git for Windows provides one. Without it, run the suite directly:
+
+```powershell
+py -3 -m unittest discover -s tests -t . -q
+```
+
+### Platforms tested
+
+| Platform | Unit tests | A real contained fix run |
+|---|---|---|
+| Linux | yes, 3.11 / 3.12 / 3.13 | yes |
+| macOS | yes (CI matrix), **a real contained run is untested** | no |
+| Windows | yes (CI matrix), **a real contained run is untested** | no |
+
+The distinction matters: the unit suite passes on macOS and Windows, but containment — the container, the
+socket, the uid, the volume mounts — has only been exercised on Linux. Do not assume a fix run works on
+macOS until it has been tried.
+
+## Local checks
+
+`scripts/local-ci.sh` runs the same gates as the GitHub matrix — portable syntax on 3.11/3.12/3.13, the
+full suite on each, a clean-import check, and a seal check — and prints a PASS/FAIL line per gate. It exits
+non-zero if any gate fails **or if a gate could not run at all**: a skipped gate is not a green tick.
+
+```bash
+scripts/local-ci.sh              # everything
+scripts/local-ci.sh --only tests # one gate
+```
+
 ## Exit codes
 
 Every command that reports a review result uses the same four codes, so a wrapper can branch on them:
@@ -103,6 +163,9 @@ desktop would be a second place holding presentation logic.
 `code-shipper review` reviews and **stores** the result without commenting on GitHub; `watch` and `poll`
 are the posting path and post the same review. `code-shipper fix` without `--dry-run` prints the plan and
 directs you to `watch`, which owns the round, the budget and the stop signal rather than duplicating them.
+
+Roadmap: [`ROADMAP.md`](ROADMAP.md) — what ships, and why merging, approving and a Desktop panel are
+deliberate non-goals rather than gaps.
 
 Related work: Claude Ship (Anthropic, Claude-only) and
 [diaktoros](https://github.com/coe0718/diaktoros) (Hermes-only review loop whose broker design
