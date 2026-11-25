@@ -117,6 +117,7 @@ def load_snapshot(repo: str, pr: int, *, state_dir: Path | str | None = None) ->
     snapshot.pause_reason = str(state.pause_reason or "")
     snapshot.reviews = int(state.reviews or 0)
     snapshot.last_review_at = float(state.last_review_at or 0)
+    snapshot.title = str(state.title or "")
 
     # Prefer the cache for detail; fall back to the union of open findings in state, which is what the
     # ledger of record actually holds.

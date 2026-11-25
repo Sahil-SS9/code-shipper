@@ -46,6 +46,10 @@ class ReviewState:
     open_all: dict[str, dict[str, Any]] = field(default_factory=dict)
     reviews: int = 0
     last_review_at: float = 0.0
+    # The pull request's title as GitHub reported it at review time. Stored because a surface showing
+    # "#25" with no title is a surface a reader cannot navigate, and because re-fetching it to draw a
+    # board would make rendering need a network and a token.
+    title: str = ""
     paused: bool = False
     pause_reason: str = ""
 
@@ -58,6 +62,7 @@ class ReviewState:
             "open_all": self.open_all,
             "reviews": self.reviews,
             "last_review_at": self.last_review_at,
+            "title": self.title,
             "paused": self.paused,
             "pause_reason": self.pause_reason,
         }
@@ -72,6 +77,7 @@ class ReviewState:
             open_all=dict(data.get("open_all") or {}),
             reviews=int(data.get("reviews", 0) or 0),
             last_review_at=float(data.get("last_review_at", 0) or 0),
+            title=str(data.get("title", "") or ""),
             paused=bool(data.get("paused", False)),
             pause_reason=str(data.get("pause_reason", "")),
         )

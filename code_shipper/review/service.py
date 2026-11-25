@@ -39,6 +39,9 @@ class ReviewRequest:
     repo: str
     pr: int
     head_sha: str
+    # As GitHub reported it. Stored with the state so a board can show a real title without needing a
+    # token or a network call at render time.
+    title: str = ""
     diff: Diff
     since_diff: Diff | None = None
     # D5: what the host says about the relationship between last_reviewed_head and this head. Either
@@ -271,6 +274,8 @@ def run(
         covered_paths=[patch.path for patch in diff.files],
         now=clock() if clock else None,
     )
+    if request.title:
+        state.title = request.title
     if store is not None:
         store.save(state)
 
