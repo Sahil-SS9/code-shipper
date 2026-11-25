@@ -115,6 +115,25 @@ def build_parser() -> argparse.ArgumentParser:
     stop.add_argument("pr", type=int, help="pull request number")
     stop.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     stop.add_argument("--json", action="store_true", help="machine-readable output")
+
+    config = sub.add_parser("config", help="inspect configuration")
+    config.add_argument(
+        "action",
+        choices=["effective"],
+        help="effective: the merged policy and where each value came from",
+    )
+    config.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
+    config.add_argument(
+        "--central",
+        default="",
+        help="path to the shared central policy this repo inherits (optional)",
+    )
+    config.add_argument(
+        "--local",
+        default="",
+        help="path to a local policy file (default: code-shipper.yml in the repo root)",
+    )
+    config.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
 
 
@@ -277,6 +296,64 @@ def _state_dir() -> Path:
     return Path(base) / "code-shipper"
 
 
+def cmd_config(args: argparse.Namespace) -> int:
+    """`config effective`: the merged policy, with the source of every value (C13, D15d).
+
+    Read-only. It prints what *would* be applied, which is the point: a tighten-only rule that refuses
+    an override is invisible unless you can see the effective result and why a value stayed central.
+    """
+    from .approvals.policy import PolicyError, parse
+    from .approvals.shared import effective, merge
+
+    def read(path_text: str, label: str) -> object | None:
+        if not path_text:
+            return None
+        try:
+            return parse(Path(path_text).expanduser().read_text(encoding="utf-8"), source=label)
+        except OSError as exc:
+            print(f"could not read the {label} policy: {exc}", file=sys.stderr)
+            raise SystemExit(2) from None
+
+    central = read(args.central, "central")
+    local_path = args.local
+    if not local_path:
+        token = _read_token_quietly()
+        if token:
+            from .hosts.github import GitHubHost
+
+            host = GitHubHost(token)
+            try:
+                raw = host.read_file(args.repo, _base_branch(host, args.repo), "code-shipper.yml")
+            except Exception:  # noqa: BLE001 - no config in the repo is normal
+                raw = b""
+            if raw:
+                try:
+                    local = parse(raw.decode("utf-8", "replace"), source="repo")
+                except PolicyError as exc:
+                    print(f"the repo's policy is invalid: {exc}", file=sys.stderr)
+                    return 2
+            else:
+                local = None
+        else:
+            local = None
+    else:
+        local = read(local_path, "repo")
+
+    merged = merge(central, local, repo=args.repo)  # type: ignore[arg-type]
+    if args.json:
+        print(json.dumps(merged.as_dict(), indent=2, sort_keys=True))
+    else:
+        print(effective(merged))
+    return 0
+
+
+def _base_branch(host, repo: str) -> str:
+    try:
+        return host.default_branch(repo)
+    except Exception:  # noqa: BLE001
+        return "main"
+
+
 def cmd_watch(args: argparse.Namespace) -> int:
     """Watch a PR: classify, fix, check scope, push — within a budget, and stoppable.
 
@@ -432,6 +509,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_watch(args)
     if args.command == "stop":
         return cmd_stop(args)
+    if args.command == "config":
+        return cmd_config(args)
     parser.error(f"unknown command: {args.command}")
     return 2
 
