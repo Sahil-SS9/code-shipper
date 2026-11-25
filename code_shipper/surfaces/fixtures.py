@@ -183,6 +183,7 @@ def state_error() -> Projection:
         error="count (2) exceeds the number of named approvers (1), so this rule can never be "
               "satisfied; name more approvers or lower the count",
     )
+    projection.error_headline = "Your approval rule can't be met"
     projection.log = [
         "policy: parse refused",
         "policy: never applied; the PR was not evaluated against a rule that cannot be met",

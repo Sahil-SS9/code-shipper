@@ -154,7 +154,9 @@ details.how summary{cursor:pointer;list-style:none}
 """
 
 LEVEL_TO_PILL = {"fail": "red", "warn": "amber", "pass": "green", "muted": "grey", "flight": "blue"}
-ICON_TO_CLASS = {"done": ("ok", "✓"), "failed": ("bad", "✕"), "waiting": ("wait", "◐"),
+# ◐ means work is happening now, and nothing else: a waiting decision shown as a spinner reads as
+# activity and invites a reader to wait for it to finish.
+ICON_TO_CLASS = {"done": ("ok", "✓"), "failed": ("bad", "✕"), "waiting": ("wait", "▸"),
                  "running": ("run", "◐"), "notstarted": ("", "○"), "notneeded": ("", "–")}
 DOT_CLASS = {"fail": "red", "warn": "amber", "pass": "green", "muted": "grey", "flight": "blue"}
 
@@ -268,8 +270,10 @@ def _seg(projection: Projection) -> str:
 
 def _findings(projection: Projection) -> str:
     if not projection.findings:
-        return ('<div class="fc"><div class="fh"><span class="ft">No findings at this head</span>'
-                '</div></div>')
+        # The wording comes from the projection: in a review that did not complete, "No findings at this
+        # head" would claim the code was examined when nothing was.
+        return (f'<div class="fc"><div class="fh"><span class="ft">'
+                f'{_esc(projection.findings_placeholder())}</span></div></div>')
     open_index = 0
     for index, finding in enumerate(projection.findings):
         if finding.severity.lower() in ("important", "blocking"):

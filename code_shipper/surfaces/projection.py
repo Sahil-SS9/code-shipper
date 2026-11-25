@@ -146,6 +146,7 @@ class Projection:
     signals: list[Signal] = field(default_factory=list)
     budget: Budget = field(default_factory=Budget)
     refusal: str = ""
+    error_headline: str = ""
     log: list[str] = field(default_factory=list)
     # The approved view switcher, in order. "Findings" is the default view.
     tabs: tuple[str, ...] = ("Findings", "What changed", "Approvals", "Activity")
@@ -227,12 +228,34 @@ class Projection:
                     "Nothing runs until you restart it.",
                     "review", "Review again")
         if self.state == "error":
-            return (self.refusal or "The review could not run",
-                    "This is a plain cause, not a stack trace.", "review", "Retry")
+            # A short plain headline, then the cause as the detail. The old sub-line explained that the
+            # message was a plain cause, which is the kind of sentence that tells a reader about the
+            # writing instead of the problem.
+            return (self.error_headline or "The review could not run",
+                    self.refusal or "Nothing was checked.", "review", "Retry")
         if self.state == "empty":
             return ("No pull requests to watch yet",
                     "Initialise, then review or watch a pull request.", "refresh", "Refresh")
         return ("", "", "refresh", "Refresh")
+
+    # States where no review completed. In these, "no findings" is not a clean result — it is the
+    # absence of one, and saying it would be the single most misleading sentence a surface could print.
+    NOT_COMPLETE_STATES = frozenset({"error", "reviewing", "paused", "stopped", "incomplete"})
+
+    @property
+    def review_completed(self) -> bool:
+        """Whether a review actually finished. Derived from the state, which already encodes it."""
+        return self.state not in self.NOT_COMPLETE_STATES
+
+    def findings_placeholder(self) -> str:
+        """The line a surface prints where findings would be.
+
+        In a completed review with nothing to report it is a clean result. In an incomplete one the same
+        words would claim the code was examined when it was not, so the line says what actually happened.
+        """
+        if self.review_completed:
+            return "No findings at this head."
+        return "The review didn't finish, so nothing was checked."
 
     def lanes(self) -> list[tuple[str, str, str]]:
         """The four steps under two labels: (step, icon_state, sub_line).
@@ -339,6 +362,8 @@ class Projection:
                 "clock": self.budget.clock_text(),
             },
             "refusal": self.refusal,
+            "review_completed": self.review_completed,
+            "findings_placeholder": self.findings_placeholder(),
             "rows": [r.__dict__ | {"chip": r.chip, "level": r.level} for r in self.rows],
         }
 
@@ -358,6 +383,7 @@ def build_from_review(
     ci_state: str = "",
     paused_reason: str = "",
     refusal: str = "",
+    error_headline: str = "",
     error: str = "",
     budget: Budget | None = None,
     profile: str = "standard",
