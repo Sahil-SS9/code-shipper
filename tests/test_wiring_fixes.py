@@ -600,3 +600,32 @@ class DesktopPaletteClosedTests(unittest.TestCase):
         """Closed by default, but the items must still be in the DOM to open."""
         html = self._html()
         self.assertIn("pitem", html)
+
+class DemoBannerGridTests(unittest.TestCase):
+    """Fix 5: the demo banner took row 1, pushing the content below the fold."""
+
+    def _html(self, demo: bool) -> str:
+        from code_shipper.surfaces import desktop, fixtures
+
+        return desktop.render(fixtures.state_findings(), demo=demo)
+
+    def test_the_demo_window_declares_an_extra_row(self) -> None:
+        html = self._html(True)
+        self.assertIn(".win.demo{grid-template-rows:", html,
+                      "the banner needs its own row or it displaces the header")
+
+    def test_the_demo_window_uses_the_class(self) -> None:
+        html = self._html(True)
+        self.assertIn('class="win demo"', html)
+
+    def test_the_real_window_has_the_plain_class(self) -> None:
+        html = self._html(False)
+        self.assertIn('class="win"', html)
+        self.assertNotIn('class="win demo"', html)
+
+    def test_the_row_count_matches_the_banner(self) -> None:
+        """Four rows with a banner, three without."""
+        demo_rows = self._html(True).split(".win.demo{grid-template-rows:")[1].split("}")[0]
+        self.assertEqual(len(demo_rows.strip().split()), 4, demo_rows)
+        real_rows = self._html(False).split("grid-template-rows:")[1].split(";")[0]
+        self.assertEqual(len(real_rows.strip().split()), 3, real_rows)
