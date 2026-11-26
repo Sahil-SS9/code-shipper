@@ -349,3 +349,54 @@ class HermesContractTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProcessGroupTimeoutTests(unittest.TestCase):
+    """A timeout must actually end the call.
+
+    Measured failure: a 20-seed run sat at 0% CPU for 25 minutes on one seed, with no child of its own
+    visible, because `subprocess.run(timeout=)` killed only the direct child and `hermes` had spawned a
+    grandchild that inherited the capture pipe. The parent then waited on the read end forever.
+    """
+
+    def test_a_grandchild_holding_the_pipe_does_not_block_the_timeout(self) -> None:
+        import subprocess
+        import sys
+        import time
+
+        from code_shipper.harness.adapters import _run_in_own_process_group
+
+        # A launcher that spawns something which outlives it and inherits stdout.
+        script = (
+            "import subprocess, sys\n"
+            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])\n"
+            "sys.exit(0)\n"
+        )
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            _run_in_own_process_group(
+                [sys.executable, "-c", script], capture_output=True, text=True, timeout=3
+            )
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 30, f"the timeout took {elapsed:.0f}s — it did not end the call")
+
+    def test_a_normal_call_still_returns_its_output(self) -> None:
+        import sys
+
+        from code_shipper.harness.adapters import _run_in_own_process_group
+
+        result = _run_in_own_process_group(
+            [sys.executable, "-c", "print('hello')"], capture_output=True, text=True, timeout=30
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), "hello")
+
+    def test_the_hermes_harness_uses_that_runner(self) -> None:
+        """The adapter must not go back to `subprocess.run` with a bare timeout."""
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parent.parent
+                  / "code_shipper" / "harness" / "adapters.py").read_text()
+        body = source.split("class HermesHarness:")[1]
+        self.assertIn("_run_in_own_process_group", body,
+                      "the hermes adapter must run in its own process group")

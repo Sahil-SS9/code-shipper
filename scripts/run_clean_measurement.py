@@ -27,7 +27,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from code_shipper.harness.adapters import OpenAICompatHarness  # noqa: E402
+from code_shipper.harness.adapters import HermesHarness, OpenAICompatHarness  # noqa: E402
 from code_shipper.hosts.base import Diff, FilePatch  # noqa: E402
 from code_shipper.review.engine import review  # noqa: E402
 from scripts.measure_clean_seeds import SEEDS, check_seed, write_seed  # noqa: E402
@@ -52,6 +52,9 @@ def main(argv: list[str]) -> int:
     # The adapter appends `/v1/chat/completions` itself, so this is the host, not the API root. Passing
     # ".../v1" produced ".../v1/v1/chat/completions" and every lens failed with a 503 that looked like a
     # provider outage.
+    parser.add_argument("--harness", choices=("hermes", "openai"), default="hermes",
+                        help="hermes = the CLI's configured (hosted) model, no credential handled here")
+    parser.add_argument("--hermes-bin", default="/home/kensei/.local/bin/hermes")
     parser.add_argument("--base-url", default=os.environ.get("CODE_SHIPPER_LLM_BASE",
                                                              "http://127.0.0.1:8091"))
     parser.add_argument("--model", default=os.environ.get("CODE_SHIPPER_LLM_MODEL", "auto"))
@@ -59,8 +62,14 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv[1:])
 
-    api_key = os.environ.get("CODE_SHIPPER_LLM_KEY", "local")
-    harness = OpenAICompatHarness(args.base_url, api_key, args.model)
+    if args.harness == "hermes":
+        # The hosted path a real user runs: `hermes chat` with whatever provider that install is
+        # configured for. No API key passes through this script, and none is read from disk.
+        harness = HermesHarness(hermes_bin=args.hermes_bin)
+        args.model = "hermes-configured"
+    else:
+        api_key = os.environ.get("CODE_SHIPPER_LLM_KEY", "local")
+        harness = OpenAICompatHarness(args.base_url, api_key, args.model)
     available, detail = harness.available()
     if not available:
         print(f"harness unavailable: {detail}", file=sys.stderr)
@@ -71,6 +80,7 @@ def main(argv: list[str]) -> int:
     results = {
         "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "harness": detail,
+        "harness_kind": args.harness,
         "model": args.model,
         "base_url": args.base_url,
         "level": args.level,

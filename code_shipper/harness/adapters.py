@@ -61,6 +61,45 @@ def _validate(result: dict[str, Any], task: AgentTask) -> dict[str, Any]:
     return result
 
 
+def _run_in_own_process_group(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
+    """Run a child in its own process group and kill the whole group on timeout.
+
+    `subprocess.run(timeout=...)` kills only the direct child. `hermes chat` is a launcher that spawns
+    grandchildren, and those inherited the capture pipe — so after the timeout the parent still waited
+    on the read end, and the call never returned. Measured: a 20-seed run sat at 0% CPU for 25 minutes
+    on one seed with no child of its own, because the grandchild held the pipe.
+
+    Killing the group is the only version that actually ends the call.
+    """
+    import signal
+
+    # Popen does not accept `capture_output`; translate what subprocess.run would have done.
+    capture = kwargs.pop("capture_output", False)
+    if capture:
+        kwargs.setdefault("stdout", subprocess.PIPE)
+        kwargs.setdefault("stderr", subprocess.PIPE)
+    timeout = kwargs.pop("timeout", None)
+
+    if os.name != "posix":  # pragma: no cover - Windows has no process groups in this sense
+        return subprocess.run(argv, timeout=timeout, **kwargs)
+
+    proc = subprocess.Popen(argv, start_new_session=True, **kwargs)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+        # Drain what the group wrote before it died, bounded so a fresh holder cannot re-block us.
+        try:
+            out, err = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            out, err = "", ""
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout)
+    return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+
+
 class HermesHarness:
     """Runs `hermes chat` one-shot with the prompt on stdin.
 
@@ -115,7 +154,7 @@ class HermesHarness:
     def run(self, task: AgentTask, env: dict[str, str]) -> AgentResult:
         argv = self.argv(task)
         try:
-            proc = subprocess.run(
+            proc = _run_in_own_process_group(
                 argv,
                 input=task.prompt,
                 # A reading task has no workdir of its own. Passing None to subprocess did not mean
