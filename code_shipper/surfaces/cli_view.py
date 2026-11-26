@@ -250,11 +250,20 @@ def _age(seconds: int) -> str:
 
 
 def _clip(text: str, width: int) -> str:
+    """Clip at a word boundary, never mid-word. See the note in `tui._clip`."""
     if width <= 1:
         return ""
     if len(text) <= width:
         return text
-    return text[: width - 1] + "…"
+    head = text[: width - 1]
+    if " " in head.strip():
+        cut = head.rstrip()
+        last_space = cut.rfind(" ")
+        if last_space > 0:
+            cut = cut[:last_space].rstrip()
+        if cut:
+            return cut + "…"
+    return head + "…"
 
 
 def _verb(action: str) -> str:

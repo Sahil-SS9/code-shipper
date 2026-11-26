@@ -165,7 +165,7 @@ class MergedFinding:
         if not self.merged_titles:
             return ""
         joined = "; ".join(self.merged_titles)
-        return f"\n\nAlso noted on this line: {joined}"
+        return f"\n\nAlso noted: {joined}"
 
 
 _DEF = re.compile(r"^\s*(?:async\s+)?(?:def|function|func|fn)\s+([A-Za-z_][\w]*)", re.MULTILINE)
@@ -206,6 +206,31 @@ def _root_cause_key(item: Any) -> str | None:
     return f"{path}::{function}::{title}"
 
 
+def _merged_label(survivor: MergedFinding, other: MergedFinding) -> str:
+    """How a merged-away finding is named under the survivor.
+
+    Two rules, both learned from the #25 output:
+
+    * **Never restate the survivor's own title.** The first version appended `other.title` whenever it
+      differed textually, so a finding merged with an identical title produced "Also noted: <the same
+      title you are reading now>", which tells a reader nothing and reads like a bug.
+    * **Never cut a title mid-word.** A surface clipping the joined string produced "PR adds an
+      undocumented w", which is not a title. Truncation happens at word boundaries, and only after the
+      line has been appended, so the reader always gets whole words.
+
+    When the titles agree, the only thing worth saying is *where else*: the line number, if it differs.
+    """
+    same_claim = normalise_title(other.title) == normalise_title(survivor.title)
+    if same_claim:
+        if other.line and other.line != survivor.line:
+            return f"the same finding at line {other.line}"
+        return "the same finding quoted twice"
+    label = (other.title or "").strip() or "an untitled finding"
+    if other.line and other.line != survivor.line:
+        return f"{label} (line {other.line})"
+    return label
+
+
 def merge_by_root_cause(items: list[Any]) -> list[MergedFinding]:
     """Merge findings about the same root cause, in addition to the fingerprint merge.
 
@@ -235,11 +260,7 @@ def merge_by_root_cause(items: list[Any]) -> list[MergedFinding]:
         for other in group:
             if other is survivor:
                 continue
-            if other.title and other.title != survivor.title:
-                survivor.merged_titles.append(other.title)
-            else:
-                # Same normalised title, different line: name the line so the reader knows where else.
-                survivor.merged_titles.append(f"{other.title or 'same finding'} (line {other.line})")
+            survivor.merged_titles.append(_merged_label(survivor, other))
         out.append(survivor)
     return out
 

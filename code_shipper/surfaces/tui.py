@@ -43,12 +43,25 @@ BULLET = {"fail": "●", "warn": "●", "pass": "●", "muted": "●", "flight":
 
 
 def _clip(text: str, width: int) -> str:
-    """Clip to width, marking the cut so a reader knows text is missing."""
+    """Clip to width at a word boundary, marking the cut.
+
+    Breaking mid-word produced "PR adds an undocumented w" in a real review, which reads as a bug in the
+    data rather than as a shortened line. A word that does not fit is dropped whole and the ellipsis says
+    so; when not even one word fits, the hard cut is the only option and the ellipsis still marks it.
+    """
     if width <= 1:
         return ""
     if len(text) <= width:
         return text
-    return text[: width - 1] + "…"
+    head = text[: width - 1]
+    if " " in head.strip():
+        cut = head.rstrip()
+        last_space = cut.rfind(" ")
+        if last_space > 0:
+            cut = cut[:last_space].rstrip()
+        if cut:
+            return cut + "…"
+    return head + "…"
 
 
 def _pad(text: str, width: int) -> str:
