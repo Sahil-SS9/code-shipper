@@ -20,6 +20,27 @@ LENS_ORDER: tuple[str, ...] = ("correctness", "security", "edge", "tests", "cont
 
 LENS_COUNT = {"quick": 1, "standard": 3, "deep": 5}
 
+# The scope rule. Every lens instruction carries it verbatim, because the failure it prevents is the same
+# in every lens: the reviewer decides what the code *should* do rather than checking what it *says* it
+# does. Both false confirms in the 20-seed measurement were this — `clamp` reported that NaN was not
+# handled when the contract never promised it, and `is_palindrome` asked for extra stripping the
+# docstring did not offer. Neither was a misreading; both were scope creep.
+#
+# It is composed by `_scoped()` below and asserted in `Lens.__post_init__`, so a sixth lens cannot be
+# added without it — a test alone would only catch the ones that already exist.
+SCOPE_RULE = (
+    "Report a problem only where the change contradicts the code's own stated contract, its docstring, "
+    "or the intent it declares. A behaviour the contract does not promise is not a defect. A hardening "
+    "idea, a style preference, or a request for extra input validation is an enhancement — do not report "
+    "it as a finding. If you cannot point to the line of the contract or docstring the change violates, "
+    "it is not a defect."
+)
+
+
+def _scoped(instruction: str) -> str:
+    """A lens instruction with the shared scope rule appended. One definition, six callers."""
+    return f"{instruction} {SCOPE_RULE}"
+
 
 @dataclass(frozen=True)
 class Lens:
@@ -27,62 +48,84 @@ class Lens:
     title: str
     instruction: str
 
+    def __post_init__(self) -> None:
+        # Structural, not advisory: an unscoped lens cannot be constructed at all. The alternative —
+        # trusting every future lens author to remember — is what produced the false confirms.
+        if SCOPE_RULE not in self.instruction:
+            raise ValueError(f"lens {self.name!r} is missing the shared scope rule (SCOPE_RULE)")
+
 
 LENSES: dict[str, Lens] = {
     "correctness": Lens(
         name="correctness",
         title="Correctness",
         instruction=(
-            "Look for logic that does not do what the surrounding code and the change's own intent "
-            "imply: wrong operators, inverted conditions, off-by-one, wrong variable, incorrect "
-            "unpacking, mutated shared state, a return value that contradicts the name. Ignore "
-            "style and naming here."
+            _scoped(
+                "Look for logic that does not do what the surrounding code and the change's own "
+                "intent imply: wrong operators, inverted conditions, off-by-one, wrong variable, "
+                "incorrect unpacking, mutated shared state, a return value that contradicts the "
+                "name. Ignore style and naming here."
+            )
         ),
     ),
     "security": Lens(
         name="security",
         title="Security",
         instruction=(
-            "Look for input that reaches a sink without validation: shell invocation, SQL or query "
-            "construction, path traversal, deserialisation, secrets or tokens in code or logs, "
-            "authorisation checks that can be skipped, and error paths that leak. Only report "
-            "something the changed lines actually introduce."
+            _scoped(
+                "Look for input that reaches a sink without validation: shell invocation, SQL or "
+                "query construction, path traversal, deserialisation, secrets or tokens in code or "
+                "logs, authorisation checks that can be skipped, and error paths that leak. Only "
+                "report something the changed lines actually introduce."
+            )
         ),
     ),
     "edge": Lens(
         name="edge",
         title="Edge cases",
         instruction=(
-            "Look for inputs and states the change does not handle: empty or single-element "
-            "collections, None, zero, negative numbers, very large values, unicode, concurrent "
-            "access, partial failure, retries, and time or timezone assumptions."
+            _scoped(
+                "Look for inputs and states the change fails to handle *where the code claims to* "
+                "handle them: a stated precondition broken, a documented error path that cannot "
+                "raise, a declared invariant that the body contradicts. Empty or single-element "
+                "collections, None, zero, negatives, very large values, unicode, concurrency, "
+                "partial failure, retries and time assumptions are only findings when the contract "
+                "promises them or the change makes an existing guarantee untrue."
+            )
         ),
     ),
     "tests": Lens(
         name="tests",
         title="Tests",
         instruction=(
-            "Look for behaviour that the change introduces or alters without a test that would fail "
-            "if it were wrong, assertions that cannot fail, and tests that assert the "
-            "implementation rather than the behaviour. Do not ask for coverage of unchanged code."
+            _scoped(
+                "Look for behaviour that the change introduces or alters without a test that would "
+                "fail if it were wrong, assertions that cannot fail, and tests that assert the "
+                "implementation rather than the behaviour. Do not ask for coverage of unchanged "
+                "code."
+            )
         ),
     ),
     "contract": Lens(
         name="contract",
         title="Contract and interfaces",
         instruction=(
-            "Look for changes to a public interface, return shape, error type, file format or "
-            "protocol that break an existing caller, and for callers updated in one place but not "
-            "another. Compare against how the rest of the repository uses it."
+            _scoped(
+                "Look for changes to a public interface, return shape, error type, file format or "
+                "protocol that break an existing caller, and for callers updated in one place but "
+                "not another. Compare against how the rest of the repository uses it."
+            )
         ),
     ),
     "combined": Lens(
         name="combined",
         title="Combined review",
         instruction=(
-            "Review the change for correctness, security, edge cases, tests and interface breakage "
-            "together. Prefer the most serious problems: a change that is wrong is more important "
-            "than one that is merely untidy."
+            _scoped(
+                "Review the change for correctness, security, edge cases, tests and interface "
+                "breakage together. Prefer the most serious problems: a change that is wrong is more "
+                "important than one that is merely untidy."
+            )
         ),
     ),
 }
