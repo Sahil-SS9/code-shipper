@@ -1,0 +1,366 @@
+{
+  "started": "2026-11-26T04:28:55Z",
+  "harness": "auto at http://127.0.0.1:8091",
+  "model": "auto",
+  "base_url": "http://127.0.0.1:8091",
+  "level": "standard",
+  "seeds_checked": 20,
+  "seeds_discarded": [],
+  "seeds_run": [
+    "clamp",
+    "slugify",
+    "retry",
+    "dedupe",
+    "flatten",
+    "percent",
+    "parsekv",
+    "once",
+    "groups",
+    "safeget",
+    "iso",
+    "normalise",
+    "windowmean",
+    "is_palindrome"
+  ],
+  "runs": [
+    {
+      "slug": "clamp",
+      "title": "Add a clamp() helper",
+      "seconds": 11.9,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "slugify",
+      "title": "Add a slug helper",
+      "seconds": 2.7,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "retry",
+      "title": "Add a bounded retry helper",
+      "seconds": 50.9,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 2,
+      "confirmed": 1,
+      "posted": 1,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "edge-76a020e9ed",
+          "path": "netx/retry.py",
+          "line": 7,
+          "severity": "nit",
+          "title": "Negative delay causes sleep to raise ValueError, masking the original exception",
+          "body": "If `delay` is negative, `sleep(delay)` raises `ValueError: sleep length must be non-negative`. This error is raised inside the `except` block but outside the `try` block, so it propagates out of `retry` immediately, masking the original exception from `operation()`. The caller receives a `ValueError` about sleep length instead of the actual error from their operation. A validation check for `delay < 0` should raise a clear `ValueError` before the loop starts, or the sleep call should be guarded. The current behavior makes debugging harder when a negative delay is accidentally passed.",
+          "evidence": "if attempt < attempts - 1 and delay:\n            sleep(delay)",
+          "lens": "edge"
+        }
+      ]
+    },
+    {
+      "slug": "dedupe",
+      "title": "Add order-preserving dedupe",
+      "seconds": 2.3,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "flatten",
+      "title": "Add a one-level flatten",
+      "seconds": 2.3,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "percent",
+      "title": "Add a percentage formatter",
+      "seconds": 23.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 3,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "parsekv",
+      "title": "Add a key=value line parser",
+      "seconds": 3.0,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "once",
+      "title": "Add a once-only decorator",
+      "seconds": 9.9,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "groups",
+      "title": "Add grouping by a key function",
+      "seconds": 2.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "safeget",
+      "title": "Add a dotted-path getter",
+      "seconds": 15.7,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 2,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "iso",
+      "title": "Add an ISO date formatter",
+      "seconds": 22.9,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 3,
+      "confirmed": 1,
+      "posted": 1,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "edge-8c2af4219e",
+          "path": "datex/iso.py",
+          "line": 12,
+          "severity": "nit",
+          "title": "isoformat() can produce negative year strings, contrary to docstring intent",
+          "body": "The docstring states the function rejects years outside 1..9999 and claims '{year:04d}' alone would emit \"-001\" or \"10000\". The implementation passes the raw year into datetime.date, which raises ValueError for year<1 or year>9999, so those are rejected. However, if the caller later relies on the returned string for years exactly at the boundary or for years that are valid but non-positive (which datetime forbids), the note is misleading. More importantly, datetime.date.isoformat() for year < 1000 does not zero-pad to four digits (e.g., year 9 yields \"9-01-01\", not \"0009-01-01\"), so the \"YYYY\" guarantee in the docstring is not actually provided for years 1-999. This is a minor correctness/maintainability issue introduced by the new module.",
+          "evidence": "def iso_date(year, month, day):\n    \"\"\"Return YYYY-MM-DD, rejecting impossible dates.\n\n    The calendar decides what is impossible, not a month/day range: February 31 and April 31 pass a\n    range check and are not dates. `datetime.date` also pins the year to 1..9999, which is what\n    \"YYYY\" means \u2014 `{year:04d}` alone pads to at least four characters and happily emits \"-001\" or\n    \"10000\".\n    \"\"\"\n    try:\n        return datetime.date(year, month, day).isoformat()\n    except ValueError as exc:\n        raise ValueError(f\"not a valid date: {exc}\") from exc",
+          "lens": "edge"
+        }
+      ]
+    },
+    {
+      "slug": "normalise",
+      "title": "Add whitespace normalisation",
+      "seconds": 2.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "windowmean",
+      "title": "Add a rolling mean",
+      "seconds": 22.6,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 3,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "is_palindrome",
+      "title": "Add a palindrome check",
+      "seconds": 2.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    }
+  ],
+  "false_confirms": [
+    {
+      "slug": "retry",
+      "title": "Negative delay causes sleep to raise ValueError, masking the original exception",
+      "path": "netx/retry.py",
+      "line": 7,
+      "severity": "nit",
+      "text": "If `delay` is negative, `sleep(delay)` raises `ValueError: sleep length must be non-negative`. This error is raised inside the `except` block but outside the `try` block, so it propagates out of `retry` immediately, masking the original exception from `operation()`. The caller receives a `ValueError` about sleep length instead of the actual error from their operation. A validation check for `delay < 0` should raise a clear `ValueError` before the loop starts, or the sleep call should be guarded. The current behavior makes debugging harder when a negative delay is accidentally passed."
+    },
+    {
+      "slug": "iso",
+      "title": "isoformat() can produce negative year strings, contrary to docstring intent",
+      "path": "datex/iso.py",
+      "line": 12,
+      "severity": "nit",
+      "text": "The docstring states the function rejects years outside 1..9999 and claims '{year:04d}' alone would emit \"-001\" or \"10000\". The implementation passes the raw year into datetime.date, which raises ValueError for year<1 or year>9999, so those are rejected. However, if the caller later relies on the returned string for years exactly at the boundary or for years that are valid but non-positive (which datetime forbids), the note is misleading. More importantly, datetime.date.isoformat() for year < 1000 does not zero-pad to four digits (e.g., year 9 yields \"9-01-01\", not \"0009-01-01\"), so the \"YYYY\" guarantee in the docstring is not actually provided for years 1-999. This is a minor correctness/maintainability issue introduced by the new module."
+    }
+  ],
+  "merged": 0,
+  "missed_merges": 0,
+  "unevaluated": [
+    {
+      "slug": "chunk",
+      "errors": [
+        "lens correctness failed: result does not match the schema: $: missing required key 'findings'"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "mean",
+      "errors": [
+        "lens security failed: result does not match the schema: $: missing required key 'findings'; $: unexpected keys ['body', 'evidence', 'severity', 'title']"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "humanise",
+      "errors": [
+        "lens edge failed: no JSON object in the output"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "windows",
+      "errors": [
+        "lens security failed: result does not match the schema: $: missing required key 'findings'"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "truncate",
+      "errors": [
+        "verification batch failed: no JSON object in the output"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "counter",
+      "errors": [
+        "lens correctness failed: result does not match the schema: $: missing required key 'findings'; $: unexpected keys ['body', 'evidence', 'line', 'path', 'severity', 'title']"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    }
+  ],
+  "reviewed": 14,
+  "false_confirm_count": 2,
+  "seeds_with_false_confirm": 2,
+  "rate": 0.14285714285714285,
+  "finished": "2026-11-26T04:33:14Z"
+}

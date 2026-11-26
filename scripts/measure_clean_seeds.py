@@ -200,6 +200,11 @@ def retry(operation, attempts=3, delay=0.0, sleep=time.sleep):
     """
     if attempts < 1:
         raise ValueError("attempts must be at least 1")
+    # A negative delay would raise from inside `sleep`, which sits in the except branch rather than the
+    # try — so the caller would see "sleep length must be non-negative" instead of the real failure.
+    # Refused up front, by name, before anything is attempted.
+    if delay < 0:
+        raise ValueError("delay must not be negative")
     last = None
     for attempt in range(attempts):
         try:
@@ -226,6 +231,15 @@ except ValueError:
     pass
 else:
     raise AssertionError("must re-raise the real exception")
+# A negative delay must not replace the operation's exception with a sleep error.
+try:
+    retry(lambda: (_ for _ in ()).throw(RuntimeError("the real cause")), attempts=2, delay=-1)
+except ValueError as exc:
+    assert "sleep length" not in str(exc), f"the sleep error masked the real cause: {exc}"
+except RuntimeError:
+    raise AssertionError("delay validation must happen before the operation runs")
+else:
+    raise AssertionError("a negative delay must be refused")
 ''',
     ),
     Seed(
