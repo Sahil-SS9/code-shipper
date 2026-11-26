@@ -524,3 +524,48 @@ class ReviewExitCodeContractTests(unittest.TestCase):
             self._code(complete=False),
         }
         self.assertEqual(codes, {0, 1, 2, 3}, f"the contract needs four distinct codes, got {codes}")
+class FlagAbbreviationTests(unittest.TestCase):
+    """Fix 3: `--pr` expanded to `--profile`, so `review --repo X --pr 25` failed confusingly."""
+
+    def _parser(self):
+        from code_shipper import cli
+
+        return cli.build_parser()
+
+    def test_the_main_parser_refuses_abbreviations(self) -> None:
+        # argparse stores this on the parser, not the subparser
+        parser = self._parser()
+        self.assertFalse(getattr(parser, "allow_abbrev", True))
+
+    def test_every_subparser_refuses_abbreviations(self) -> None:
+        parser = self._parser()
+        subparsers = next(a for a in parser._actions if hasattr(a, "choices") and a.choices)
+        for name, sub in subparsers.choices.items():
+            self.assertFalse(getattr(sub, "allow_abbrev", True),
+                             f"{name} still accepts abbreviated flags")
+
+    def test_pr_resolves_to_pr_not_profile(self) -> None:
+        from code_shipper.cli import _resolve_pr_alias
+
+        args = _resolve_pr_alias(self._parser().parse_args(["review", "--repo", "o/r", "--pr", "25"]))
+        self.assertEqual(args.pr, 25,
+                         "--pr must be the pull request number, not --profile")
+
+    def test_the_positional_form_still_works(self) -> None:
+        args = self._parser().parse_args(["review", "25", "--repo", "o/r"])
+        self.assertEqual(args.pr, 25)
+
+    def test_both_forms_at_once_is_refused_when_they_disagree(self) -> None:
+        parser = self._parser()
+        args = parser.parse_args(["review", "25", "--repo", "o/r", "--pr", "26"])
+        with self.assertRaises(SystemExit):
+            from code_shipper.cli import _resolve_pr_alias
+
+            _resolve_pr_alias(args)
+
+    def test_both_forms_agreeing_is_fine(self) -> None:
+        parser = self._parser()
+        args = parser.parse_args(["review", "25", "--repo", "o/r", "--pr", "25"])
+        from code_shipper.cli import _resolve_pr_alias
+
+        self.assertEqual(_resolve_pr_alias(args).pr, 25)

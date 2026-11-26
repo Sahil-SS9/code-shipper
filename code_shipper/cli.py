@@ -27,18 +27,27 @@ EXIT_CODES_HELP = """exit codes:
   never be treated as clean."""
 
 
+# Subparsers inherit nothing from the parent parser, so the flag is repeated on each one as it is
+# created. Defined at module scope so no subparser can be built before it exists.
+_NO_ABBREV = {"allow_abbrev": False}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="code-shipper",
         description="Review, fix and get pull requests ready to merge, with any agent harness.",
         epilog=EXIT_CODES_HELP,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        # Abbreviations are off everywhere. `--pr` expanded to `--profile` on `review`, so
+        # `review --repo X --pr 25` failed with "argument --profile: invalid choice: '25'" — an error
+        # naming a flag the caller never typed.
+        allow_abbrev=False,
     )
     parser.add_argument("--version", action="version", version=f"code-shipper {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     doctor = sub.add_parser(
-        "doctor", help="report VERIFIED / UNVERIFIED / UNSUPPORTED per backend"
+        "doctor", help="report VERIFIED / UNVERIFIED / UNSUPPORTED per backend", **_NO_ABBREV
     )
     doctor.add_argument("--json", action="store_true", help="machine-readable output")
     doctor.add_argument(
@@ -52,8 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="exit non-zero unless this backend is VERIFIED",
     )
 
-    review = sub.add_parser("review", help="review a pull request")
-    review.add_argument("pr", type=int, help="pull request number")
+    review = sub.add_parser("review", help="review a pull request", **_NO_ABBREV)
+    # Both forms: the positional is the original interface, `--pr` matches every other subcommand so a
+    # caller can use one shape throughout.
+    review.add_argument("pr", type=int, nargs="?", help="pull request number")
+    review.add_argument("--pr", type=int, dest="pr_flag", default=None,
+                        help="pull request number (same as the positional)")
     review.add_argument(
         "--repo",
         required=True,
@@ -107,7 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="stop reviewing this PR after this many reviews, with a stated reason (default: 20)",
     )
 
-    watch = sub.add_parser("watch", help="watch a pull request and fix it within a budget")
+    watch = sub.add_parser("watch", help="watch a pull request and fix it within a budget", **_NO_ABBREV)
     watch.add_argument("pr", type=int, help="pull request number")
     watch.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     watch.add_argument(
@@ -125,12 +138,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="label that must stay on the PR for the loop to continue",
     )
 
-    stop = sub.add_parser("stop", help="tell a running watch loop to stop")
+    stop = sub.add_parser("stop", help="tell a running watch loop to stop", **_NO_ABBREV)
     stop.add_argument("pr", type=int, help="pull request number")
     stop.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     stop.add_argument("--json", action="store_true", help="machine-readable output")
 
-    ship = sub.add_parser("ship", help="take a local change to an open pull request")
+    ship = sub.add_parser("ship", help="take a local change to an open pull request", **_NO_ABBREV)
     ship.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     ship.add_argument("--branch", required=True, help="branch to create and push")
     ship.add_argument("--base", required=True, help="base branch for the pull request")
@@ -157,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ship.add_argument("--json", action="store_true", help="machine-readable output")
 
-    poll = sub.add_parser("poll", help="watch for new heads and review each one")
+    poll = sub.add_parser("poll", help="watch for new heads and review each one", **_NO_ABBREV)
     poll.add_argument("pr", type=int, help="pull request number")
     poll.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     poll.add_argument("--interval", type=float, default=30.0, help="seconds between polls")
@@ -172,7 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
     poll.add_argument("--state-dir", default="", help="where review state lives")
     poll.add_argument("--json", action="store_true", help="machine-readable output")
 
-    ship_ui = sub.add_parser("ship-ui", help="draw the terminal board for a pull request")
+    ship_ui = sub.add_parser("ship-ui", help="draw the terminal board for a pull request", **_NO_ABBREV)
     ship_ui.add_argument(
         "state",
         nargs="?",
@@ -189,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     ship_ui.add_argument("--width", type=int, default=113, help="columns")
     ship_ui.add_argument("--height", type=int, default=30, help="rows")
 
-    ui = sub.add_parser("ui", help="draw the terminal board for a pull request")
+    ui = sub.add_parser("ui", help="draw the terminal board for a pull request", **_NO_ABBREV)
     ui.add_argument(
         "state",
         nargs="?",
@@ -208,7 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     ui.add_argument("--height", type=int, default=34, help="rows")
     ui.add_argument("--json", action="store_true", help="the same facts as data")
 
-    fix = sub.add_parser("fix", help="run one bounded fix round on a pull request")
+    fix = sub.add_parser("fix", help="run one bounded fix round on a pull request", **_NO_ABBREV)
     fix.add_argument("pr", type=int, help="pull request number")
     fix.add_argument("--repo", required=True, help="owner/name")
     fix.add_argument("--branch", required=True, help="the pull request's head branch")
@@ -217,7 +230,7 @@ def build_parser() -> argparse.ArgumentParser:
                      help="plan and check the budget, then stop before writing anything")
     fix.add_argument("--json", action="store_true", help="the result as data")
 
-    status = sub.add_parser("status", help="list everything watched, with how often it is checked")
+    status = sub.add_parser("status", help="list everything watched, with how often it is checked", **_NO_ABBREV)
     status.add_argument("--repo", default="", help="repository to report on")
     status.add_argument("--check-every-minutes", type=int, default=2,
                         help="the polling interval actually in use")
@@ -226,7 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--demo", action="store_true",
                         help="show the sample board instead of stored state (labelled as demo data)")
 
-    page = sub.add_parser("ship-page", help="write the Desktop page for a real review")
+    page = sub.add_parser("ship-page", help="write the Desktop page for a real review", **_NO_ABBREV)
     page.add_argument(
         "state",
         nargs="?",
@@ -241,7 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
     page.add_argument("--demo", action="store_true", help="draw sample data (labelled as demo data)")
     page.add_argument("--out", required=True, help="where to write the HTML")
 
-    config = sub.add_parser("config", help="inspect configuration")
+    config = sub.add_parser("config", help="inspect configuration", **_NO_ABBREV)
     config.add_argument(
         "action",
         choices=["effective"],
@@ -260,7 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     config.add_argument("--json", action="store_true", help="machine-readable output")
 
-    lessons = sub.add_parser("lessons", help="inspect or withdraw review lessons")
+    lessons = sub.add_parser("lessons", help="inspect or withdraw review lessons", **_NO_ABBREV)
     lessons.add_argument("action", choices=["list", "show", "withdraw"])
     lessons.add_argument("lesson_id", nargs="?", default="", help="lesson id, for show and withdraw")
     lessons.add_argument("--state-dir", default="", help="where review state lives")
@@ -1252,9 +1265,27 @@ def _read_token_quietly() -> str:
         return ""
 
 
+def _resolve_pr_alias(args: argparse.Namespace) -> argparse.Namespace:
+    """Fold `--pr` into `pr`, and refuse the cases that have no sensible answer.
+
+    `review` takes the number positionally and everything else takes `--pr`. Accepting both on `review`
+    lets a caller use one shape throughout; refusing two different numbers stops a typo from silently
+    picking one.
+    """
+    flag = getattr(args, "pr_flag", None)
+    if flag is None:
+        return args
+    positional = getattr(args, "pr", None)
+    if positional is not None and positional != flag:
+        raise SystemExit("give the pull request number once: positionally or with --pr, not both")
+    args.pr = flag
+    return args
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    args = _resolve_pr_alias(args)
     if args.command == "doctor":
         return cmd_doctor(args)
     if args.command == "review":
