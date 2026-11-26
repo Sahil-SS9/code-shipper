@@ -219,9 +219,19 @@ class CommandHarness:
         return AgentResult(ok=True, output=output, raw_tail=tail, usage=Usage())
 
 
-# 6,144 measured as sufficient for a review lens on a local thinking model; 8,192 gave headroom without
-# changing the answer. Below ~5,000 the reasoning consumes the whole budget and the answer is lost.
+# 6,144 is enough for an answer *plus* a long reasoning block, which is what a thinking model spends.
+# Measured on the same 1.9 KB edge lens: an edge lens used 5,279 tokens of reasoning to answer, and at
+# 6,144 the answer arrived only sometimes. With thinking switched off (see `NO_THINK_HINT`) the same lens
+# answered in 327 tokens and 6 seconds.
 DEFAULT_MAX_TOKENS = 6144
+
+# Local Qwen3-family servers accept this template flag and skip the thinking block entirely. Measured on
+# this rig: 2,048 tokens of reasoning with no answer -> 327 tokens with a complete, valid JSON answer.
+#
+# It must be **nested under `chat_template_kwargs`** — a flat `"enable_thinking": false` is ignored and
+# the model reasons as before. That was measured too: the flat form still returned `finish_reason:
+# "length"` with empty content after 373s, which looked like the flag not working at all.
+NO_THINK_HINT = {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 class OpenAICompatHarness:
@@ -262,6 +272,9 @@ class OpenAICompatHarness:
                 "messages": [{"role": "user", "content": task.prompt}],
                 "max_tokens": task.budget.max_tokens or DEFAULT_MAX_TOKENS,
                 "stream": False,
+                # Ask for an answer, not a reasoning transcript. A server that does not know the flag
+                # ignores an unknown body field, so this is safe on any OpenAI-compatible endpoint.
+                **NO_THINK_HINT,
             }
         ).encode()
         request = urllib.request.Request(
@@ -301,6 +314,9 @@ class OpenAICompatHarness:
                 # the reasoning, which a local thinking model does not expose separately.
                 "max_tokens": task.budget.max_tokens or DEFAULT_MAX_TOKENS,
                 "stream": False,
+                # Ask for an answer, not a reasoning transcript. A server that does not know the flag
+                # ignores an unknown body field, so this is safe on any OpenAI-compatible endpoint.
+                **NO_THINK_HINT,
             }
         ).encode()
         request = urllib.request.Request(
