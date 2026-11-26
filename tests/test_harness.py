@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import os
+import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -258,11 +261,66 @@ class OpenAICompatAdapterTests(unittest.TestCase):
         self.assertNotIn("supersecret-key", repr(adapter))
 
 
-def _hermes_installed() -> bool:
-    return shutil.which("hermes") is not None
+def _hermes_can_run() -> tuple[bool, str]:
+    """Can this machine run a real Hermes one-shot?
+
+    Not "is the binary there". A `hermes` on PATH is often a launcher for a checkout whose interpreter is
+    missing a dependency — measured here: it answers `--version` and then dies at import on
+    `ruamel.yaml`, so every one-shot fails before the adapter is reached. A test that reports that as a
+    contract failure blames our code for the environment.
+
+    The check is the interpreter's ability to import the package the launcher runs, which is the exact
+    thing that was broken. It touches nothing: an import, in the launcher's own interpreter, with no
+    network and no HERMES_HOME.
+    """
+    binary = shutil.which("hermes")
+    if binary is None:
+        return False, "no hermes binary on PATH"
+
+    # The launcher is a shell script naming its interpreter on the exec line. Read it rather than guess:
+    # `sys.executable` is the test interpreter and is the wrong one by definition.
+    try:
+        text = Path(binary).read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return False, f"could not read the launcher: {exc}"
+    interpreter = ""
+    # A launcher may delegate: `/usr/local/bin/hermes` -> repo `exec`, which then names the interpreter.
+    # Follow the chain a bounded number of times rather than assuming one hop.
+    current = Path(binary)
+    for _hop in range(4):
+        try:
+            body = current.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            break
+        found = re.search(r"^exec\s+(\S*python[0-9.]*)\s", body, re.MULTILINE)
+        if found:
+            interpreter = found.group(1)
+            break
+        delegate = re.search(r"^exec\s+(\S+)\s", body, re.MULTILINE)
+        if not delegate:
+            break
+        current = Path(delegate.group(1))
+    if not interpreter:
+        return False, "the launcher chain does not name an interpreter"
+
+    # Ask that interpreter to import the package Hermes imports first. This is the exact failure: it
+    # answers --version, then dies on a missing dependency at the first real call.
+    check = subprocess.run(
+        [interpreter, "-c", "import hermes_yaml"],
+        capture_output=True, text=True, timeout=120,
+        env={"PATH": "/usr/bin:/bin", "HOME": os.environ.get("HOME", "/tmp")},
+    )
+    if check.returncode != 0:
+        detail = (check.stderr or "").strip().splitlines()
+        last = detail[-1] if detail else ""
+        return False, f"the hermes interpreter cannot import its own package: {last}"
+    return True, ""
 
 
-@unittest.skipUnless(_hermes_installed(), "hermes not installed")
+_HERMES_OK, _HERMES_WHY = _hermes_can_run()
+
+
+@unittest.skipUnless(_HERMES_OK, f"no runnable hermes: {_HERMES_WHY}")
 class HermesContractTest(unittest.TestCase):
     """T-CONTRACT-01 for the hermes adapter, on a real install.
 
