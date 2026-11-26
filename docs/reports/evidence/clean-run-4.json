@@ -1,0 +1,334 @@
+{
+  "started": "2026-11-26T04:45:30Z",
+  "harness": "auto at http://127.0.0.1:8091",
+  "model": "auto",
+  "base_url": "http://127.0.0.1:8091",
+  "level": "standard",
+  "seeds_checked": 20,
+  "seeds_discarded": [],
+  "seeds_run": [
+    "clamp",
+    "chunk",
+    "mean",
+    "slugify",
+    "retry",
+    "windows",
+    "dedupe",
+    "flatten",
+    "percent",
+    "parsekv",
+    "groups",
+    "safeget",
+    "iso",
+    "normalise",
+    "is_palindrome"
+  ],
+  "runs": [
+    {
+      "slug": "clamp",
+      "title": "Add a clamp() helper",
+      "seconds": 11.3,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "chunk",
+      "title": "Add chunk() for splitting a list",
+      "seconds": 15.8,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 2,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "mean",
+      "title": "Add mean() over an iterable",
+      "seconds": 12.3,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 2,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "slugify",
+      "title": "Add a slug helper",
+      "seconds": 13.1,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "retry",
+      "title": "Add a bounded retry helper",
+      "seconds": 2.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "windows",
+      "title": "Add a sliding-window iterator",
+      "seconds": 2.3,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "dedupe",
+      "title": "Add order-preserving dedupe",
+      "seconds": 2.3,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "flatten",
+      "title": "Add a one-level flatten",
+      "seconds": 9.8,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "percent",
+      "title": "Add a percentage formatter",
+      "seconds": 2.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "parsekv",
+      "title": "Add a key=value line parser",
+      "seconds": 2.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "groups",
+      "title": "Add grouping by a key function",
+      "seconds": 2.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "safeget",
+      "title": "Add a dotted-path getter",
+      "seconds": 2.2,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "iso",
+      "title": "Add an ISO date formatter",
+      "seconds": 2.7,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "normalise",
+      "title": "Add whitespace normalisation",
+      "seconds": 2.0,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "is_palindrome",
+      "title": "Add a palindrome check",
+      "seconds": 10.5,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    }
+  ],
+  "false_confirms": [],
+  "merged": 0,
+  "missed_merges": 0,
+  "unevaluated": [
+    {
+      "slug": "humanise",
+      "errors": [
+        "lens security failed: no JSON object in the output"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "truncate",
+      "errors": [
+        "lens security failed: result does not match the schema: $: missing required key 'findings'; $: unexpected keys ['id', 'input', 'name', 'type']"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "once",
+      "errors": [
+        "lens correctness failed: no JSON object in the output"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "counter",
+      "errors": [
+        "lens correctness failed: result does not match the schema: $: missing required key 'findings'; $: unexpected keys ['body', 'evidence', 'line', 'path', 'severity', 'title']"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "windowmean",
+      "errors": [
+        "lens correctness failed: result does not match the schema: $: missing required key 'findings'; $: unexpected keys ['id', 'input', 'name', 'type']",
+        "lens security failed: no JSON object in the output"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    }
+  ],
+  "reviewed": 15,
+  "false_confirm_count": 0,
+  "seeds_with_false_confirm": 0,
+  "rate": 0.0,
+  "finished": "2026-11-26T04:50:03Z"
+}
