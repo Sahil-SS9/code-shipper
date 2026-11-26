@@ -1,0 +1,8 @@
+contract chars sourced: 62
+findings posted: 2  complete: True
+
+--- contract block, exactly as the verifier received it ---
+<untrusted source="contract">
+function calc/limits.py:1 clamp(): Clamp a value into a range.
+</untrusted>
+EXIT=0

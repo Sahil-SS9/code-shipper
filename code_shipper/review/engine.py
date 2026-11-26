@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from ..harness.base import AgentTask, Budget, Harness, HarnessError
 from ..hosts.base import Diff
+from .contract import contract_for
 from .framing import untrusted_block
 from .lenses import FINDINGS_SCHEMA, Lens, select
 from .rank import PostingPlan, plan
@@ -28,6 +29,7 @@ MAX_LOG_CHARS = 8_000
 @dataclass
 class ReviewOutcome:
     level: str
+    contract_chars: int = 0
     lenses_run: list[str] = field(default_factory=list)
     raw_findings: int = 0
     confirmed: int = 0
@@ -94,7 +96,13 @@ def intent_block(title: str, body: str, *, limit: int = MAX_INTENT_CHARS) -> str
 
 
 def lens_prompt(
-    lens: Lens, diff: Diff, *, log_tail: str = "", intent: str = "", assertiveness: str = "standard"
+    lens: Lens,
+    diff: Diff,
+    *,
+    log_tail: str = "",
+    intent: str = "",
+    assertiveness: str = "standard",
+    contract: str = "",
 ) -> str:
     parts = [
         f"You are reviewing a pull request. Your lens is: {lens.title}.",
@@ -137,6 +145,15 @@ def lens_prompt(
     ]
     if intent:
         parts += [intent, ""]
+    if contract:
+        # Same text the verifier receives, so the lens judges against the promise rather than an
+        # imagined one. Author-written, so framed as untrusted like everything else from the PR.
+        parts += [
+            "What the changed code says it does, from its docstrings. A finding must contradict this or "
+            "what the name and callers plainly expect; behaviour absent from it was never promised.",
+            untrusted_block("contract", contract),
+            "",
+        ]
     parts.append(untrusted_block("diff", diff_text(diff), limit=MAX_DIFF_CHARS + 2_000))
     if log_tail:
         parts += ["", untrusted_block("ci_log", log_tail, limit=MAX_LOG_CHARS)]
@@ -191,14 +208,19 @@ def verify_findings(
     env: dict[str, str],
     budget: Budget,
     intent: str = "",
+    contract: str = "",
 ) -> tuple[list[Finding], list[str]]:
-    """Run the verification pass, one call per batch. Returns (confirmed, errors)."""
+    """Run the verification pass, one call per batch. Returns (confirmed, errors).
+
+    ``contract`` is what the changed code says it does. Without it the verifier cannot tell a violation
+    from a preference, which is precisely how both false confirms survived the last measurement.
+    """
     confirmed: list[Finding] = []
     errors: list[str] = []
     for group in batch(findings):
         task = AgentTask(
             kind="verify",
-            prompt=build_prompt(group, diff_text(diff), intent=intent),
+            prompt=build_prompt(group, diff_text(diff), intent=intent, contract=contract),
             workdir=workdir,
             output_schema={"type": "object", "required": ["verdicts"],
                            "properties": {"verdicts": {"type": "array"}}},
@@ -231,12 +253,18 @@ def review(
     env = env or {}
     found: list[Finding] = []
 
+    # Sourced once and reused: the docstrings for the code under review. Computed here rather than in
+    # the verifier so the lens and the verifier judge against the same text, and empty when there is no
+    # workdir — which keeps a review without one byte-identical to before this existed.
+    contract = contract_for(diff, workdir)
+    outcome.contract_chars = len(contract)
+
     for lens in select(level):
         outcome.lenses_run.append(lens.name)
         task = AgentTask(
             kind="review_lens",
             prompt=lens_prompt(lens, diff, log_tail=log_tail, intent=intent,
-                              assertiveness=assertiveness),
+                              assertiveness=assertiveness, contract=contract),
             workdir=workdir,
             output_schema=FINDINGS_SCHEMA,
             budget=budget,
@@ -259,7 +287,8 @@ def review(
     # Every level verifies, Quick included (FR-R2).
     if found:
         confirmed, errors = verify_findings(
-            harness, found, diff, workdir=workdir, env=env, budget=budget, intent=intent
+            harness, found, diff, workdir=workdir, env=env, budget=budget, intent=intent,
+            contract=contract,
         )
         outcome.errors.extend(errors)
         if errors:

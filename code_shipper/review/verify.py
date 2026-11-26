@@ -64,7 +64,9 @@ def batch(findings: list[Finding], size: int = BATCH_SIZE) -> list[list[Finding]
     return [findings[i : i + size] for i in range(0, len(findings), size)]
 
 
-def build_prompt(findings: list[Finding], diff_text: str, *, intent: str = "") -> str:
+def build_prompt(
+    findings: list[Finding], diff_text: str, *, intent: str = "", contract: str = ""
+) -> str:
     """Ask the verifier to refute, not to agree.
 
     The framing matters: a prompt that asks "is this finding correct?" invites agreement, while one
@@ -74,6 +76,12 @@ def build_prompt(findings: list[Finding], diff_text: str, *, intent: str = "") -
     ``intent`` is the PR author's own description, already framed as untrusted by the caller. It is
     useful here because a finding that contradicts the stated intent is worth re-reading, and a
     finding the description quietly admits is worth confirming.
+
+    ``contract`` is the docstrings for the code under review — what the changed code *says* it does.
+    Without it the verifier can only guess whether a finding asks for promised behaviour, which is how
+    both false confirms survived verification: one demanded NaN handling no contract offered, the other
+    demanded punctuation stripping beyond the docstring. It is author-written text, so it is framed as
+    untrusted like every other author-controlled input.
     """
     lines = [
         "You are verifying code-review findings against the actual change. Your job is to REFUTE "
@@ -86,12 +94,24 @@ def build_prompt(findings: list[Finding], diff_text: str, *, intent: str = "") -
         "",
         "Be strict. A finding that a reasonable reviewer would not act on is refuted.",
         "",
+        # Amendment 1b's ground, applied at the gate that decides what is posted. Scope creep is not a
+        # correctness problem, and a verifier that only asks "is this true?" confirms preferences.
+        "A finding that asks for behaviour the contract does not promise is refuted.",
+        "So is one that requests an enhancement — extra validation, hardening, or a style change — "
+        "rather than reporting a defect.",
+        "",
         "Reply with JSON only: {\"verdicts\": [{\"id\": \"...\", \"verdict\": "
         "\"confirmed|refuted|unsure\", \"reason\": \"...\"}]}",
         "",
     ]
     if intent:
         lines += [intent, ""]
+    if contract:
+        header = (
+            "What the changed code says it does, taken from its docstrings. Judge each finding against "
+            "this: a promise made here can be violated, and behaviour absent from it was never promised."
+        )
+        lines += [header, untrusted_block("contract", contract), ""]
     lines.append(untrusted_block("diff", diff_text))
     lines.append("")
     # Finding text quotes the model's own earlier output, which quoted author-controlled code. It is
