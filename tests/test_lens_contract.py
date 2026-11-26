@@ -41,7 +41,7 @@ class EveryLensCarriesTheScopeRuleTests(unittest.TestCase):
                   / "code_shipper" / "review" / "lenses.py").read_text()
         # The literal lives in the constant; the instructions call _scoped(). The prose mentions
         # `_scoped()` in a docstring, so count call sites rather than the bare name.
-        self.assertEqual(source.count("Report a problem only where the change contradicts"), 1)
+        self.assertEqual(source.count("Report a problem only when the change makes the code do"), 1)
         call_sites = source.count("            _scoped(")
         self.assertEqual(call_sites, 6, "every one of the six lenses must call _scoped()")
 
@@ -72,18 +72,46 @@ class EveryLensCarriesTheScopeRuleTests(unittest.TestCase):
 
 
 class TheRuleSaysWhatItNeedsToTests(unittest.TestCase):
-    """Assert the rule's substance, so it cannot be weakened to pass the tests above."""
+    """Assert the rule's substance, so it cannot be weakened to pass the tests above.
 
-    def test_it_excludes_enhancements(self) -> None:
+    Amendment 1b: the first wording required a docstring line, which inside the security lens suppressed
+    real bugs — SQL injection, path traversal and a leaked secret rarely contradict a docstring, and a
+    wrong operator in undocumented code has no docstring line to point to. These tests pin all three
+    grounds so a future edit cannot quietly drop one of them again.
+    """
+
+    def test_it_still_excludes_enhancements(self) -> None:
         self.assertIn("enhancement", SCOPE_RULE)
-        self.assertIn("not a defect", SCOPE_RULE)
+        self.assertIn("not a finding", SCOPE_RULE)
 
-    def test_it_requires_a_named_violation(self) -> None:
-        self.assertIn("cannot point to the line of the contract", SCOPE_RULE)
+    def test_it_names_a_docstring_violation(self) -> None:
+        """The is_palindrome false confirm was a docstring reading — keep that ground in scope."""
+        self.assertIn("contradicts the docstring", SCOPE_RULE)
 
-    def test_it_covers_the_docstring_case(self) -> None:
-        """The is_palindrome false confirm was a docstring reading — name it explicitly."""
-        self.assertIn("docstring", SCOPE_RULE)
+    def test_it_names_what_the_name_and_callers_expect(self) -> None:
+        """Undocumented code can still be wrong: a wrong operator breaks its callers, not a docstring."""
+        self.assertIn("callers clearly expect", SCOPE_RULE)
+
+    def test_it_keeps_security_vulnerabilities_in_scope(self) -> None:
+        """The correction that mattered: the security lens must still be able to report a vulnerability.
+
+        As first written, the rule required a contract line the change violated, so a SQL injection or a
+        leaked token — which contradict no docstring — would have been ruled out of scope.
+        """
+        self.assertIn("security vulnerability", SCOPE_RULE)
+
+    def test_it_no_longer_requires_a_docstring_line(self) -> None:
+        """The exact over-reach that was corrected: 'no contract line to point at' must not be a veto."""
+        self.assertNotIn("cannot point to the line", SCOPE_RULE)
+
+    def test_it_no_longer_calls_input_validation_an_enhancement(self) -> None:
+        """Validation is the security lens's job; calling it an enhancement gags that lens."""
+        self.assertNotIn("extra input validation", SCOPE_RULE)
+
+    def test_the_excluded_list_is_about_unpromised_support(self) -> None:
+        """What is excluded is behaviour the code never promised, not every unwritten behaviour."""
+        self.assertIn("never promised", SCOPE_RULE)
+        self.assertIn("contract does not accept", SCOPE_RULE)
 
 
 class LensSelectionIsUnchangedTests(unittest.TestCase):

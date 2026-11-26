@@ -28,12 +28,18 @@ LENS_COUNT = {"quick": 1, "standard": 3, "deep": 5}
 #
 # It is composed by `_scoped()` below and asserted in `Lens.__post_init__`, so a sixth lens cannot be
 # added without it — a test alone would only catch the ones that already exist.
+#
+# Amendment 1b (owner): the first wording said a finding needed a line of the docstring to point at, and
+# called extra input validation an enhancement. Inside the security lens that suppresses real bugs — SQL
+# injection, path traversal and a leaked secret almost never contradict a docstring, and a wrong operator
+# in undocumented code has no docstring line to point to. The rule now names three separate grounds for
+# a finding, so scope creep is excluded without excluding a vulnerability with no docstring.
 SCOPE_RULE = (
-    "Report a problem only where the change contradicts the code's own stated contract, its docstring, "
-    "or the intent it declares. A behaviour the contract does not promise is not a defect. A hardening "
-    "idea, a style preference, or a request for extra input validation is an enhancement — do not report "
-    "it as a finding. If you cannot point to the line of the contract or docstring the change violates, "
-    "it is not a defect."
+    "Report a problem only when the change makes the code do something wrong: it contradicts the "
+    "docstring or stated intent, contradicts what the name and the callers clearly expect, or "
+    "introduces a security vulnerability. Do not report behaviour the code never promised: support for "
+    "inputs its contract does not accept, a hardening idea, or a style preference is an enhancement, "
+    "not a finding."
 )
 
 
