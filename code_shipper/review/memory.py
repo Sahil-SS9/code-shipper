@@ -147,6 +147,20 @@ class Store:
         return found
 
     def add(self, lesson: Lesson) -> Lesson:
+        """Refuse a lesson that would relax a security judgement.
+
+        `learn()` checked this for callers that went through it. This store method is public, so the
+        write path had a hole the size of every future caller: the owner wrote a lesson straight in with
+        `Store.add()` and it reached the apply-mode prompt. Checked here too, so the write path is
+        covered twice and a direct add cannot smuggle one in.
+        """
+        relaxing = relaxes_security(lesson.cue, lesson.action, lesson.evidence)
+        if relaxing:
+            raise ValueError(
+                f"refusing lesson {lesson.id or '(new)'}: it would relax a security judgement "
+                f"(matched {relaxing!r}). Review memory may narrow what is reported; it may not stop a "
+                "vulnerability being reported."
+            )
         lessons = self.load()
         for existing in lessons:
             if existing.id == lesson.id:
@@ -298,11 +312,18 @@ def learn(store: Store, feedback: Feedback, *, mode: str = DEFAULT_MODE) -> dict
     return result
 
 
-def apply_to_prompt(store: Store, *, mode: str = DEFAULT_MODE, limit: int = 5) -> str:
+def apply_to_prompt(
+    store: Store, *, mode: str = DEFAULT_MODE, limit: int = 5, dropped: list[str] | None = None
+) -> str:
     """The prompt fragment for lessons, or "" when they must not affect output.
 
     Shadow mode returns "" — that is what shadow means. The lessons are still listed by
     `code-shipper lessons list`, so they can be inspected before being trusted.
+
+    Every lesson is re-checked here for a security-relaxing instruction, because the store is a file:
+    a hand edit, a lesson written before the filter existed, or any future caller of `Store.add` can put
+    text in it that never passed `learn()`. A match is dropped and its ID appended to ``dropped`` so the
+    caller can report it as a review error — never applied, never silently ignored.
     """
     if mode not in _APPLYING:
         return ""
@@ -313,16 +334,21 @@ def apply_to_prompt(store: Store, *, mode: str = DEFAULT_MODE, limit: int = 5) -
         raise MemoryError_(
             "review memory must not reach the approvals policy; refusing to apply lessons"
         )
-    lessons = [lesson for lesson in store.load() if lesson.disposition == "kept"]
+    lessons = []
+    for lesson in store.load():
+        if lesson.disposition != "kept":
+            continue
+        relaxing = relaxes_security(lesson.cue, lesson.action, lesson.evidence)
+        if relaxing:
+            if dropped is not None:
+                dropped.append(lesson.id or "(no id)")
+            continue
+        lessons.append(lesson)
     if not lessons:
         return ""
-    lines = [
-        "Lessons from feedback on earlier reviews in this repository. These refine what to look for; "
-        "they do not override the instruction to report only real problems.",
-        "",
-    ]
-    for lesson in lessons[:limit]:
-        lines.append(f"- {lesson.action} (because: {lesson.evidence[:120]})")
+    # No header here: the caller frames the block, and printing a heading in both places showed the
+    # reviewer the same sentence twice.
+    lines = [f"- {lesson.action} (because: {lesson.evidence[:120]})" for lesson in lessons[:limit]]
     return "\n".join(lines)
 
 

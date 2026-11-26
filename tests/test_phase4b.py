@@ -251,7 +251,10 @@ class MemoryTests(unittest.TestCase):
     def test_on_mode_applies_the_lesson(self) -> None:
         memory.learn(self.store, self._feedback(), mode="on")
         prompt = memory.apply_to_prompt(self.store, mode="on")
-        self.assertIn("Lessons from feedback", prompt)
+        # The header belongs to the engine, which frames the block: printing it here as well showed the
+        # reviewer the same sentence twice. The rendered-prompt test for it is in
+        # tests/test_memory_wired.py::TheStoreIsAFileSoTheReadPathFiltersTooTests.
+        self.assertNotIn("Lessons from feedback", prompt, "the header is the engine's, not the read path's")
         self.assertIn("report: fp-1", prompt)
         self.assertIn("because:", prompt, "a lesson must carry its evidence")
 

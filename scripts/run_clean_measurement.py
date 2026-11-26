@@ -181,16 +181,19 @@ def main(argv: list[str]) -> int:
     results["reviewed"] = reviewed
     results["false_confirm_count"] = len(results["false_confirms"])
     results["seeds_with_false_confirm"] = len({f["slug"] for f in results["false_confirms"]})
-    results["rate"] = (results["seeds_with_false_confirm"] / reviewed) if reviewed else None
+    # This one is the false-confirm rate, not the seeds-with-findings rate the parallel runner prints.
+    # Two figures called "rate" in one project invites exactly the wrong quotation.
+    results["false_confirm_rate"] = (
+        results["seeds_with_false_confirm"] / reviewed) if reviewed else None
     results["finished"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     print()
     print(f"reviewed {reviewed} clean seeds, {len(results['seeds_discarded'])} discarded")
     print(f"false confirms: {results['false_confirm_count']} across "
           f"{results['seeds_with_false_confirm']} seed(s)")
-    if results["rate"] is not None:
-        print(f"rate: {results['rate']:.0%} of clean seeds ({results['seeds_with_false_confirm']}"
-              f"/{reviewed})")
+    if results["false_confirm_rate"] is not None:
+        print(f"false-confirm rate: {results['false_confirm_rate']:.0%} of clean seeds "
+              f"({results['seeds_with_false_confirm']}/{reviewed})")
 
     if args.out:
         out = Path(args.out)

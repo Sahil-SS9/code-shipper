@@ -11,6 +11,7 @@ Run 2026-11-26. Repo `Sahil-SS9/code-shipper`, branch `main`.
 | `8f1e6ef` | 2 | `review/contract.py`; the docstrings reach both the lenses and the verifier |
 | `35fe61d` | 3 | review memory wired read + write; `lessons add` |
 | `9d240ff` | 4 | per-failure diagnosis in `HermesHarness`; empty-answer retry; `--max-seconds` |
+| — | 5 | security filter on the lesson **read** path; `Store.add` refuses too; duplicate header removed; `rate` renamed |
 
 Each is its own commit with its own tests, and `local-ci` was green before every push.
 
@@ -55,7 +56,7 @@ unevaluated : 0
 discarded   : 0
 errored     : 0
 findings    : 7 across 4 seed(s)
-rate        : 20% of evaluated seeds (4/20)
+seeds w/findings : 20% of evaluated seeds (4/20)
 ```
 
 **Excluded: none, for any reason.** Fix 4 closed the gap — the previous run excluded 8 of 20 on lens
@@ -77,10 +78,20 @@ Every finding was reproduced against the seed code, not accepted from its descri
 
 **False-confirm rate: 0 of 20 = 0%** (0 findings refuted, 7 findings all true positives).
 
-Limits worth stating plainly: one author, one repository, one host, one run. 0% here is consistent with the
-previous runs' 17% only in the sense that the seed defects adjudicated in `07183ad` were *fixed* — those
-seeds can no longer produce the false confirms they once did. The remaining false-confirm risk is in shapes
-the seeds do not contain.
+What 0 of 20 actually means: **probably under about 15%, not zero.** Zero events in 20 samples is
+consistent with a true rate anywhere up to roughly 14–15% (the exact rule-of-three bound is 3/20 = 15% at
+95% confidence). The honest reading is "no false confirm in this sample of 20", not "this reviewer does not
+make false confirms". A sample this size cannot distinguish 0% from 10%.
+
+Limits worth stating plainly: one author, one repository, one host, one run, and the seeds are ones I
+wrote. The 17% figure from the earlier run and this 0% are not directly comparable — the six seed defects
+adjudicated in `07183ad` were fixed between them, so those seeds can no longer produce the false confirms
+they once did. The remaining false-confirm risk is in shapes the seeds do not contain, which is the one
+thing no seed-set measurement can bound.
+
+Two figures in this project were both called "rate": the share of seeds that had findings (20%) and the
+false-confirm rate (0%). They are renamed `seeds_with_findings_rate` and `false_confirm_rate`, because the
+old single word invited exactly the wrong quotation.
 
 ### Duplicate handling
 
@@ -120,3 +131,44 @@ is narrower than the reviewer's reports false misses. Both PRs were then read by
   start (billing).
 - A hosted CI run ID for `9d240ff` — same billing block; `local-ci` output substitutes.
 - `docs/reports/P3B-REPORT.md` still cites amended commit `740b6d4`.
+
+## Fix 5 — the security filter only guarded one door
+
+`relaxes_security()` ran only inside `learn()`. `apply_to_prompt()` checked `never_touches_security()`,
+which asks whether the *module* can reach the approvals policy — an import guard, not a content check. The
+owner proved the gap by writing a lesson straight into the store with `Store.add()`: "security findings are
+noise here" reached the apply-mode prompt. A hand edit, an older lesson written before the filter existed,
+or any future caller does the same.
+
+This is the same class as `covered_paths`: a protection that holds only if every caller remembers to route
+through the right function.
+
+Both doors are now guarded.
+
+- `Store.add()` refuses a security-relaxing lesson with `ValueError`, so the write path is covered twice.
+- `apply_to_prompt()` re-checks every kept lesson's cue, action and evidence. A match is dropped and its ID
+  is appended to `dropped`; `review()` turns each into a review error naming the ID — never applied, never
+  silently ignored.
+
+Verified from outside, which is how the hole was found:
+
+```
+1. Store.add with a security-relaxing lesson:
+   REFUSED: refusing lesson L-1dd4d062d591: it would relax a security judgement (matched 'security findings are
+2. lesson written straight to the file (bypassing add entirely):
+   prompt text: ''
+   dropped IDs: ['L-1dd4d062d591']
+   -> reaches the prompt? False
+```
+
+Mutation test: replacing `relaxes_security` with a no-op makes the raw lesson reach the prompt, so the
+filter is what stops it.
+
+Also in this fix:
+
+- **The header printed twice.** `apply_to_prompt` emitted "Lessons from feedback…" and the engine emitted it
+  again around the block, so the reviewer read the same sentence twice. The engine owns the header; the
+  read path returns bare bullets. A test counts the header occurrences in the rendered prompt.
+- **`rate` renamed.** Two different figures were both called `rate`: the share of seeds that had findings
+  (20%) and the false-confirm rate (0%). They are now `seeds_with_findings_rate` and
+  `false_confirm_rate`, and the printed labels say so.

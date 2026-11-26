@@ -238,7 +238,9 @@ def main(argv: list[str]) -> int:
         "seeds_errored": errored,
         "seeds_with_findings": seeds_with_findings,
         "finding_count": len(false_confirms),
-        "rate": (seeds_with_findings / len(evaluated)) if evaluated else None,
+        # Named for what it measures. "rate 20%" sitting beside a false-confirm rate of 0% is the kind of
+        # ambiguity that gets quoted wrong, and this figure is the share of seeds that had *real* bugs.
+        "seeds_with_findings_rate": (seeds_with_findings / len(evaluated)) if evaluated else None,
         "runs": evaluated,
         "findings": false_confirms,
     }
@@ -250,11 +252,11 @@ def main(argv: list[str]) -> int:
     say(f"discarded   : {len(discarded)}  (own control failed — excluded from the rate)")
     say(f"errored     : {len(errored)}")
     say(f"findings    : {len(false_confirms)} across {seeds_with_findings} seed(s)")
-    if report["rate"] is not None:
-        say(f"rate        : {report['rate']:.0%} of evaluated seeds "
+    if report["seeds_with_findings_rate"] is not None:
+        say(f"seeds w/findings : {report['seeds_with_findings_rate']:.0%} of evaluated seeds "
             f"({seeds_with_findings}/{len(evaluated)})")
     else:
-        say("rate        : not computed — no seed was evaluated")
+        say("seeds w/findings : not computed — no seed was evaluated")
 
     if args.out:
         out = Path(args.out)

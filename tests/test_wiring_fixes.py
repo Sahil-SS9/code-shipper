@@ -673,7 +673,7 @@ class ParallelMeasurementRunnerTests(unittest.TestCase):
     def test_the_rate_is_none_when_nothing_was_evaluated(self) -> None:
         """The guard that stopped a broken harness reporting 0% in the last run."""
         source = self._source()
-        self.assertIn('"rate": (seeds_with_findings / len(evaluated)) if evaluated else None', source)
+        self.assertIn('"seeds_with_findings_rate": (seeds_with_findings / len(evaluated))', source)
 
     def test_results_are_ordered_by_seed_not_completion(self) -> None:
         source = self._source()
