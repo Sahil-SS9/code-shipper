@@ -68,13 +68,24 @@ def clamp(value, low, high):
     # comparison against it is False, so `low > high` would not catch it either.
     if value != value or low != low or high != high:
         raise ValueError("value, low and high must not be NaN")
-    return max(low, min(high, value))
+    # Return `value` itself when it is in range. `max(low, min(high, value))` returned the BOUND on an
+    # exact tie, so clamp(3.0, 0, 3) gave int 3 rather than float 3.0 — a caller's type changed because
+    # it passed a value that happened to equal a bound.
+    if value < low:
+        return low
+    if value > high:
+        return high
+    return value
 '''},
         self_check='''
 from mathx.clamp import clamp
 assert clamp(10, 0, 5) == 5
 assert clamp(-3, 0, 5) == 0
 assert clamp(3, 0, 5) == 3
+# The value's own type survives an exact tie with a bound.
+assert isinstance(clamp(3.0, 0, 3), float), type(clamp(3.0, 0, 3))
+assert isinstance(clamp(3, 0, 3.0), int), type(clamp(3, 0, 3.0))
+assert clamp(3.0, 0, 3) == 3.0
 for bad in ((1, 5, 0), (float("nan"), 0, 1), (0, float("nan"), 1)):
     try:
         clamp(*bad)
@@ -94,8 +105,7 @@ for bad in ((1, 5, 0), (float("nan"), 0, 1), (0, float("nan"), 1)):
 def chunk(items, size):
     """Yield successive slices of at most `size` items.
 
-    Slices, not lists: for a str, bytes or tuple input the pieces are of that type. Saying "lists"
-    here was a promise the implementation never made.
+    The pieces have the type of `items`: str in, str out.
     """
     if size <= 0:
         raise ValueError("size must be positive")
@@ -165,9 +175,15 @@ def slugify(text):
     """
     if not isinstance(text, str):
         raise TypeError(f"slugify needs a string, got {type(text).__name__}")
+    # NFKD only decomposes scripts that HAVE a decomposition — Cyrillic, Greek, CJK and Arabic do not, so
+    # `encode("ascii", "ignore")` silently drops every character and the title becomes "". Measured:
+    # Москва, 中文标题, 日本語 and العربية all produced an empty slug. Transliterating is out of scope, so
+    # a title that loses everything is refused by name instead of silently becoming nothing.
     folded = unicodedata.normalize("NFKD", text)
-    ascii_text = folded.encode("ascii", "ignore").decode("ascii")
-    return _NON_WORD.sub("-", ascii_text.strip().lower()).strip("-")
+    ascii_text = folded.encode("ascii", "ignore").decode("ascii").strip().lower()
+    if not ascii_text and text.strip():
+        raise ValueError(f"cannot make an ASCII slug from {text!r}: no character survives the fold")
+    return _NON_WORD.sub("-", ascii_text).strip("-")
 '''},
         self_check='''
 from textx.slug import slugify
@@ -176,6 +192,14 @@ assert slugify("  Leading and trailing  ") == "leading-and-trailing"
 assert slugify("") == ""
 assert slugify("Café") == "cafe", slugify("Café")
 assert slugify("ÄÖÜ") == "aou", slugify("ÄÖÜ")
+# A title made entirely of non-decomposable script must not become an empty slug silently.
+for title in ("Москва", "中文标题", "日本語", "العربية"):
+    try:
+        slugify(title)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"{title!r} must be refused, not turned into an empty slug")
 for bad in (None, 3, b"bytes"):
     try:
         slugify(bad)
@@ -203,8 +227,11 @@ def retry(operation, attempts=3, delay=0.0, sleep=time.sleep):
     # A negative delay would raise from inside `sleep`, which sits in the except branch rather than the
     # try — so the caller would see "sleep length must be non-negative" instead of the real failure.
     # Refused up front, by name, before anything is attempted.
-    if delay < 0:
-        raise ValueError("delay must not be negative")
+    # `delay < 0` is False for NaN (every comparison against NaN is False) and False for inf, so a plain
+    # negativity check lets both through to `sleep`, which then raises its own error and masks the
+    # operation's exception — the exact bug this guard exists to prevent.
+    if delay != delay or delay in (float("inf"), float("-inf")) or delay < 0:
+        raise ValueError("delay must be a finite number that is not negative")
     last = None
     for attempt in range(attempts):
         try:
@@ -231,15 +258,19 @@ except ValueError:
     pass
 else:
     raise AssertionError("must re-raise the real exception")
-# A negative delay must not replace the operation's exception with a sleep error.
-try:
-    retry(lambda: (_ for _ in ()).throw(RuntimeError("the real cause")), attempts=2, delay=-1)
-except ValueError as exc:
-    assert "sleep length" not in str(exc), f"the sleep error masked the real cause: {exc}"
-except RuntimeError:
-    raise AssertionError("delay validation must happen before the operation runs")
-else:
-    raise AssertionError("a negative delay must be refused")
+# A bad delay must not replace the operation's exception with a sleep error. NaN and inf need their own
+# cases: `delay < 0` is False for both.
+for bad_delay in (-1, float("nan"), float("inf"), float("-inf")):
+    try:
+        retry(lambda: (_ for _ in ()).throw(RuntimeError("the real cause")),
+              attempts=2, delay=bad_delay)
+    except ValueError as exc:
+        assert "sleep" not in str(exc).lower(), f"{bad_delay} reached sleep: {exc}"
+        assert "delay" in str(exc).lower(), f"{bad_delay} refused for the wrong reason: {exc}"
+    except RuntimeError:
+        raise AssertionError(f"{bad_delay}: delay validation must happen before the operation runs")
+    else:
+        raise AssertionError(f"delay={bad_delay} must be refused")
 ''',
     ),
     Seed(
@@ -251,16 +282,26 @@ _UNITS = ("B", "KB", "MB", "GB", "TB")
 
 
 def human_size(count):
-    """Return a short human-readable size. Whole units where sensible."""
+    """Return a short human-readable size.
+
+    A non-finite count is refused: `count < 0` is False for NaN, so it passed the negativity guard and
+    formatted as "nan TB", which is not a size. Rollover happens on the value, not on a `< 1024` test
+    taken before dividing — otherwise 1048575 prints as "1024.0 KB" instead of "1.0 MB".
+    """
+    if count != count or count in (float("inf"), float("-inf")):
+        raise ValueError("count must be a finite number")
     if count < 0:
         raise ValueError("count must not be negative")
     size = float(count)
-    for unit in _UNITS:
-        if size < 1024 or unit == _UNITS[-1]:
-            if unit == "B":
-                return f"{int(size)} {unit}"
-            return f"{size:.1f} {unit}"
+    index = 0
+    # Roll over when the ROUNDED value would print as 1024.0 in the smaller unit.
+    while index < len(_UNITS) - 1 and round(size, 1) >= 1024:
         size /= 1024
+        index += 1
+    unit = _UNITS[index]
+    if unit == "B":
+        return f"{int(size)} {unit}"
+    return f"{size:.1f} {unit}"
 '''},
         self_check='''
 from unitx.human import human_size
@@ -268,6 +309,17 @@ assert human_size(0) == "0 B"
 assert human_size(512) == "512 B"
 assert human_size(2048) == "2.0 KB"
 assert human_size(1024 * 1024) == "1.0 MB"
+# Rollover must be on the printed value: 1048575 would otherwise read "1024.0 KB".
+assert human_size(1024 * 1024 - 1) != "1024.0 KB", human_size(1024 * 1024 - 1)
+assert human_size(1024 * 1024 - 1) == "1.0 MB", human_size(1024 * 1024 - 1)
+# Non-finite counts are not sizes. NaN passes `count < 0`, so it needs its own refusal.
+for bad in (float("nan"), float("inf"), float("-inf")):
+    try:
+        human_size(bad)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"human_size({bad}) must be refused")
 try:
     human_size(-1)
 except ValueError:
@@ -303,12 +355,22 @@ assert list(windows([1], 1)) == [(1,)]
 
 
 def dedupe(items):
-    """Yield the first occurrence of each item, in order."""
+    """Yield the first occurrence of each item, in order.
+
+    Works for hashable items, which is what a set-based check requires. An unhashable item (list, dict,
+    set) is refused by name rather than raising `TypeError: unhashable type` from inside the set — the
+    caller should know the limitation from the call site, not from a traceback.
+    """
     seen = set()
     for item in items:
-        if item in seen:
-            continue
-        seen.add(item)
+        try:
+            if item in seen:
+                continue
+            seen.add(item)
+        except TypeError as exc:
+            raise TypeError(
+                f"dedupe needs hashable items; got {type(item).__name__}"
+            ) from exc
         yield item
 '''},
         self_check='''
@@ -316,6 +378,13 @@ from seqx.dedupe import dedupe
 assert list(dedupe([3, 1, 3, 2, 1])) == [3, 1, 2]
 assert list(dedupe([])) == []
 assert list(dedupe("aab")) == ["a", "b"]
+# Unhashable items are refused by name, not with a bare set TypeError.
+try:
+    list(dedupe([[1], [1]]))
+except TypeError as exc:
+    assert "hashable" in str(exc), exc
+else:
+    raise AssertionError("an unhashable item must be refused")
 ''',
     ),
     Seed(
