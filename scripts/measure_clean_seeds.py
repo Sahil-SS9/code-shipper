@@ -55,9 +55,19 @@ SEEDS: list[Seed] = [
 
 
 def clamp(value, low, high):
-    """Return value, held between low and high inclusive."""
+    """Return value, held between low and high inclusive.
+
+    NaN is refused by name. `max`/`min` are not a total order over floats, so a NaN passed through
+    them returns whichever operand the comparison happened to keep — `clamp(nan, 0, 1)` gave 1, which
+    is a bound invented by a comparison, not by the caller. A NaN value is not "inside a range" and
+    silently substituting a bound would corrupt a computation.
+    """
     if low > high:
         raise ValueError("low must not exceed high")
+    # NaN is the only value not equal to itself. A NaN bound is as meaningless as a NaN value: every
+    # comparison against it is False, so `low > high` would not catch it either.
+    if value != value or low != low or high != high:
+        raise ValueError("value, low and high must not be NaN")
     return max(low, min(high, value))
 '''},
         self_check='''
@@ -65,12 +75,13 @@ from mathx.clamp import clamp
 assert clamp(10, 0, 5) == 5
 assert clamp(-3, 0, 5) == 0
 assert clamp(3, 0, 5) == 3
-try:
-    clamp(1, 5, 0)
-except ValueError:
-    pass
-else:
-    raise AssertionError("reversed range must raise")
+for bad in ((1, 5, 0), (float("nan"), 0, 1), (0, float("nan"), 1)):
+    try:
+        clamp(*bad)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"{bad} must raise, not invent a bound")
 ''',
         notes="The seed that produced a duplicate finding earlier, in its correct form.",
     ),
