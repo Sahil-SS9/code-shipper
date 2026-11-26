@@ -73,19 +73,22 @@ def _run_in_own_process_group(argv: list[str], **kwargs) -> subprocess.Completed
     """
     import signal
 
-    # Popen does not accept `capture_output`; translate what subprocess.run would have done.
+    # Popen accepts neither `capture_output` nor `input`; translate what subprocess.run would have done.
     capture = kwargs.pop("capture_output", False)
     if capture:
         kwargs.setdefault("stdout", subprocess.PIPE)
         kwargs.setdefault("stderr", subprocess.PIPE)
     timeout = kwargs.pop("timeout", None)
+    stdin_data = kwargs.pop("input", None)
+    if stdin_data is not None:
+        kwargs.setdefault("stdin", subprocess.PIPE)
 
     if os.name != "posix":  # pragma: no cover - Windows has no process groups in this sense
         return subprocess.run(argv, timeout=timeout, **kwargs)
 
     proc = subprocess.Popen(argv, start_new_session=True, **kwargs)
     try:
-        out, err = proc.communicate(timeout=timeout)
+        out, err = proc.communicate(input=stdin_data, timeout=timeout)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)

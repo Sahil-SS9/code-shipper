@@ -391,6 +391,22 @@ class ProcessGroupTimeoutTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout.strip(), "hello")
 
+    def test_stdin_is_passed_through(self) -> None:
+        """Popen has no `input=`; the translation must carry it.
+
+        The first version dropped it, and every seed failed with
+        `TypeError: Popen.__init__() got an unexpected keyword argument 'input'`.
+        """
+        import sys
+
+        from code_shipper.harness.adapters import _run_in_own_process_group
+
+        result = _run_in_own_process_group(
+            [sys.executable, "-c", "import sys; print(sys.stdin.read().strip().upper())"],
+            input="hello", capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.stdout.strip(), "HELLO")
+
     def test_the_hermes_harness_uses_that_runner(self) -> None:
         """The adapter must not go back to `subprocess.run` with a bare timeout."""
         from pathlib import Path
