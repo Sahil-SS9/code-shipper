@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -103,6 +104,20 @@ def _run_in_own_process_group(argv: list[str], **kwargs) -> subprocess.Completed
     return subprocess.CompletedProcess(argv, proc.returncode, out, err)
 
 
+# Failure reasons, shared so a report can group them without string-matching prose.
+TIMEOUT = "timeout"
+EMPTY_ANSWER = "empty"
+UNPARSEABLE = "unparseable"
+START_FAILED = "start_failed"
+
+
+@dataclass(frozen=True)
+class _Attempt:
+    ok: bool
+    reason: str
+    result: AgentResult
+
+
 class HermesHarness:
     """Runs `hermes chat` one-shot with the prompt on stdin.
 
@@ -156,6 +171,26 @@ class HermesHarness:
 
     def run(self, task: AgentTask, env: dict[str, str]) -> AgentResult:
         argv = self.argv(task)
+        attempt = self._attempt(argv, task, env)
+        if attempt.ok or attempt.reason != EMPTY_ANSWER:
+            return attempt.result
+
+        # One bounded retry, then a named reason. Measured on the hosted path: 8 of 20 seeds produced at
+        # least one lens with no usable answer, and the runner reported them as a bare "1 error(s)" — so
+        # the 40% of seeds that could not be scored had no diagnosis attached. An empty answer is the one
+        # failure worth a second attempt: it costs one call, and either works or does not.
+        second = self._attempt(argv, task, env)
+        if second.ok:
+            second.result.raw_tail = (second.result.raw_tail or "") + "\n[retried once after an empty answer]"
+            return second.result
+        return AgentResult(
+            ok=False,
+            raw_tail=second.result.raw_tail,
+            error=f"no usable answer after 2 attempts: {second.reason}",
+        )
+
+    def _attempt(self, argv: list[str], task: AgentTask, env: dict[str, str]) -> "_Attempt":
+        """One real call, with the failure classified rather than collapsed into one string."""
         try:
             proc = _run_in_own_process_group(
                 argv,
@@ -171,18 +206,34 @@ class HermesHarness:
                 timeout=task.budget.max_seconds + 30,
             )
         except subprocess.TimeoutExpired:
-            return AgentResult(ok=False, error="harness timed out")
+            return _Attempt(ok=False, reason=TIMEOUT,
+                            result=AgentResult(ok=False, error=(
+                                f"{TIMEOUT}: harness exceeded {task.budget.max_seconds + 30}s")))
         except OSError as exc:
-            return AgentResult(ok=False, error=f"harness could not start: {exc}")
+            return _Attempt(ok=False, reason=START_FAILED,
+                            result=AgentResult(ok=False,
+                                               error=f"{START_FAILED}: harness could not start: {exc}"))
 
         tail = (proc.stdout or "")[-4000:]
         if proc.returncode != 0:
-            return AgentResult(ok=False, raw_tail=tail, error=f"hermes exited {proc.returncode}")
+            return _Attempt(ok=False, reason=f"exit_code_{proc.returncode}",
+                            result=AgentResult(ok=False, raw_tail=tail,
+                                               error=f"exit_code_{proc.returncode}: hermes exited "
+                                                     f"{proc.returncode}"))
+        if not (proc.stdout or "").strip():
+            # Distinguished from unparseable: empty means the model produced nothing, invalid means it
+            # produced something that is not the answer shape. Two different repairs.
+            return _Attempt(ok=False, reason=EMPTY_ANSWER,
+                            result=AgentResult(ok=False, raw_tail=tail,
+                                               error=f"{EMPTY_ANSWER}: the model returned no output"))
         try:
             output = _validate(parse_json_object(proc.stdout or ""), task)
         except HarnessError as exc:
-            return AgentResult(ok=False, raw_tail=tail, error=str(exc))
-        return AgentResult(ok=True, output=output, raw_tail=tail, usage=Usage())
+            return _Attempt(ok=False, reason=UNPARSEABLE,
+                            result=AgentResult(ok=False, raw_tail=tail,
+                                               error=f"{UNPARSEABLE}: {exc}"))
+        return _Attempt(ok=True, reason="",
+                        result=AgentResult(ok=True, output=output, raw_tail=tail, usage=Usage()))
 
 
 class CommandHarness:

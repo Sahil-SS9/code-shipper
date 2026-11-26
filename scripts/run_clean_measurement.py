@@ -135,6 +135,8 @@ def main(argv: list[str]) -> int:
                 "lenses_run": outcome.lenses_run,
             })
             print(f"UNEVALUATED ({len(outcome.errors)} lens error(s)) — not counted")
+            if not outcome.lenses_run and not outcome.errors:
+                print("          no lens ran and no lens reported an error: the run stopped before the lens")
             for error in outcome.errors:
                 print(f"          {error}")
             continue

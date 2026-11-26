@@ -47,6 +47,7 @@ from code_shipper.harness.adapters import HermesHarness, OpenAICompatHarness  # 
 from measure_clean_seeds import SEEDS, check_seed, write_seed  # noqa: E402
 from run_clean_measurement import diff_for  # noqa: E402
 
+from code_shipper.harness.base import Budget  # noqa: E402
 from code_shipper.review.engine import review  # noqa: E402
 
 _PRINT_LOCK = threading.Lock()
@@ -88,6 +89,7 @@ def run_one(seed, args, work_root: Path) -> dict:
             level=args.level,
             workdir=str(root),
             intent=seed.title,
+            budget=Budget(max_seconds=args.max_seconds) if args.max_seconds else None,
         )
     except Exception as exc:  # noqa: BLE001 - one seed failing must not end the run
         return {"slug": seed.slug, "status": "error", "error": f"{type(exc).__name__}: {exc}"}
@@ -128,6 +130,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--seeds", default="",
                         help="comma-separated slugs to run; default is the first --limit seeds")
     parser.add_argument("--dry-run", action="store_true", help="verify the seeds only")
+    parser.add_argument(
+        "--max-seconds", type=int, default=0,
+        help="per-lens budget. 0 keeps the engine default (300s). 8 of 20 seeds were excluded by lens "
+             "timeouts on the hosted path; a longer budget is the only measurement-side lever on that.",
+    )
     args = parser.parse_args(argv[1:])
 
     if args.seeds:
@@ -181,7 +188,11 @@ def main(argv: list[str]) -> int:
                 else:
                     say(f"  {result['slug']:<12} clean ({result['seconds']:.0f}s)")
             elif result["status"] == "unevaluated":
-                say(f"  {result['slug']:<12} UNEVALUATED ({len(result['errors'])} error(s))")
+                reasons = result.get("errors") or []
+                say(f"  {result['slug']:<12} UNEVALUATED ({len(reasons)} lens error(s)) — not counted")
+                # Name every reason. "(1 error(s))" was the whole diagnosis for 40% of a run.
+                for reason in reasons[:4]:
+                    say(f"               ✗ {reason}")
             elif result["status"] == "discarded":
                 say(f"  {result['slug']:<12} DISCARDED — its own control failed")
             else:
