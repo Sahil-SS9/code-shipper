@@ -81,7 +81,11 @@ else:
 
 
 def chunk(items, size):
-    """Yield successive lists of at most `size` items."""
+    """Yield successive slices of at most `size` items.
+
+    Slices, not lists: for a str, bytes or tuple input the pieces are of that type. Saying "lists"
+    here was a promise the implementation never made.
+    """
     if size <= 0:
         raise ValueError("size must be positive")
     for start in range(0, len(items), size):
@@ -136,19 +140,38 @@ else:
         files={"textx/slug.py": '''"""Turn a title into a URL slug."""
 
 import re
+import unicodedata
 
 _NON_WORD = re.compile(r"[^a-z0-9]+")
 
 
 def slugify(text):
-    """Lowercase, collapse separators, trim edges."""
-    return _NON_WORD.sub("-", text.strip().lower()).strip("-")
+    """Lowercase, fold accents to ASCII, collapse separators, trim edges.
+
+    Accents are folded rather than dropped: "Café" must become "cafe", not "caf", or a title loses
+    letters. A non-string is refused by name, because a missing title reaching here should fail
+    loudly rather than raise `AttributeError` from inside `strip`.
+    """
+    if not isinstance(text, str):
+        raise TypeError(f"slugify needs a string, got {type(text).__name__}")
+    folded = unicodedata.normalize("NFKD", text)
+    ascii_text = folded.encode("ascii", "ignore").decode("ascii")
+    return _NON_WORD.sub("-", ascii_text.strip().lower()).strip("-")
 '''},
         self_check='''
 from textx.slug import slugify
 assert slugify("Hello, World!") == "hello-world"
 assert slugify("  Leading and trailing  ") == "leading-and-trailing"
 assert slugify("") == ""
+assert slugify("Café") == "cafe", slugify("Café")
+assert slugify("ÄÖÜ") == "aou", slugify("ÄÖÜ")
+for bad in (None, 3, b"bytes"):
+    try:
+        slugify(bad)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError(f"{bad!r} must be refused by name")
 ''',
     ),
     Seed(
@@ -320,28 +343,54 @@ else:
 
 
 def parse_kv(lines, *, comment="#"):
-    """Return a dict of the pairs, skipping blanks and comments."""
+    """Return a dict of the pairs, skipping blanks and comments.
+
+    An empty key is refused: `=x` is not a pair, and storing it under `''` silently collides with
+    any other line that has no key. An empty `comment` means "no comment marker" rather than
+    "every line is a comment", which is what `startswith("")` would otherwise do. A rejected line
+    is identified by number, never echoed, so untrusted content cannot reach a log through the
+    exception.
+    """
     out = {}
-    for line in lines:
+    for number, line in enumerate(lines, 1):
         text = line.strip()
-        if not text or text.startswith(comment):
+        if not text or (comment and text.startswith(comment)):
             continue
         if "=" not in text:
-            raise ValueError(f"not a key=value line: {text!r}")
+            raise ValueError(f"line {number} is not a key=value pair")
         key, _, value = text.partition("=")
-        out[key.strip()] = value.strip()
+        key = key.strip()
+        if not key:
+            raise ValueError(f"line {number} has no key")
+        out[key] = value.strip()
     return out
 '''},
         self_check='''
 from textx.kv import parse_kv
 got = parse_kv(["a=1", "  b = 2  ", "", "# note"])
 assert got == {"a": "1", "b": "2"}, got
+# Empty comment means no comment marker, not "all comments". A line starting with '#' that is not a
+# pair must be refused rather than silently skipped — so the observable difference is that a plain
+# pair still parses.
+assert parse_kv(["a=1"], comment="") == {"a": "1"}, parse_kv(["a=1"], comment="")
 try:
-    parse_kv(["nope"])
+    parse_kv(["a=1", "#notapair"], comment="")
 except ValueError:
-    pass
+    pass  # correct: with no comment marker, a non-pair line is an error
 else:
-    raise AssertionError("a line without = must raise")
+    raise AssertionError("with comment='' a non-pair line must be refused, not skipped")
+for bad in (["nope"], ["=x"], [" = y"]):
+    try:
+        parse_kv(bad)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"{bad} must raise")
+# The exception must not echo the line.
+try:
+    parse_kv(["secret-token-here"])
+except ValueError as exc:
+    assert "secret-token-here" not in str(exc), f"the message echoes untrusted input: {exc}"
 ''',
     ),
     Seed(
@@ -433,24 +482,34 @@ assert list(group_by(["aa", "b", "cc"], key=len)) == [2, 1], "first-seen order m
         title="Add a dotted-path getter",
         files={"dictx/paths.py": '''"""Read a dotted path from nested mappings."""
 
+from collections.abc import Mapping
+
 
 def get_path(data, path, default=None):
-    """Return the value at `path`, or `default` if any step is missing."""
+    """Return the value at `path`, or `default` if any step is missing.
+
+    Any Mapping will do, not only `dict`: a MappingProxyType or a custom `Mapping` is still a nested
+    mapping, and refusing it contradicts the docstring rather than implementing it.
+    """
     current = data
     for part in path.split("."):
-        if not isinstance(current, dict) or part not in current:
+        if not isinstance(current, Mapping) or part not in current:
             return default
         current = current[part]
     return current
 '''},
         self_check='''
 from dictx.paths import get_path
+import types
 data = {"a": {"b": {"c": 3}}}
 assert get_path(data, "a.b.c") == 3
 assert get_path(data, "a.b.x") is None
 assert get_path(data, "a.b.x", 0) == 0
 assert get_path({}, "a") is None
 assert get_path({"a": "notadict"}, "a.b") is None
+# A Mapping that is not a dict must still be walked.
+proxy = types.MappingProxyType({"a": {"b": {"c": 3}}})
+assert get_path(proxy, "a.b.c") == 3, get_path(proxy, "a.b.c")
 ''',
     ),
     Seed(
@@ -458,20 +517,29 @@ assert get_path({"a": "notadict"}, "a.b") is None
         title="Add an ISO date formatter",
         files={"datex/iso.py": '''"""Format a date the way an API expects."""
 
+import datetime
+
 
 def iso_date(year, month, day):
-    """Return YYYY-MM-DD, rejecting impossible dates."""
-    if not (1 <= month <= 12):
-        raise ValueError("month out of range")
-    if not (1 <= day <= 31):
-        raise ValueError("day out of range")
-    return f"{year:04d}-{month:02d}-{day:02d}"
+    """Return YYYY-MM-DD, rejecting impossible dates.
+
+    The calendar decides what is impossible, not a month/day range: February 31 and April 31 pass a
+    range check and are not dates. `datetime.date` also pins the year to 1..9999, which is what
+    "YYYY" means — `{year:04d}` alone pads to at least four characters and happily emits "-001" or
+    "10000".
+    """
+    try:
+        return datetime.date(year, month, day).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"not a valid date: {exc}") from exc
 '''},
         self_check='''
 from datex.iso import iso_date
 assert iso_date(2026, 1, 5) == "2026-01-05"
 assert iso_date(999, 12, 31) == "0999-12-31"
-for bad in ((2026, 13, 1), (2026, 1, 32)):
+# Every case a range check misses, and the year forms it would emit.
+for bad in ((2026, 13, 1), (2026, 1, 32), (2026, 2, 31), (2026, 4, 31),
+            (2025, 2, 29), (-1, 1, 5), (10000, 1, 5)):
     try:
         iso_date(*bad)
     except ValueError:

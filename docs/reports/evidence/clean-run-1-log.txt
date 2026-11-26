@@ -1,0 +1,51 @@
+harness: auto at http://127.0.0.1:8091
+  review  clamp … 1 false confirm(s) in 142s
+          → important: NaN inputs are not handled and can be silently converted to a bound
+  review  chunk … 1 false confirm(s) in 132s
+          → nit: chunk() may yield non-list slices despite docstring saying lists
+  review  mean … UNEVALUATED (1 lens error(s)) — not counted
+          verification batch failed: no text in the API response after retries
+  review  slugify … 3 false confirm(s) in 639s
+          → important: Non-ASCII letters are treated as separators and dropped
+          → important: slugify raises for None or other non-string inputs
+          → nit: Unicode letters are removed and can produce empty slugs
+  review  retry … UNEVALUATED (1 lens error(s)) — not counted
+          lens correctness failed: no text in the API response after retries
+  review  humanise … UNEVALUATED (2 lens error(s)) — not counted
+          lens correctness failed: no text in the API response after retries
+          lens edge failed: no text in the API response after retries
+  review  windows … UNEVALUATED (1 lens error(s)) — not counted
+          verification batch failed: no text in the API response after retries
+  review  dedupe … UNEVALUATED (1 lens error(s)) — not counted
+          verification batch failed: no text in the API response after retries
+  review  flatten … clean (100s, 3 lenses)
+  review  percent … UNEVALUATED (1 lens error(s)) — not counted
+          lens edge failed: no text in the API response after retries
+  review  parsekv … 4 false confirm(s) in 478s
+          → important: Parser accepts empty keys and stores '' key
+          → nit: comment='' makes every non-empty line be treated as a comment
+          → nit: ValueError includes untrusted line in exception message
+          → nit: Lines that produce an empty key are accepted
+  review  truncate … UNEVALUATED (2 lens error(s)) — not counted
+          lens correctness failed: no text in the API response after retries
+          lens edge failed: no text in the API response after retries
+  review  once … UNEVALUATED (1 lens error(s)) — not counted
+          lens correctness failed: no text in the API response after retries
+  review  groups … clean (175s, 3 lenses)
+  review  safeget … 1 false confirm(s) in 240s
+          → important: Only built-in dict is accepted even though docstring says mappings
+  review  iso … 2 false confirm(s) in 261s
+          → important: iso_date accepts impossible dates despite docstring
+          → important: iso_date can emit non-YYYY years
+  review  counter … clean (170s, 3 lenses)
+  review  normalise … clean (83s, 3 lenses)
+  review  windowmean … UNEVALUATED (1 lens error(s)) — not counted
+          lens edge failed: no text in the API response after retries
+  review  is_palindrome … UNEVALUATED (1 lens error(s)) — not counted
+          verification batch failed: no JSON object in the output
+
+reviewed 10 clean seeds, 0 discarded
+false confirms: 12 across 6 seed(s)
+rate: 60% of clean seeds (6/10)
+wrote /home/kensei/repos/code-shipper/docs/reports/evidence/clean-run.json
+exit=1

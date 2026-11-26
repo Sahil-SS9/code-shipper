@@ -1,0 +1,528 @@
+{
+  "started": "2026-11-26T01:08:27Z",
+  "harness": "auto at http://127.0.0.1:8091",
+  "model": "auto",
+  "base_url": "http://127.0.0.1:8091",
+  "level": "standard",
+  "seeds_checked": 20,
+  "seeds_discarded": [],
+  "seeds_run": [
+    "clamp",
+    "chunk",
+    "slugify",
+    "flatten",
+    "parsekv",
+    "groups",
+    "safeget",
+    "iso",
+    "counter",
+    "normalise"
+  ],
+  "runs": [
+    {
+      "slug": "clamp",
+      "title": "Add a clamp() helper",
+      "seconds": 142.1,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 1,
+      "posted": 1,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "edge-55170fd8a7",
+          "path": "mathx/clamp.py",
+          "line": 8,
+          "severity": "important",
+          "title": "NaN inputs are not handled and can be silently converted to a bound",
+          "body": "Python comparisons with NaN are false, so max/min do not behave like a total order. clamp(float('nan'), 0, 1) returns 1, while clamp(0, float('nan'), 1) returns float('nan'), and clamp(float('nan'), 0, 0) returns 0. If NaN can appear in numeric data, this hides bad input and produces inconsistent results. Decide and document/raise for NaN, or preserve it explicitly.",
+          "evidence": "+    return max(low, min(high, value))",
+          "lens": "edge"
+        }
+      ]
+    },
+    {
+      "slug": "chunk",
+      "title": "Add chunk() for splitting a list",
+      "seconds": 132.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 1,
+      "posted": 1,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "edge-da9dbe0521",
+          "path": "listsx/chunk.py",
+          "line": 8,
+          "severity": "nit",
+          "title": "chunk() may yield non-list slices despite docstring saying lists",
+          "body": "The docstring says the function yields lists, but the implementation yields whatever `items[start:start + size]` produces. For `str` or `bytes` input this means the chunks are `str`/`bytes`, and for `tuple` they are tuples. Callers that follow the docstring may expect lists and fail when calling list-only operations, or may silently receive a different element type. If the intended API is list-only, say so; if arbitrary sequences are supported, document the returned slice type or return `list(items[start:start + size])` when a list contract is required.",
+          "evidence": "+    \"\"\"Yield successive lists of at most `size` items.\"\"\"\n+        yield items[start:start + size]",
+          "lens": "edge"
+        }
+      ]
+    },
+    {
+      "slug": "slugify",
+      "title": "Add a slug helper",
+      "seconds": 639.2,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 3,
+      "confirmed": 3,
+      "posted": 3,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "correctness-d98170be70",
+          "path": "textx/slug.py",
+          "line": 6,
+          "severity": "important",
+          "title": "Non-ASCII letters are treated as separators and dropped",
+          "body": "The slugifier only preserves a-z and 0-9 after lowercasing. Any other character, including accented letters, is replaced by '-' and may then be trimmed, so Unicode titles lose characters or split unexpectedly: 'Caf\u00e9' becomes 'caf', '\u00dcbung' becomes 'bung', and '\u00dcn\u00efc\u00f6d\u00e9' becomes 'n-ic-d'. If non-ASCII input is possible, this is a data-correctness issue because the slug no longer faithfully represents the title. If ASCII-only output is intentional, the helper should say so or transliterate/encode instead of silently dropping characters.",
+          "evidence": "+_NON_WORD = re.compile(r\"[^a-z0-9]+\")\n+def slugify(text):\n+    \"\"\"Lowercase, collapse separators, trim edges.\"\"\"\n+    return _NON_WORD.sub(\"-\", text.strip().lower()).strip(\"-\")",
+          "lens": "correctness"
+        },
+        {
+          "id": "edge-3e4ba8c290",
+          "path": "textx/slug.py",
+          "line": 10,
+          "severity": "important",
+          "title": "slugify raises for None or other non-string inputs",
+          "body": "The helper assumes `text` is a non-None string. If a caller passes a missing title, `None`, bytes, or another object, `text.strip()` raises `AttributeError` or a similar error. Since this new helper may be used on stored titles, a missing or non-string title can crash slug generation. Document the expected input or handle non-string/None explicitly.",
+          "evidence": "+def slugify(text):\n+    \"\"\"Lowercase, collapse separators, trim edges.\"\"\"\n+    return _NON_WORD.sub(\"-\", text.strip().lower()).strip(\"-\")",
+          "lens": "edge"
+        },
+        {
+          "id": "edge-a9c1964c0d",
+          "path": "textx/slug.py",
+          "line": 5,
+          "severity": "nit",
+          "title": "Unicode letters are removed and can produce empty slugs",
+          "body": "The regex only preserves ASCII letters and digits. Non-ASCII characters are treated as separators: `slugify('Caf\u00e9')` becomes `'caf'`, and `slugify('\u00c4\u00d6\u00dc')` becomes `''`. If titles may contain accented or non-ASCII words, this silently drops characters and can produce empty or misleading slugs. If ASCII-only output is intended, state that; otherwise consider normalization/transliteration.",
+          "evidence": "+_NON_WORD = re.compile(r\"[^a-z0-9]+\")\n+    return _NON_WORD.sub(\"-\", text.strip().lower()).strip(\"-\")",
+          "lens": "edge"
+        }
+      ]
+    },
+    {
+      "slug": "flatten",
+      "title": "Add a one-level flatten",
+      "seconds": 100.0,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "parsekv",
+      "title": "Add a key=value line parser",
+      "seconds": 477.5,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 5,
+      "confirmed": 5,
+      "posted": 4,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "correctness-cacfc2fe9c",
+          "path": "textx/kv.py",
+          "line": 14,
+          "severity": "important",
+          "title": "Parser accepts empty keys and stores '' key",
+          "body": "A line such as '=x' or ' = x' passes the '=' check and produces key ''. The parser's stated intent is key=value pairs, and an empty key is not a valid key; silently accepting it can pollute the returned dict. If empty keys are not intended, validate that key.strip() is non-empty before assignment.",
+          "evidence": "+        if \"=\" not in text:\n+            raise ValueError(f\"not a key=value line: {text!r}\")\n+        key, _, value = text.partition(\"=\")\n+        out[key.strip()] = value.strip()",
+          "lens": "correctness"
+        },
+        {
+          "id": "correctness-90d879c043",
+          "path": "textx/kv.py",
+          "line": 9,
+          "severity": "nit",
+          "title": "comment='' makes every non-empty line be treated as a comment",
+          "body": "text.startswith(comment) is always true when comment is the empty string, so parse_kv(lines, comment='') returns an empty dict for any input with non-empty lines. If an empty comment string should mean 'no comment marker', guard against it or document that comment must be non-empty.",
+          "evidence": "+        if not text or text.startswith(comment):\n+            continue",
+          "lens": "correctness"
+        },
+        {
+          "id": "security-124344a77e",
+          "path": "textx/kv.py",
+          "line": 12,
+          "severity": "nit",
+          "title": "ValueError includes untrusted line in exception message",
+          "body": "The parser raises an exception containing the raw stripped input line. If this exception is logged or returned to a client, it can expose untrusted content, including sensitive data or control sequences, and allow log injection. For untrusted input, prefer a generic message or include only a safe line number/index rather than the line contents.",
+          "evidence": "+        if \"=\" not in text:\n+            raise ValueError(f\"not a key=value line: {text!r}\")",
+          "lens": "security"
+        },
+        {
+          "id": "edge-f923a2f9ea",
+          "path": "textx/kv.py",
+          "line": 13,
+          "severity": "nit",
+          "title": "Lines that produce an empty key are accepted",
+          "body": "A line such as `=value` or `=` partitions to an empty key, and the following line stores it under `''`. This can be surprising and can silently collide with or overwrite an empty-key entry. If empty keys are invalid, check `key.strip()` and raise a ValueError.",
+          "evidence": "        key, _, value = text.partition(\"=\")",
+          "lens": "edge"
+        }
+      ]
+    },
+    {
+      "slug": "groups",
+      "title": "Add grouping by a key function",
+      "seconds": 174.9,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "safeget",
+      "title": "Add a dotted-path getter",
+      "seconds": 239.7,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 4,
+      "confirmed": 1,
+      "posted": 1,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "edge-0f27d09628",
+          "path": "dictx/paths.py",
+          "line": 8,
+          "severity": "important",
+          "title": "Only built-in dict is accepted even though docstring says mappings",
+          "body": "The docstring says the helper reads from nested mappings, but the guard only accepts objects that pass `isinstance(current, dict)`. Mapping-like objects that are not `dict` subclasses, such as `types.MappingProxyType` or custom `collections.abc.Mapping` implementations, will be treated as missing and the function will return `default` even when the requested key exists. Use `isinstance(current, collections.abc.Mapping)` if mappings are truly supported, or document that only `dict` values are accepted.",
+          "evidence": "+        if not isinstance(current, dict) or part not in current:",
+          "lens": "edge"
+        }
+      ]
+    },
+    {
+      "slug": "iso",
+      "title": "Add an ISO date formatter",
+      "seconds": 261.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 4,
+      "confirmed": 4,
+      "posted": 2,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "correctness-7feb9caa71",
+          "path": "datex/iso.py",
+          "line": 8,
+          "severity": "important",
+          "title": "iso_date accepts impossible dates despite docstring",
+          "body": "The docstring says the function rejects impossible dates, but only checks month 1-12 and day 1-31. It will accept invalid calendar dates such as February 31, April 31, June 31, and February 29 in non-leap years. For an API date formatter this produces strings that look ISO-like but do not represent valid dates. Validate against datetime.date(year, month, day) or use month-specific day limits and leap-year rules.",
+          "evidence": "+    \"\"\"Return YYYY-MM-DD, rejecting impossible dates.\"\"\"\n+    if not (1 <= day <= 31):\n+        raise ValueError(\"day out of range\")\n+    return f\"{year:04d}-{month:02d}-{day:02d}\"",
+          "lens": "correctness"
+        },
+        {
+          "id": "edge-f5a338ec98",
+          "path": "datex/iso.py",
+          "line": 10,
+          "severity": "important",
+          "title": "iso_date can emit non-YYYY years",
+          "body": "The format spec {year:04d} only pads to a minimum of four characters. Negative years produce a leading minus sign, and years 10000 or larger produce more than four digits. Since the documented format is YYYY-MM-DD, inputs such as -1 or 10000 can produce non-ISO values like -001-01-01 or 10000-01-01. An explicit year range check or ISO 8601-compatible validation would be needed.",
+          "evidence": "+    return f\"{year:04d}-{month:02d}-{day:02d}\"",
+          "lens": "edge"
+        }
+      ]
+    },
+    {
+      "slug": "counter",
+      "title": "Add a counting helper over an iterable",
+      "seconds": 169.7,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "normalise",
+      "title": "Add whitespace normalisation",
+      "seconds": 83.1,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    }
+  ],
+  "false_confirms": [
+    {
+      "slug": "clamp",
+      "title": "NaN inputs are not handled and can be silently converted to a bound",
+      "path": "mathx/clamp.py",
+      "line": 8,
+      "severity": "important",
+      "text": "Python comparisons with NaN are false, so max/min do not behave like a total order. clamp(float('nan'), 0, 1) returns 1, while clamp(0, float('nan'), 1) returns float('nan'), and clamp(float('nan'), 0, 0) returns 0. If NaN can appear in numeric data, this hides bad input and produces inconsistent results. Decide and document/raise for NaN, or preserve it explicitly."
+    },
+    {
+      "slug": "chunk",
+      "title": "chunk() may yield non-list slices despite docstring saying lists",
+      "path": "listsx/chunk.py",
+      "line": 8,
+      "severity": "nit",
+      "text": "The docstring says the function yields lists, but the implementation yields whatever `items[start:start + size]` produces. For `str` or `bytes` input this means the chunks are `str`/`bytes`, and for `tuple` they are tuples. Callers that follow the docstring may expect lists and fail when calling list-only operations, or may silently receive a different element type. If the intended API is list-only, say so; if arbitrary sequences are supported, document the returned slice type or return `list(items[start:start + size])` when a list contract is required."
+    },
+    {
+      "slug": "slugify",
+      "title": "Non-ASCII letters are treated as separators and dropped",
+      "path": "textx/slug.py",
+      "line": 6,
+      "severity": "important",
+      "text": "The slugifier only preserves a-z and 0-9 after lowercasing. Any other character, including accented letters, is replaced by '-' and may then be trimmed, so Unicode titles lose characters or split unexpectedly: 'Caf\u00e9' becomes 'caf', '\u00dcbung' becomes 'bung', and '\u00dcn\u00efc\u00f6d\u00e9' becomes 'n-ic-d'. If non-ASCII input is possible, this is a data-correctness issue because the slug no longer faithfully represents the title. If ASCII-only output is intentional, the helper should say so or transliterate/encode instead of silently dropping characters."
+    },
+    {
+      "slug": "slugify",
+      "title": "slugify raises for None or other non-string inputs",
+      "path": "textx/slug.py",
+      "line": 10,
+      "severity": "important",
+      "text": "The helper assumes `text` is a non-None string. If a caller passes a missing title, `None`, bytes, or another object, `text.strip()` raises `AttributeError` or a similar error. Since this new helper may be used on stored titles, a missing or non-string title can crash slug generation. Document the expected input or handle non-string/None explicitly."
+    },
+    {
+      "slug": "slugify",
+      "title": "Unicode letters are removed and can produce empty slugs",
+      "path": "textx/slug.py",
+      "line": 5,
+      "severity": "nit",
+      "text": "The regex only preserves ASCII letters and digits. Non-ASCII characters are treated as separators: `slugify('Caf\u00e9')` becomes `'caf'`, and `slugify('\u00c4\u00d6\u00dc')` becomes `''`. If titles may contain accented or non-ASCII words, this silently drops characters and can produce empty or misleading slugs. If ASCII-only output is intended, state that; otherwise consider normalization/transliteration."
+    },
+    {
+      "slug": "parsekv",
+      "title": "Parser accepts empty keys and stores '' key",
+      "path": "textx/kv.py",
+      "line": 14,
+      "severity": "important",
+      "text": "A line such as '=x' or ' = x' passes the '=' check and produces key ''. The parser's stated intent is key=value pairs, and an empty key is not a valid key; silently accepting it can pollute the returned dict. If empty keys are not intended, validate that key.strip() is non-empty before assignment."
+    },
+    {
+      "slug": "parsekv",
+      "title": "comment='' makes every non-empty line be treated as a comment",
+      "path": "textx/kv.py",
+      "line": 9,
+      "severity": "nit",
+      "text": "text.startswith(comment) is always true when comment is the empty string, so parse_kv(lines, comment='') returns an empty dict for any input with non-empty lines. If an empty comment string should mean 'no comment marker', guard against it or document that comment must be non-empty."
+    },
+    {
+      "slug": "parsekv",
+      "title": "ValueError includes untrusted line in exception message",
+      "path": "textx/kv.py",
+      "line": 12,
+      "severity": "nit",
+      "text": "The parser raises an exception containing the raw stripped input line. If this exception is logged or returned to a client, it can expose untrusted content, including sensitive data or control sequences, and allow log injection. For untrusted input, prefer a generic message or include only a safe line number/index rather than the line contents."
+    },
+    {
+      "slug": "parsekv",
+      "title": "Lines that produce an empty key are accepted",
+      "path": "textx/kv.py",
+      "line": 13,
+      "severity": "nit",
+      "text": "A line such as `=value` or `=` partitions to an empty key, and the following line stores it under `''`. This can be surprising and can silently collide with or overwrite an empty-key entry. If empty keys are invalid, check `key.strip()` and raise a ValueError."
+    },
+    {
+      "slug": "safeget",
+      "title": "Only built-in dict is accepted even though docstring says mappings",
+      "path": "dictx/paths.py",
+      "line": 8,
+      "severity": "important",
+      "text": "The docstring says the helper reads from nested mappings, but the guard only accepts objects that pass `isinstance(current, dict)`. Mapping-like objects that are not `dict` subclasses, such as `types.MappingProxyType` or custom `collections.abc.Mapping` implementations, will be treated as missing and the function will return `default` even when the requested key exists. Use `isinstance(current, collections.abc.Mapping)` if mappings are truly supported, or document that only `dict` values are accepted."
+    },
+    {
+      "slug": "iso",
+      "title": "iso_date accepts impossible dates despite docstring",
+      "path": "datex/iso.py",
+      "line": 8,
+      "severity": "important",
+      "text": "The docstring says the function rejects impossible dates, but only checks month 1-12 and day 1-31. It will accept invalid calendar dates such as February 31, April 31, June 31, and February 29 in non-leap years. For an API date formatter this produces strings that look ISO-like but do not represent valid dates. Validate against datetime.date(year, month, day) or use month-specific day limits and leap-year rules."
+    },
+    {
+      "slug": "iso",
+      "title": "iso_date can emit non-YYYY years",
+      "path": "datex/iso.py",
+      "line": 10,
+      "severity": "important",
+      "text": "The format spec {year:04d} only pads to a minimum of four characters. Negative years produce a leading minus sign, and years 10000 or larger produce more than four digits. Since the documented format is YYYY-MM-DD, inputs such as -1 or 10000 can produce non-ISO values like -001-01-01 or 10000-01-01. An explicit year range check or ISO 8601-compatible validation would be needed."
+    }
+  ],
+  "merged": 0,
+  "missed_merges": 0,
+  "unevaluated": [
+    {
+      "slug": "mean",
+      "errors": [
+        "verification batch failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "retry",
+      "errors": [
+        "lens correctness failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "humanise",
+      "errors": [
+        "lens correctness failed: no text in the API response after retries",
+        "lens edge failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "windows",
+      "errors": [
+        "verification batch failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "dedupe",
+      "errors": [
+        "verification batch failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "percent",
+      "errors": [
+        "lens edge failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "truncate",
+      "errors": [
+        "lens correctness failed: no text in the API response after retries",
+        "lens edge failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "once",
+      "errors": [
+        "lens correctness failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "windowmean",
+      "errors": [
+        "lens edge failed: no text in the API response after retries"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "is_palindrome",
+      "errors": [
+        "verification batch failed: no JSON object in the output"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    }
+  ],
+  "reviewed": 10,
+  "false_confirm_count": 12,
+  "seeds_with_false_confirm": 6,
+  "rate": 0.6,
+  "finished": "2026-11-26T03:44:50Z"
+}
