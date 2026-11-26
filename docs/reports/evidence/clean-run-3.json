@@ -1,0 +1,366 @@
+{
+  "started": "2026-11-26T04:35:36Z",
+  "harness": "auto at http://127.0.0.1:8091",
+  "model": "auto",
+  "base_url": "http://127.0.0.1:8091",
+  "level": "standard",
+  "seeds_checked": 20,
+  "seeds_discarded": [],
+  "seeds_run": [
+    "clamp",
+    "mean",
+    "slugify",
+    "retry",
+    "humanise",
+    "windows",
+    "flatten",
+    "percent",
+    "truncate",
+    "once",
+    "iso",
+    "counter",
+    "normalise",
+    "is_palindrome"
+  ],
+  "runs": [
+    {
+      "slug": "clamp",
+      "title": "Add a clamp() helper",
+      "seconds": 29.5,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 4,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "mean",
+      "title": "Add mean() over an iterable",
+      "seconds": 13.6,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 2,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "slugify",
+      "title": "Add a slug helper",
+      "seconds": 21.0,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 2,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "retry",
+      "title": "Add a bounded retry helper",
+      "seconds": 23.8,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 3,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "humanise",
+      "title": "Add a byte-count humaniser",
+      "seconds": 18.5,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 3,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "windows",
+      "title": "Add a sliding-window iterator",
+      "seconds": 13.6,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "flatten",
+      "title": "Add a one-level flatten",
+      "seconds": 2.3,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "percent",
+      "title": "Add a percentage formatter",
+      "seconds": 2.3,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "truncate",
+      "title": "Add a safe truncate helper",
+      "seconds": 31.9,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "once",
+      "title": "Add a once-only decorator",
+      "seconds": 53.6,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 5,
+      "confirmed": 2,
+      "posted": 2,
+      "complete": true,
+      "errors": [],
+      "findings": [
+        {
+          "id": "correctness-2dfe3777f4",
+          "path": "functx/once.py",
+          "line": 14,
+          "severity": "important",
+          "title": "Concurrent calls can cause race condition; stored is mutated shared state without lock",
+          "body": "The stored dict is shared mutable state. If wrapper is called concurrently from multiple threads, two threads can both see stored['value'] is sentinel and stored['error'] is None, both execute func, and both write to stored['value'] (or stored['error']). This violates the 'call at most once' contract: func may be invoked more than once, and the returned value may be inconsistent. The change introduces this new stateful cache without any synchronization. For a decorator intended to guarantee single execution, this is a correctness defect under concurrent use.",
+          "evidence": "    sentinel = object()\n    stored = {\"value\": sentinel, \"error\": None}\n\n    @functools.wraps(func)\n    def wrapper(*args, **kwargs):\n        if stored[\"value\"] is sentinel and stored[\"error\"] is None:",
+          "lens": "correctness"
+        },
+        {
+          "id": "security-410d93892b",
+          "path": "functx/once.py",
+          "line": 16,
+          "severity": "important",
+          "title": "Uncaught SystemExit and KeyboardInterrupt bypass 'once' semantics",
+          "body": "The wrapper catches only `Exception`. If the wrapped function raises `SystemExit` or `KeyboardInterrupt` (which inherit from `BaseException`), the exception will not be stored in `stored[\"error\"]`. \n\nConsequences:\n1. The exception propagates up to the caller immediately (likely terminating the process or interrupting the program), which may not be intended.\n2. `stored[\"value\"]` remains the `sentinel` and `stored[\"error\"]` remains `None`. If the process survives the interrupt (e.g., in a long-running server or test environment), the next call will re-execute `func`. This violates the \"call at most once\" contract for these specific exception types.\n\nIf catching all errors including control-flow exceptions is required, the catch block should use `except BaseException`. Otherwise, the documentation or behavior should clarify that `SystemExit` and `KeyboardInterrupt` are not suppressed or cached.",
+          "evidence": "            try:\n                stored[\"value\"] = func(*args, **kwargs)\n            except Exception as exc:  # noqa: BLE001 - remember the failure too",
+          "lens": "security"
+        }
+      ]
+    },
+    {
+      "slug": "iso",
+      "title": "Add an ISO date formatter",
+      "seconds": 2.5,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "counter",
+      "title": "Add a counting helper over an iterable",
+      "seconds": 11.0,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "normalise",
+      "title": "Add whitespace normalisation",
+      "seconds": 17.1,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 2,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    },
+    {
+      "slug": "is_palindrome",
+      "title": "Add a palindrome check",
+      "seconds": 14.4,
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ],
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "complete": true,
+      "errors": [],
+      "findings": []
+    }
+  ],
+  "false_confirms": [
+    {
+      "slug": "once",
+      "title": "Concurrent calls can cause race condition; stored is mutated shared state without lock",
+      "path": "functx/once.py",
+      "line": 14,
+      "severity": "important",
+      "text": "The stored dict is shared mutable state. If wrapper is called concurrently from multiple threads, two threads can both see stored['value'] is sentinel and stored['error'] is None, both execute func, and both write to stored['value'] (or stored['error']). This violates the 'call at most once' contract: func may be invoked more than once, and the returned value may be inconsistent. The change introduces this new stateful cache without any synchronization. For a decorator intended to guarantee single execution, this is a correctness defect under concurrent use."
+    },
+    {
+      "slug": "once",
+      "title": "Uncaught SystemExit and KeyboardInterrupt bypass 'once' semantics",
+      "path": "functx/once.py",
+      "line": 16,
+      "severity": "important",
+      "text": "The wrapper catches only `Exception`. If the wrapped function raises `SystemExit` or `KeyboardInterrupt` (which inherit from `BaseException`), the exception will not be stored in `stored[\"error\"]`. \n\nConsequences:\n1. The exception propagates up to the caller immediately (likely terminating the process or interrupting the program), which may not be intended.\n2. `stored[\"value\"]` remains the `sentinel` and `stored[\"error\"]` remains `None`. If the process survives the interrupt (e.g., in a long-running server or test environment), the next call will re-execute `func`. This violates the \"call at most once\" contract for these specific exception types.\n\nIf catching all errors including control-flow exceptions is required, the catch block should use `except BaseException`. Otherwise, the documentation or behavior should clarify that `SystemExit` and `KeyboardInterrupt` are not suppressed or cached."
+    }
+  ],
+  "merged": 0,
+  "missed_merges": 0,
+  "unevaluated": [
+    {
+      "slug": "chunk",
+      "errors": [
+        "lens correctness failed: result does not match the schema: $: missing required key 'findings'; $: unexpected keys ['body', 'evidence', 'line', 'path', 'severity', 'title']"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "dedupe",
+      "errors": [
+        "lens edge failed: no JSON object in the output"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "parsekv",
+      "errors": [
+        "lens edge failed: result does not match the schema: $: missing required key 'findings'; $: unexpected keys ['body', 'evidence', 'line', 'path', 'severity', 'title']"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "groups",
+      "errors": [
+        "lens security failed: no JSON object in the output",
+        "lens edge failed: no JSON object in the output"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "safeget",
+      "errors": [
+        "lens edge failed: result does not match the schema: $: unexpected keys ['body', 'evidence', 'line2', 'severity', 'title']"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    },
+    {
+      "slug": "windowmean",
+      "errors": [
+        "lens correctness failed: result does not match the schema: $: missing required key 'findings'; $: unexpected keys ['body', 'evidence', 'line', 'path', 'severity', 'title']"
+      ],
+      "lenses_run": [
+        "correctness",
+        "security",
+        "edge"
+      ]
+    }
+  ],
+  "reviewed": 14,
+  "false_confirm_count": 2,
+  "seeds_with_false_confirm": 1,
+  "rate": 0.07142857142857142,
+  "finished": "2026-11-26T04:40:49Z"
+}

@@ -450,20 +450,37 @@ assert not out[:-3].endswith(" "), out
         files={"functx/once.py": '''"""Call a function at most once."""
 
 import functools
+import threading
 
 
 def once(func):
-    """Cache the first result, including an exception."""
+    """Cache the first result, including an exception.
+
+    "At most once" is a promise that means under concurrency too, so the first call is serialised
+    behind a lock: without it eight threads each see an unset sentinel and the function runs eight
+    times. Measured before this lock: 8 invocations for 8 concurrent calls.
+
+    `BaseException` is caught as well as `Exception`, because `SystemExit` and `KeyboardInterrupt`
+    are not errors to remember — they are signals to stop, and swallowing them into a cache would
+    make a decorated function unkillable. They propagate without setting the result, so a second
+    call runs the function again rather than replaying a shutdown.
+    """
     sentinel = object()
     stored = {"value": sentinel, "error": None}
+    lock = threading.Lock()
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         if stored["value"] is sentinel and stored["error"] is None:
-            try:
-                stored["value"] = func(*args, **kwargs)
-            except Exception as exc:  # noqa: BLE001 - remember the failure too
-                stored["error"] = exc
+            with lock:
+                # Re-check under the lock: another thread may have answered while we waited.
+                if stored["value"] is sentinel and stored["error"] is None:
+                    try:
+                        stored["value"] = func(*args, **kwargs)
+                    except (KeyboardInterrupt, SystemExit):
+                        raise
+                    except Exception as exc:  # noqa: BLE001 - remember the failure too
+                        stored["error"] = exc
         if stored["error"] is not None:
             raise stored["error"]
         return stored["value"]
@@ -472,6 +489,8 @@ def once(func):
 '''},
         self_check='''
 from functx.once import once
+import threading
+
 calls = []
 @once
 def f():
@@ -480,6 +499,32 @@ def f():
 assert f() == 42
 assert f() == 42
 assert len(calls) == 1, calls
+
+# "At most once" must hold under concurrency. Measured before the lock: 8 invocations for 8 threads.
+tight = []
+@once
+def slow():
+    tight.append(1)
+    import time; time.sleep(0.05)
+    return "v"
+threads = [threading.Thread(target=slow) for _ in range(8)]
+[t.start() for t in threads]; [t.join() for t in threads]
+assert len(tight) == 1, f"the function ran {len(tight)} times for 8 concurrent calls"
+
+# A shutdown signal is not an exception to cache: it must propagate and must not be replayed.
+ran = []
+@once
+def exit_caller():
+    ran.append(1)
+    raise SystemExit("requested")
+for _ in range(2):
+    try:
+        exit_caller()
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("SystemExit must propagate, not be cached")
+assert len(ran) == 2, f"SystemExit was cached as a result: ran {len(ran)} times"
 ''',
     ),
     Seed(
