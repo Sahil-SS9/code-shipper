@@ -39,7 +39,27 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/local-ci.XXXXXX")"
+# The run directory is chosen deliberately, not inherited from TMPDIR.
+#
+# A Hermes user's TMPDIR is under ~/.hermes/cache, so a run directory created there tripped this script's
+# own seal gate — the same over-broad rule that was narrowed in `contain/spec.py`, reimplemented here by
+# accident. Two things are wrong with inheriting TMPDIR: the seal cannot distinguish "our scratch under
+# .hermes/cache", which is fine, from "a credential store", which is not; and a gate that fails for every
+# Hermes user is a gate that gets switched off.
+#
+# So the base is chosen here and printed, so a reader can see where the run happened, and `gate_seal`
+# checks the real credential locations only.
+CI_BASE="${LOCAL_CI_BASE:-}"
+if [ -z "$CI_BASE" ]; then
+  for candidate in /tmp /var/tmp "${HOME:-/tmp}"; do
+    [ -d "$candidate" ] && [ -w "$candidate" ] && CI_BASE="$candidate" && break
+  done
+fi
+if [ -z "$CI_BASE" ]; then
+  echo "local-ci: no writable base for the run directory" >&2
+  exit 1
+fi
+RUN_DIR="$(mktemp -d "$CI_BASE/local-ci.XXXXXX")"
 cleanup() { rm -rf "$RUN_DIR"; }
 trap cleanup EXIT
 
@@ -59,6 +79,7 @@ record() {  # record <gate> <verdict> <detail>
 
 echo "local-ci  ·  repo $REPO_ROOT"
 echo "sealed: $([ "$SEALED" -eq 1 ] && echo yes || echo 'NO — debugging')"
+echo "run dir: $RUN_DIR"
 echo
 
 # ---------------------------------------------------------------- gate: portable syntax
@@ -180,13 +201,21 @@ gate_seal() {
     record "$gate" SKIP "--no-seal"
     return
   fi
-  local leaks=0
-  if ls "$REPO_ROOT"/.local-ci-leak 2>/dev/null; then leaks=1; fi
-  # The run directory is inside TMPDIR and is removed on exit; assert it was never the real state dir.
+  # The narrowed rule, the same one `contain/spec.py` uses: refuse the locations that hold a credential
+  # or the live agent's state, not anything whose path happens to contain a dot directory. A scratch
+  # directory under ~/.hermes/cache is ordinary filesystem and is exactly where a Hermes user's TMPDIR
+  # points.
   case "$RUN_DIR" in
-    *".hermes"*|*"/.local/state"*) record "$gate" FAIL "run directory is inside a real state location: $RUN_DIR"; return ;;
+    */.ssh/*|*/.aws/*|*/.gnupg/*|*/.docker/*|*/.kube/*|*/.config/gh/*)
+      record "$gate" FAIL "run directory is inside a credential location: $RUN_DIR"; return ;;
+    */.hermes/auth/*|*/.hermes/tokens/*|*/.hermes/secrets/*|*/.hermes/credentials/*|*/.hermes/profiles/*)
+      record "$gate" FAIL "run directory is inside agent credentials: $RUN_DIR"; return ;;
   esac
-  record "$gate" PASS "run dir $RUN_DIR, no credentials read"
+  if ls "$REPO_ROOT"/.local-ci-leak 2>/dev/null; then
+    record "$gate" FAIL "a leak marker was created in the repo"
+    return
+  fi
+  record "$gate" PASS "run dir $RUN_DIR (base $CI_BASE), no credentials read"
 }
 
 echo "gates"

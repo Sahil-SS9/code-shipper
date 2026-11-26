@@ -299,3 +299,167 @@ class CredentialGuardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AlsoNotedTests(unittest.TestCase):
+    """The #25 output shape: "Also noted on this line: PR adds an undocumented w".
+
+    Two defects in one line — the finding's own title was listed under itself, and the joined string was
+    cut mid-word by the surface. Both are fixed at their source.
+    """
+
+    TITLE = "PR adds an undocumented wrapper around clamp()"
+
+    def _pair(self, *, first: int = 2, second: int = 4, title: str | None = None,
+              second_title: str | None = None) -> list[Finding]:
+        return [
+            Finding(id="a", path="scn05_clamp.py", line=first, severity="important",
+                    title=title or self.TITLE, body="",
+                    evidence="def clamp(x, low, high):\n    return max(low, x)"),
+            Finding(id="b", path="scn05_clamp.py", line=second, severity="important",
+                    title=second_title or title or self.TITLE, body="",
+                    evidence="def clamp(x, low, high):\n    return max(low, min(x))"),
+        ]
+
+    def test_the_finding_never_lists_its_own_title(self) -> None:
+        merged = apply_root_cause_merge(self._pair())
+        self.assertEqual(len(merged), 1)
+        suffix = merged[0].body
+        # The survivor's own title must not appear a second time inside its body.
+        self.assertNotIn(self.TITLE, suffix,
+                         f"the finding restated its own title: {suffix!r}")
+
+    def test_it_names_the_other_line_when_that_is_the_only_difference(self) -> None:
+        suffix = apply_root_cause_merge(self._pair())[0].body
+        self.assertIn("line 4", suffix)
+
+    def test_it_says_nothing_false_when_the_line_matches(self) -> None:
+        """Same title, same line: there is nothing worth adding, and it must not invent a line."""
+        items = self._pair(first=2, second=2)
+        items[1] = Finding(id="b", path="scn05_clamp.py", line=2, severity="important",
+                           title=self.TITLE, body="", evidence="def clamp(x, low, h):\n  return 1")
+        merged = apply_root_cause_merge(items)
+        if merged[0].body:
+            self.assertNotIn("line 2", merged[0].body)
+
+    def test_no_title_is_cut_mid_word(self) -> None:
+        """The exact defect: "PR adds an undocumented w"."""
+        suffix = apply_root_cause_merge(self._pair())[0].body
+        self.assertNotIn("undocumented w\u2026", suffix)
+        self.assertNotIn("undocumented w;", suffix)
+
+    def test_clipping_is_word_safe_in_the_tui(self) -> None:
+        from code_shipper.surfaces.tui import _clip
+
+        for width in range(8, 60):
+            clipped = _clip(f"also noted: {self.TITLE}", width)
+            self.assertLessEqual(len(clipped), max(width, 1))
+            if clipped.endswith("…"):
+                body = clipped[:-1].rstrip()
+                # Everything before the ellipsis must be whole words from the source.
+                for word in body.split():
+                    self.assertIn(word, f"also noted: {self.TITLE}".split(),
+                                  f"cut inside a word at width {width}: {clipped!r}")
+
+    def test_clipping_is_word_safe_in_the_cli(self) -> None:
+        from code_shipper.surfaces.cli_view import _clip
+
+        for width in range(8, 60):
+            clipped = _clip(f"also noted: {self.TITLE}", width)
+            if clipped.endswith("…"):
+                body = clipped[:-1].rstrip()
+                for word in body.split():
+                    self.assertIn(word, f"also noted: {self.TITLE}".split(),
+                                  f"cut inside a word at width {width}: {clipped!r}")
+
+    def test_a_different_title_is_named_in_full(self) -> None:
+        merged = apply_root_cause_merge(
+            self._pair(title="clamp() never applies the upper bound",
+                       second_title="clamp() never applies the upper bound either")
+        )
+        if len(merged) == 1 and merged[0].body:
+            self.assertNotIn("…", merged[0].body, "a title in the body must not be truncated")
+
+    def test_the_suffix_is_readable_english(self) -> None:
+        suffix = apply_root_cause_merge(self._pair())[0].body.strip()
+        self.assertTrue(suffix.startswith("Also noted"), suffix)
+        self.assertNotIn("Also noted on this line", suffix,
+                         "the phrase claimed a line even when the line was the point of the note")
+
+
+class LocalCISealTests(unittest.TestCase):
+    """The seal gate refused any path containing ".hermes" — the same over-broad rule fix 5 removed.
+
+    A Hermes user's TMPDIR is under ~/.hermes/cache, so the gate failed for every one of them. The gate
+    must refuse credential and live-state locations, and a scratch directory under ~/.hermes/cache must
+    pass.
+    """
+
+    SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "local-ci.sh"
+
+    def _source(self) -> str:
+        return self.SCRIPT.read_text()
+
+    def test_the_gate_no_longer_matches_a_bare_dot_hermes(self) -> None:
+        source = self._source()
+        self.assertNotIn('*".hermes"*', source,
+                         "the old over-broad match is still present")
+
+    def test_the_gate_names_the_credential_locations(self) -> None:
+        source = self._source()
+        for needle in ("/.hermes/auth/", "/.hermes/tokens/", "/.hermes/secrets/",
+                       "/.ssh/", "/.aws/"):
+            self.assertIn(needle, source, f"the seal gate does not name {needle}")
+
+    def test_the_run_directory_base_is_chosen_and_printed(self) -> None:
+        """It must not inherit TMPDIR blindly: that is what put it under ~/.hermes."""
+        source = self._source()
+        self.assertIn("LOCAL_CI_BASE", source)
+        self.assertIn("CI_BASE=", source)
+        self.assertIn("run dir:", source, "the base must be printed so a reader can see where it ran")
+
+    def test_the_script_is_valid_bash(self) -> None:
+        import subprocess
+
+        result = subprocess.run(["bash", "-n", str(self.SCRIPT)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_a_scratch_base_under_hermes_cache_passes(self) -> None:
+        """Run the gate itself, pointed at ~/.hermes/cache. This is the case that was broken."""
+        import os
+        import subprocess
+
+        base = Path.home() / ".hermes" / "cache" / "local-ci-test-base"
+        base.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ, LOCAL_CI_BASE=str(base))
+        result = subprocess.run(
+            ["bash", str(self.SCRIPT), "--only", "seal"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(result.returncode, 0,
+                         f"a scratch dir under ~/.hermes/cache must pass:\n{result.stdout}")
+        self.assertIn("PASS", result.stdout)
+
+    def test_a_credential_base_fails(self) -> None:
+        """A base that reaches a credential location must still fail. No real credential is touched."""
+        import os
+        import subprocess
+
+        base = Path.home() / ".hermes" / "auth"
+        created = not base.exists()
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+            env = dict(os.environ, LOCAL_CI_BASE=str(base))
+            result = subprocess.run(
+                ["bash", str(self.SCRIPT), "--only", "seal"],
+                capture_output=True, text=True, env=env,
+            )
+            self.assertNotEqual(result.returncode, 0,
+                               "a credential location must fail the seal gate")
+            self.assertIn("FAIL", result.stdout)
+        finally:
+            if created:
+                try:
+                    base.rmdir()
+                except OSError:
+                    pass
