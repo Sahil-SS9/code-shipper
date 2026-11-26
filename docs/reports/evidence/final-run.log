@@ -1,0 +1,40 @@
+harness: hermes · workers: 2 · seeds: 20
+work root: /home/kensei/.hermes/cache/scratch/par-measure-wbwzu5ww
+
+  chunk        clean (30s)
+  clamp        clean (48s)
+  mean         clean (33s)
+  slugify      2 finding(s) in 93s
+               → important: Latin letters with no NFKD decomposition (ø, ł, đ, ß, æ) are silently dropped, so titles lose letters
+               → important: Empty-result guard checks the folded text, not the final slug, so non-Latin titles with punctuation still return ""
+  retry        1 finding(s) in 82s
+               → nit: Very large finite delay still lets time.sleep raise and hide the operation's exception
+  windows      clean (31s)
+  humanise     clean (57s)
+  dedupe       clean (45s)
+  flatten      clean (32s)
+  percent      clean (34s)
+  parsekv      clean (41s)
+  truncate     1 finding(s) in 71s
+               → important: When width is smaller than the marker, the result is longer than width
+  groups       clean (28s)
+  once         3 finding(s) in 110s
+               → nit: Docstring says BaseException is caught, but the code only catches KeyboardInterrupt/SystemExit (re-raised) and Exception
+               → nit: Docstring says BaseException is caught, but the code catches only KeyboardInterrupt/SystemExit and Exception
+               → nit: Re-raising the same cached exception instance makes its traceback grow on every call
+  safeget      clean (36s)
+  iso          clean (35s)
+  counter      clean (29s)
+  normalise    clean (29s)
+  windowmean   clean (35s)
+  is_palindrome clean (28s)
+
+attempted   : 20
+evaluated   : 20
+unevaluated : 0  (lens error — excluded from the rate)
+discarded   : 0  (own control failed — excluded from the rate)
+errored     : 0
+findings    : 7 across 4 seed(s)
+rate        : 20% of evaluated seeds (4/20)
+wrote /home/kensei/repos/code-shipper/docs/reports/evidence/final-run.json
+EXIT=0

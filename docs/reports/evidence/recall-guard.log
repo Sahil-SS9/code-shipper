@@ -1,0 +1,14 @@
+
+=== PR #18: sign change in a comparison
+  1 finding(s) in 55s  contract=0 chars
+    [important] calc/__init__.py:6  Zero check changed to b <= 0, so every negative divisor now raises ZeroDivisionError
+  RECALL: MISSED
+
+=== PR #25: clamp ignores its upper bound
+  2 finding(s) in 65s  contract=0 chars
+    [important] scn05_clamp.py:4  clamp() never applies the high bound, so values above the range come back unchanged
+    [important] scn05_clamp.py:9  window() misses the last window, so it returns nothing when the input length equals size
+  RECALL: CAUGHT
+
+wrote /tmp/recall-guard.json
+EXIT=0
