@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import os
 import sys
 import tempfile
 import unittest
@@ -83,8 +84,17 @@ class InstalledScriptTests(unittest.TestCase):
         if build.returncode != 0:
             self.skipTest(f"could not install setuptools: {build.stderr[-200:]}")
         install = subprocess.run(
-            [*pip, "install", "--quiet", "--no-deps", "--no-build-isolation", str(REPO)],
+            # `--no-build-isolation` makes setuptools write `build/lib/` **into the source tree**, and this
+        # suite is run by `unittest discover` in that same tree. So installing here mutated the tree
+        # under the other 1,270 tests while they ran — a race whose symptom is whatever the interpreter
+        # happened to import at that moment. Measured: a suite failure naming `_reevaluate_approvals`,
+        # which passes standalone and does not reproduce.
+        #
+        # The install is redirected to a throwaway build directory so the source tree is never written to.
+        [*pip, "install", "--quiet", "--no-deps", "--no-build-isolation",
+         str(REPO), f"--config-settings=--build-option=--build-base={env_dir}/build"],
             capture_output=True, text=True, timeout=600,
+            env={**os.environ, "SETUPTOOLS_BUILD_DIR": str(env_dir / "build")},
         )
         if install.returncode != 0:
             self.skipTest(f"pip could not install: {install.stderr[-300:]}")
@@ -133,3 +143,46 @@ class InstalledScriptTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InstallDoesNotWriteIntoTheSourceTreeTests(unittest.TestCase):
+    """The install under test must not create `build/` in the repo.
+
+    `--no-build-isolation` writes `build/lib/` into the source tree, and this suite is run by
+    `unittest discover` in that same tree. Installing therefore mutated the tree under every other test
+    while they ran. The symptom was a suite failure naming `_reevaluate_approvals` — a test that passes
+    standalone and does not reproduce on re-run, which is the shape of a race rather than a bug.
+
+    Pointing the build at the throwaway venv keeps the source tree read-only for the duration of the
+    suite, which is what a test suite has to assume.
+    """
+
+    REPO = Path(__file__).resolve().parent.parent
+
+    def test_the_install_is_pointed_at_a_build_base_outside_the_repo(self) -> None:
+        source = Path(__file__).read_text()
+        self.assertIn("--build-base", source,
+                      "the install must redirect its build directory away from the source tree")
+        self.assertIn("env_dir", source.split("--build-base")[1][:120],
+                      "the build base must live in the throwaway venv")
+
+    def test_no_build_directory_is_created_by_a_fresh_run(self) -> None:
+        """Run the install path and assert the repo's `build/` is untouched.
+
+        Uses the file's own mtime as the witness: if the install wrote there, it would change.
+        """
+        build = self.REPO / "build"
+        if not build.exists():
+            self.skipTest("no build/ present to observe; the redirection cannot be measured here")
+        before = (build / "lib").stat().st_mtime if (build / "lib").exists() else build.stat().st_mtime
+
+        import subprocess
+        import sys
+
+        subprocess.run([sys.executable, "-B", "-m", "unittest",
+                        "tests.test_entrypoint.InstalledConsoleScriptTests", "-q"],
+                       cwd=self.REPO, capture_output=True, text=True, timeout=900)
+
+        after = (build / "lib").stat().st_mtime if (build / "lib").exists() else build.stat().st_mtime
+        self.assertEqual(before, after,
+                         "installing wrote into the source tree's build/ — it will race other tests")
