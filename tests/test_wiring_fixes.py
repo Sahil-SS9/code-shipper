@@ -629,3 +629,85 @@ class DemoBannerGridTests(unittest.TestCase):
         self.assertEqual(len(demo_rows.strip().split()), 4, demo_rows)
         real_rows = self._html(False).split("grid-template-rows:")[1].split(";")[0]
         self.assertEqual(len(real_rows.strip().split()), 3, real_rows)
+
+
+class ParallelMeasurementRunnerTests(unittest.TestCase):
+    """The parallel runner must isolate seeds and never report a rate it did not measure.
+
+    The sequential runner needed ~6 hours for 20 seeds because one slow lens blocked everything behind it.
+    The seeds share nothing, so they run concurrently — but only if the isolation actually holds.
+    """
+
+    SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "run_measurement_parallel.py"
+
+    def _source(self) -> str:
+        return self.SCRIPT.read_text()
+
+    def test_each_worker_builds_its_own_harness(self) -> None:
+        """A shared harness would serialise on one subprocess and blur failure attribution."""
+        source = self._source()
+        self.assertIn("def build_harness", source)
+        # The harness must be constructed inside the worker, not passed in from the parent.
+        worker = source.split("def run_one(")[1].split("def main(")[0]
+        self.assertIn("build_harness(", worker, "the harness must be per-worker")
+
+    def test_each_seed_gets_its_own_directory(self) -> None:
+        worker = self._source().split("def run_one(")[1].split("def main(")[0]
+        self.assertIn("work_root / seed.slug", worker)
+
+    def test_a_failing_seed_does_not_end_the_run(self) -> None:
+        source = self._source()
+        worker = source.split("def run_one(")[1].split("def main(")[0]
+        self.assertIn("except Exception", worker, "one seed raising must be caught")
+        self.assertIn('"status": "error"', worker)
+
+    def test_a_timed_out_lens_is_excluded_not_counted_clean(self) -> None:
+        worker = self._source().split("def run_one(")[1].split("def main(")[0]
+        self.assertIn("unevaluated", worker)
+        self.assertIn("outcome.errors", worker)
+
+    def test_a_failed_control_is_discarded(self) -> None:
+        worker = self._source().split("def run_one(")[1].split("def main(")[0]
+        self.assertIn("discarded", worker)
+
+    def test_the_rate_is_none_when_nothing_was_evaluated(self) -> None:
+        """The guard that stopped a broken harness reporting 0% in the last run."""
+        source = self._source()
+        self.assertIn('"rate": (seeds_with_findings / len(evaluated)) if evaluated else None', source)
+
+    def test_results_are_ordered_by_seed_not_completion(self) -> None:
+        source = self._source()
+        self.assertIn("results.sort", source)
+
+    def test_the_default_worker_count_is_the_measured_one(self) -> None:
+        """4 workers times out every lens; 2 works. The default must be the number that measures.
+
+        Measured: `--workers 4` gave 4/4 UNEVALUATED on two separate batches (`harness timed out` on
+        every lens), while `--workers 2` gave 2/2 evaluated. Concurrency past the provider's tolerance
+        does not measure more, it measures nothing.
+        """
+        source = self._source()
+        self.assertIn('"--workers", type=int, default=2', source)
+
+    def test_unevaluated_errors_are_preserved_in_the_json(self) -> None:
+        """An unevaluated seed with no reason recorded is useless as evidence."""
+        source = self._source()
+        self.assertIn("unevaluated_detail", source)
+
+    def test_it_parses(self) -> None:
+        import ast
+
+        ast.parse(self._source())
+
+    def test_the_dry_run_is_green(self) -> None:
+        """Every seed still passes its own control after the six fixes."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, str(self.SCRIPT), "--dry-run"],
+            capture_output=True, text=True, timeout=600,
+            cwd=str(self.SCRIPT.parent.parent),
+        )
+        self.assertEqual(result.returncode, 0, result.stdout[-800:] + result.stderr[-400:])
+        self.assertIn("20 clean, 0 discarded", result.stdout)
