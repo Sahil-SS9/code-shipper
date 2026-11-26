@@ -438,3 +438,36 @@ class CacheMayStayPlainTests(unittest.TestCase):
         path = cache._path("o/r", "abc123")
         path.write_text('{"repo": "o/r", "review"', encoding="utf-8")  # torn
         self.assertIsNone(cache.get("o/r", "abc123"), "a torn entry must be a miss")
+
+
+class DirectAPIAdapterTests(unittest.TestCase):
+    """The direct-API adapter's token budget and empty-answer handling.
+
+    Found by running a real measurement: every lens failed with "no JSON object in the output", which read
+    as a provider fault. It was the budget. A local reasoning model spent all 1,024 tokens thinking and
+    returned an empty `content` with finish_reason "length".
+    """
+
+    def test_the_default_budget_clears_a_reasoning_model(self) -> None:
+        """Measured: an edge lens needed 5,279 tokens to answer a 1.2 KB prompt."""
+        from code_shipper.harness.adapters import DEFAULT_MAX_TOKENS
+
+        self.assertGreaterEqual(DEFAULT_MAX_TOKENS, 5000,
+                                "a budget below ~5000 leaves the answer inside the reasoning block")
+
+    def test_the_timeout_allows_a_thinking_model(self) -> None:
+        """110s per lens was measured; a 120s timeout would fail a slightly slower call."""
+        import inspect
+
+        from code_shipper.harness.adapters import OpenAICompatHarness
+
+        signature = inspect.signature(OpenAICompatHarness.__init__)
+        default = signature.parameters["timeout"].default
+        self.assertGreaterEqual(default, 300, f"timeout {default}s is too tight for a local model")
+
+    def test_an_empty_answer_is_retried_not_reported_as_a_result(self) -> None:
+        source = (Path(__file__).resolve().parent.parent
+                  / "code_shipper" / "harness" / "adapters.py").read_text()
+        self.assertIn("_retry_empty", source)
+        self.assertIn("after retries", source,
+                      "a model that never answers must fail rather than report an empty review")

@@ -219,6 +219,11 @@ class CommandHarness:
         return AgentResult(ok=True, output=output, raw_tail=tail, usage=Usage())
 
 
+# 6,144 measured as sufficient for a review lens on a local thinking model; 8,192 gave headroom without
+# changing the answer. Below ~5,000 the reasoning consumes the whole budget and the answer is lost.
+DEFAULT_MAX_TOKENS = 6144
+
+
 class OpenAICompatHarness:
     """Direct API adapter. Review and verify only (K8, D3).
 
@@ -230,7 +235,7 @@ class OpenAICompatHarness:
     name = "openai_compat"
     supported_kinds = frozenset({"review_lens", "verify"})
 
-    def __init__(self, base_url: str, api_key: str, model: str, *, timeout: float = 120.0) -> None:
+    def __init__(self, base_url: str, api_key: str, model: str, *, timeout: float = 600.0) -> None:
         if not base_url or not model:
             raise HarnessError("base_url and model are required")
         self._base = base_url.rstrip("/")
@@ -246,6 +251,35 @@ class OpenAICompatHarness:
             return False, "no API key configured"
         return True, f"{self._model} at {self._base}"
 
+    def _retry_empty(self, task: AgentTask) -> str:
+        """One more attempt when the model returned no content. Bounded and quiet."""
+        import urllib.error
+        import urllib.request
+
+        body = json.dumps(
+            {
+                "model": self._model,
+                "messages": [{"role": "user", "content": task.prompt}],
+                "max_tokens": task.budget.max_tokens or DEFAULT_MAX_TOKENS,
+                "stream": False,
+            }
+        ).encode()
+        request = urllib.request.Request(
+            f"{self._base}/v1/chat/completions",
+            data=body,
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {self._key}"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                payload = json.loads(response.read())
+        except (urllib.error.URLError, OSError, json.JSONDecodeError):
+            return ""
+        choices = payload.get("choices") or []
+        text = ((choices[0] or {}).get("message") or {}).get("content") if choices else ""
+        return text if isinstance(text, str) else ""
+
     def run(self, task: AgentTask, env: dict[str, str]) -> AgentResult:
         if task.kind not in self.supported_kinds:
             return AgentResult(
@@ -260,7 +294,12 @@ class OpenAICompatHarness:
             {
                 "model": self._model,
                 "messages": [{"role": "user", "content": task.prompt}],
-                "max_tokens": task.budget.max_tokens or 1024,
+                # 1024 and then 2048 were both too low for this reasoning model: the thinking block
+                # consumed the entire budget and `content` came back empty with finish_reason "length",
+                # so every lens reported "no JSON object in the output". Measured: an edge lens used
+                # 5,279 tokens to answer a 1.2 KB prompt. The answer is a few hundred tokens; the rest is
+                # the reasoning, which a local thinking model does not expose separately.
+                "max_tokens": task.budget.max_tokens or DEFAULT_MAX_TOKENS,
                 "stream": False,
             }
         ).encode()
@@ -282,6 +321,17 @@ class OpenAICompatHarness:
         text = ((choices[0] or {}).get("message") or {}).get("content") if choices else ""
         if not isinstance(text, str):
             return AgentResult(ok=False, error="no text in the API response")
+        if not text.strip():
+            # A local reasoning model occasionally emits only a thinking block and no answer, returning
+            # an empty `content` with finish_reason "stop". Retrying is the right response: it is not a
+            # review result, and reporting it as one would either fabricate "no findings" or fail the run
+            # for a transient. Bounded, so a model that never answers still fails honestly.
+            for _attempt in range(2):
+                text = self._retry_empty(task)
+                if text.strip():
+                    break
+            if not text.strip():
+                return AgentResult(ok=False, error="no text in the API response after retries")
         try:
             output = _validate(parse_json_object(text), task)
         except HarnessError as exc:
