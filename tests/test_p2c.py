@@ -364,7 +364,9 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(survivor.title, "operator swap turns division into multiplication")
         # and the other is named, not lost
         self.assertIn("divide multiplies instead of dividing", survivor.body_suffix())
-        self.assertIn("Also noted on this line:", survivor.body_suffix())
+        # The phrase no longer claims "on this line": a merged finding may be on another line, and saying
+        # "this line" was only true for the fingerprint case, not the root-cause one.
+        self.assertIn("Also noted:", survivor.body_suffix())
         self.assertEqual(survivor.merged_count, 1)
 
     def test_the_merge_keeps_the_highest_severity_whatever_the_order(self) -> None:
