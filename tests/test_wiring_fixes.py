@@ -569,3 +569,34 @@ class FlagAbbreviationTests(unittest.TestCase):
         from code_shipper.cli import _resolve_pr_alias
 
         self.assertEqual(_resolve_pr_alias(args).pr, 25)
+
+class DesktopPaletteClosedTests(unittest.TestCase):
+    """Fix 4: the palette was drawn permanently open over the page."""
+
+    def _html(self, **kwargs) -> str:
+        from code_shipper.surfaces import desktop, fixtures
+
+        return desktop.render(fixtures.state_findings(), **kwargs)
+
+    def test_the_palette_is_closed_by_default(self) -> None:
+        html = self._html()
+        self.assertIn(".pwrap{display:none", html,
+                      "the palette must start closed, not open over the page")
+
+    def test_it_opens_only_when_the_toggle_is_checked(self) -> None:
+        html = self._html()
+        self.assertIn(":checked ~ .pwrap{display:grid}", html)
+
+    def test_the_ctrl_k_hint_is_the_opener(self) -> None:
+        html = self._html()
+        self.assertIn('for="palette-toggle"', html)
+        self.assertIn('id="palette-toggle"', html)
+
+    def test_the_page_needs_no_script_to_toggle(self) -> None:
+        html = self._html()
+        self.assertNotIn("<script", html, "a static page must not need scripts")
+
+    def test_the_palette_items_are_still_defined(self) -> None:
+        """Closed by default, but the items must still be in the DOM to open."""
+        html = self._html()
+        self.assertIn("pitem", html)

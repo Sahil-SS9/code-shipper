@@ -31,6 +31,9 @@ CSS = """
 body{margin:0;background:#050506;color:var(--fg);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
 .win{width:1280px;height:800px;background:var(--bg);border:1px solid var(--line2);border-radius:12px;overflow:hidden;
  display:grid;grid-template-rows:44px 1fr 30px;box-shadow:var(--pop);margin:0 auto}
+/* A demo banner adds a row. Without this it took row 1, the header was pushed into the main row and the
+   content fell below the fold — the title rendered at y=788 instead of y=83 at 1920x1080. */
+.win.demo{grid-template-rows:26px 44px 1fr 30px}
 .bar{display:flex;align-items:center;gap:14px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--surface)}
 .dots{display:flex;gap:6px}.dots i{width:11px;height:11px;border-radius:50%;background:#2a2d33;display:block}
 .brand{font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px}
@@ -152,8 +155,13 @@ details.how summary{cursor:pointer;list-style:none}
 .warnbar{border:1px solid rgba(227,172,94,.35);background:var(--amber-s);border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:13px;color:var(--fg)}
 .warnbar b{color:var(--amber)}
 
-.pwrap{position:absolute;inset:0;display:grid;place-items:start center;padding-top:76px;
+/* Closed unless the Ctrl+K checkbox is checked. Without a toggle the overlay was drawn permanently open
+   over the page, which is not a command palette — it is a wall. `:has` keeps it pure CSS: the checkbox
+   after the palette sits first in the DOM so the sibling selector can reach it. */
+.pwrap{display:none;position:absolute;inset:0;place-items:start center;padding-top:76px;
  background:rgba(5,5,6,.72);border-radius:12px}
+#palette-toggle:checked ~ .pwrap{display:grid}
+#palette-toggle{position:absolute;opacity:0;pointer-events:none}
 .palette{width:560px;background:var(--raised);border:1px solid var(--line2);border-radius:12px;
  box-shadow:0 24px 64px -20px rgba(0,0,0,.95);overflow:hidden}
 .psearch{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);
@@ -362,7 +370,7 @@ def _empty(projection: Projection) -> str:
     )
 
 
-def _palette(projection: Projection) -> str:
+def _palette(projection: Projection, *, ident: str = "palette-toggle") -> str:
     """The Ctrl+K command menu, drawn from `palette.py`.
 
     The desktop advertised the shortcut in its search field from the start while nothing could open it —
@@ -386,11 +394,15 @@ def _palette(projection: Projection) -> str:
                 f'<div class="pitem"><span class="plabel">{_esc(item.label)}</span>'
                 f'<span class="pkey">{_kbd(item.key)}</span></div>'
             )
+    # A checkbox is the toggle because the page is static HTML with no scripts: clicking the Ctrl+K hint
+    # checks it, clicking the backdrop label unchecks it. Esc cannot be bound without JavaScript, so the
+    # hint says what closes it and the backdrop does that.
     return (
-        '<div class="pwrap"><div class="palette">'
+        f'<input type="checkbox" id="{ident}" aria-label="Open the command palette">'
+        '<label class="pwrap" for="' + ident + '"><div class="palette">'
         f'<div class="psearch">Type a command<span class="k">{_kbd("Esc")}</span></div>'
         f'{"".join(rows)}'
-        '</div></div>'
+        '</div></label>'
     )
 
 
@@ -430,17 +442,17 @@ def render(projection: Projection, *, title: str = "Code-Shipper", demo: bool = 
     # caller passes --demo through.
     demo_bar = ('<div class="demobar">demo data &middot; sample values, not a real review</div>'
                 if demo else '')
-    palette = _palette(projection)
+    palette = _palette(projection, ident="palette-toggle")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{_esc(title)}</title>
 <style>{CSS}{DEMO_CSS}</style></head><body>
-<div class="win" style="position:relative">
+<div class="win{" demo" if demo else ""}" style="position:relative">
   {demo_bar}
   <div class="bar">
     <div class="dots"><i></i><i></i><i></i></div>
     <div class="brand"><b></b>Code-Shipper</div>
     <div class="search"><span>Search pull requests or run a command</span>
-      <span class="k">{_kbd("Ctrl")} {_kbd("K")}</span></div>
+      <label class="k" for="palette-toggle" style="cursor:pointer">{_kbd("Ctrl")} {_kbd("K")}</label></div>
     <div class="who">{_esc(projection.who or "kensei · standard")}</div>
   </div>
   {main}
