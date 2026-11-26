@@ -111,6 +111,23 @@ computed from a broken instrument.
 `5710841` seeds corrected (11 defects) · `4d4c7fa` clamp NaN · `001dbd9` thinking off · `b17e911` retry seed
 and the iso false confirm · `94498cd` once() lock and stop-signal handling
 
+## The ordering failure, closed
+
+I called this "a latent ordering leak, top item for next round" twice without diagnosing it. It had a
+concrete cause and I should have found it the first time.
+
+`test_entrypoint` installs the package with `--no-build-isolation`, which makes setuptools write
+`build/lib/` **into the source tree** — and the suite is run by `unittest discover` in that same tree. So
+the install mutated the tree under the other ~1,270 tests while they ran.
+`build/lib/code_shipper/cli.py` carried an mtime of 02:04, inside the failing window.
+
+That explains all of it: it hit 3.11 and not the later interpreters (scheduling, same race), it named one
+test at random that passes standalone, and it never reproduced — 8 standalone runs OK, and a full
+1274-test discovery OK.
+
+Fixed by pointing the build at a throwaway directory inside the venv, verified by mtime: across a full
+run the repo's `build/` stayed at 02:04. Two tests guard it.
+
 ## Not proven
 
 - Hosted CI — still blocked on billing; local-ci is the substitute, and it is Linux-only.
