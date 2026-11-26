@@ -1,0 +1,123 @@
+{
+  "started": "2026-11-26T11:30:41Z",
+  "finished": "2026-11-26T12:36:06Z",
+  "harness_kind": "hermes",
+  "workers": 2,
+  "level": "standard",
+  "seeds_attempted": 11,
+  "seeds_evaluated": 4,
+  "seeds_unevaluated": 7,
+  "unevaluated_detail": [
+    {
+      "slug": "percent",
+      "errors": [
+        "lens edge failed: harness timed out"
+      ]
+    },
+    {
+      "slug": "parsekv",
+      "errors": [
+        "lens edge failed: harness timed out"
+      ]
+    },
+    {
+      "slug": "truncate",
+      "errors": [
+        "lens correctness failed: harness timed out",
+        "verification batch failed: harness timed out"
+      ]
+    },
+    {
+      "slug": "once",
+      "errors": [
+        "lens edge failed: harness timed out"
+      ]
+    },
+    {
+      "slug": "groups",
+      "errors": [
+        "lens correctness failed: harness timed out"
+      ]
+    },
+    {
+      "slug": "iso",
+      "errors": [
+        "lens edge failed: harness timed out"
+      ]
+    },
+    {
+      "slug": "normalise",
+      "errors": [
+        "lens correctness failed: harness timed out"
+      ]
+    }
+  ],
+  "seeds_discarded": [],
+  "seeds_errored": [],
+  "seeds_with_findings": 1,
+  "finding_count": 1,
+  "rate": 0.25,
+  "runs": [
+    {
+      "slug": "safeget",
+      "status": "evaluated",
+      "title": "Add a dotted-path getter",
+      "seconds": 778.4,
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "findings": []
+    },
+    {
+      "slug": "counter",
+      "status": "evaluated",
+      "title": "Add a counting helper over an iterable",
+      "seconds": 757.4,
+      "raw_findings": 1,
+      "confirmed": 0,
+      "posted": 0,
+      "findings": []
+    },
+    {
+      "slug": "windowmean",
+      "status": "evaluated",
+      "title": "Add a rolling mean",
+      "seconds": 384.6,
+      "raw_findings": 0,
+      "confirmed": 0,
+      "posted": 0,
+      "findings": []
+    },
+    {
+      "slug": "is_palindrome",
+      "status": "evaluated",
+      "title": "Add a palindrome check",
+      "seconds": 378.0,
+      "raw_findings": 1,
+      "confirmed": 1,
+      "posted": 1,
+      "findings": [
+        {
+          "id": "edge-1680c25e0d",
+          "path": "textx/palindrome.py",
+          "line": 6,
+          "severity": "nit",
+          "title": "lower() is not case-insensitive for all Unicode: casefold() would be the caseless comparison",
+          "body": "The docstring promises to \"Ignore case\", and the code uses Unicode-aware methods (str.isalnum/str.lower), so the function implicitly claims Unicode support. But str.lower() is not a caseless equivalence: Python's casefold() is the method designed for case-insensitive comparison, and lower() misses it for a few characters. Concrete counter-example: the Turkish dotted capital I, U+0130: '\u0130'.lower() == 'i\\u0307' (i plus a combining dot above), which is not equal to plain 'i', while '\u0130'.casefold() == 'i'. As a result is_palindrome(\"\u0130i\") returns False even though, under any case-insensitive reading, both characters are the same letter (casefold gives \"ii\", a palindrome), whereas is_palindrome(\"ii\") returns True. For ASCII-only input the function is correct; the gap only matters if Unicode text (Turkish, or any script with special case behaviour such as '\u00df' vs 'SS') is expected. If Unicode case-insensitivity is in scope, use character.casefold() instead of character.lower(). If the intended input is ASCII, no change is needed and this can be dismissed.",
+          "evidence": "    cleaned = [character.lower() for character in text if character.isalnum()]",
+          "lens": "edge"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "slug": "is_palindrome",
+      "title": "lower() is not case-insensitive for all Unicode: casefold() would be the caseless comparison",
+      "path": "textx/palindrome.py",
+      "line": 6,
+      "severity": "nit",
+      "text": "The docstring promises to \"Ignore case\", and the code uses Unicode-aware methods (str.isalnum/str.lower), so the function implicitly claims Unicode support. But str.lower() is not a caseless equivalence: Python's casefold() is the method designed for case-insensitive comparison, and lower() misses it for a few characters. Concrete counter-example: the Turkish dotted capital I, U+0130: '\u0130'.lower() == 'i\\u0307' (i plus a combining dot above), which is not equal to plain 'i', while '\u0130'.casefold() == 'i'. As a result is_palindrome(\"\u0130i\") returns False even though, under any case-insensitive reading, both characters are the same letter (casefold gives \"ii\", a palindrome), whereas is_palindrome(\"ii\") returns True. For ASCII-only input the function is correct; the gap only matters if Unicode text (Turkish, or any script with special case behaviour such as '\u00df' vs 'SS') is expected. If Unicode case-insensitivity is in scope, use character.casefold() instead of character.lower(). If the intended input is ASCII, no change is needed and this can be dismissed."
+    }
+  ]
+}
