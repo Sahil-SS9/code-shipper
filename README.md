@@ -85,13 +85,23 @@ py -3 -m unittest discover -s tests -t . -q
 
 | Platform | Unit tests | A real contained fix run |
 |---|---|---|
-| Linux | yes, 3.11 / 3.12 / 3.13 | yes |
-| macOS | yes (CI matrix), **a real contained run is untested** | no |
-| Windows | yes (CI matrix), **a real contained run is untested** | no |
+| Linux | **yes** — 1236 tests, 3.11 / 3.12 / 3.13, run locally | yes |
+| macOS | **last passed on CI at `ccfbefa`; untested since** | no |
+| Windows | **last passed on CI at `ccfbefa`; untested since** | no |
 
-The distinction matters: the unit suite passes on macOS and Windows, but containment — the container, the
-socket, the uid, the volume mounts — has only been exercised on Linux. Do not assume a fix run works on
-macOS until it has been tried.
+Read that table carefully. "Last passed on CI at `ccfbefa`" is not "passes today": no CI run has completed
+since that commit, because the account's GitHub Actions billing is blocked. Every commit after it has been
+verified on Linux only.
+
+To get a real answer on your own machine, run one of these:
+
+```bash
+scripts/local-ci.sh              # macOS / Linux, all gates, 3.11–3.13
+py -3 -m unittest discover -s tests -t . -q    # Windows, the suite alone
+```
+
+Containment — the container, the socket, the uid, the volume mounts — has only ever been exercised on
+Linux. Do not assume a fix run works on macOS or Windows until it has been tried.
 
 ## Local checks
 
