@@ -463,3 +463,64 @@ class LocalCISealTests(unittest.TestCase):
                     base.rmdir()
                 except OSError:
                     pass
+class ReviewExitCodeContractTests(unittest.TestCase):
+    """Fix 2: `review` had its own wrong exit-code rule.
+
+    `return 0 if outcome.complete and not result.paused else 1` meant a review with two important findings
+    exited 0 — clean, to any caller reading the code — and an incomplete review exited 1, which reads as
+    "findings" and invites a fix loop over a review that never finished.
+    """
+
+    def _result(self, *, complete=True, findings=(), errors=(), paused=False):
+        """A stand-in review outcome. Named `_result`, not `_outcome`: `_Outcome` is unittest's own type
+        and the class definition shadowed it, which failed every test in this class with a TypeError."""
+        class Plan:
+            to_post = list(findings)
+
+        class Result:
+            pass
+
+        result = Result()
+        result.complete = complete
+        result.errors = list(errors)
+        result.findings = list(findings)
+        result.plan = Plan()
+        result.paused = paused
+        return result
+
+    def _code(self, **kwargs) -> int:
+        from code_shipper.cli import _review_exit_code
+
+        return _review_exit_code(self._result(**kwargs))
+
+    def test_a_clean_review_exits_zero(self) -> None:
+        self.assertEqual(self._code(), 0)
+
+    def test_a_review_with_findings_exits_one(self) -> None:
+        finding = type("F", (), {"severity": "important"})()
+        self.assertEqual(self._code(findings=[finding]), 1,
+                         "findings must never exit 0")
+
+    def test_an_incomplete_review_exits_three(self) -> None:
+        self.assertEqual(self._code(complete=False), 3,
+                         "incomplete is its own code, not 1 and not 2")
+
+    def test_an_error_exits_two(self) -> None:
+        self.assertEqual(self._code(complete=False, errors=["boom"]), 2)
+
+    def test_findings_never_give_zero_whatever_else_is_true(self) -> None:
+        finding = type("F", (), {"severity": "critical"})()
+        for complete in (True, False):
+            for errors in ([], ["boom"]):
+                code = self._code(complete=complete, findings=[finding], errors=errors)
+                self.assertNotEqual(code, 0, f"complete={complete} errors={bool(errors)} exited 0")
+
+    def test_the_four_codes_are_distinct(self) -> None:
+        finding = type("F", (), {"severity": "important"})()
+        codes = {
+            self._code(),
+            self._code(findings=[finding]),
+            self._code(complete=False, errors=["boom"]),
+            self._code(complete=False),
+        }
+        self.assertEqual(codes, {0, 1, 2, 3}, f"the contract needs four distinct codes, got {codes}")

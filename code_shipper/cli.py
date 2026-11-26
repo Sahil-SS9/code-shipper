@@ -424,7 +424,34 @@ def cmd_review(args: argparse.Namespace) -> int:
             print(f"\n{outcome.plan.summary_line()}")
         if not args.dry_run:
             print(f"\nsee it: code-shipper ui --repo {args.repo} --pr {args.pr}")
-    return 0 if outcome.complete and not result.paused else 1
+    return _review_exit_code(outcome)
+
+
+def _review_exit_code(outcome) -> int:
+    """The documented contract, which `review` had its own wrong version of.
+
+    It returned `0 if complete and not paused else 1`, so a review with two important findings exited 0 —
+    a clean result, to any caller reading the exit code — and an incomplete review exited 1, which means
+    "findings" and invites a fix loop over a review that never finished.
+
+       0  clean
+       1  findings
+       2  error
+       3  incomplete
+
+    An incomplete review outranks findings: a partial review's findings are real, but the caller must not
+    treat the review as done either. Matches `cli_view.exit_code`, which is what the surfaces use.
+    """
+    from .surfaces.cli_view import EXIT_CLEAN, EXIT_ERROR, EXIT_FINDINGS, EXIT_INCOMPLETE
+
+    if outcome.errors and not outcome.complete:
+        return EXIT_ERROR
+    if not outcome.complete:
+        return EXIT_INCOMPLETE
+    findings = outcome.findings
+    if findings:
+        return EXIT_FINDINGS
+    return EXIT_CLEAN
 
 
 def _state_dir() -> Path:
