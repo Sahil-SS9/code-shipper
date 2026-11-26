@@ -39,9 +39,6 @@ class ReviewRequest:
     repo: str
     pr: int
     head_sha: str
-    # As GitHub reported it. Stored with the state so a board can show a real title without needing a
-    # token or a network call at render time.
-    title: str = ""
     diff: Diff
     since_diff: Diff | None = None
     # D5: what the host says about the relationship between last_reviewed_head and this head. Either
@@ -51,6 +48,10 @@ class ReviewRequest:
     compare_status: str | None = None
     level: str = "standard"
     profile: str = "standard"
+    # As GitHub reported it. Stored with the state so a board can show a real title without needing a
+    # token or a network call at render time. Defaulted, and placed with the other defaults, because a
+    # field with a default cannot precede one without.
+    title: str = ""
     trigger: str = "manual"
     intent: str = ""
     log_tail: str = ""

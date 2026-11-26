@@ -11,6 +11,7 @@ probe refuses to run if it would resolve inside the user's real Hermes directory
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -114,6 +115,37 @@ def _assert_isolated(hermes_home: Path) -> None:
         raise RuntimeError(f"refusing to run a probe inside the real Hermes home: {resolved}")
 
 
+@contextlib.contextmanager
+def _probe_dir():
+    """A probe directory that can be cleaned up after the container has written into it.
+
+    `TemporaryDirectory` raises from its own `__exit__` if the tree cannot be removed, which turned a
+    passing probe into a test *error*: the worker runs as uid 65534 inside the container and leaves files
+    the host user cannot unlink, so `shutil.rmtree` reaches a parent whose child it could not remove and
+    fails with "Directory not empty". The same wall an earlier fix hit with a bind-mounted HERMES_HOME.
+
+    Cleanup is best-effort: a leftover directory in the temp dir is untidy, while an exception from a
+    `finally` reports a failure that did not happen.
+    """
+    import shutil
+
+    path = tempfile.mkdtemp(prefix="cs-contract-", dir=_probe_root())
+    try:
+        yield path
+    finally:
+        def _force(func, target, _exc):  # noqa: ANN001 - shutil's signature
+            try:
+                os.chmod(target, 0o700)
+                func(target)
+            except OSError:
+                pass
+
+        try:
+            shutil.rmtree(path, onerror=_force)
+        except OSError:
+            pass
+
+
 def _probe_root() -> Path:
     """A temp root that is not inside the user's real Hermes directory.
 
@@ -152,7 +184,7 @@ def probe(hermes_bin: str = "hermes", *, timeout: float = 180.0) -> dict[str, An
         },
     }
 
-    with tempfile.TemporaryDirectory(prefix="cs-contract-", dir=_probe_root()) as tmp:
+    with _probe_dir() as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
         _assert_isolated(home)

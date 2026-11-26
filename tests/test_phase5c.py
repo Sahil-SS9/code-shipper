@@ -387,9 +387,19 @@ class CliShapeTests(unittest.TestCase):
         lines = cli_view.render_review(fixtures.state_findings())
         self.assertIn("exit 1", lines[-1])
 
-    def test_status_says_how_often_it_checks(self) -> None:
-        lines = cli_view.render_status(fixtures.status_board(), check_every_minutes=2)
+    def test_status_says_how_often_it_checks_when_watching(self) -> None:
+        """The interval, when there is a real watch honouring it.
+
+        Previously this asserted "checked every 2 min" unconditionally, which encoded the defect a real
+        run found: a one-off review was described as polled. The claim now requires a watch to exist.
+        """
+        lines = cli_view.render_status(fixtures.status_board(), check_every_minutes=2, watched=1)
         self.assertIn("checked every 2 min", "\n".join(lines))
+
+    def test_status_does_not_claim_an_interval_without_a_watch(self) -> None:
+        joined = "\n".join(cli_view.render_status(fixtures.status_board(), check_every_minutes=2))
+        self.assertNotIn("checked every 2 min", joined)
+        self.assertIn("not watching", joined)
 
     def test_status_never_says_continuous(self) -> None:
         joined = "\n".join(cli_view.render_status(fixtures.status_board())).lower()

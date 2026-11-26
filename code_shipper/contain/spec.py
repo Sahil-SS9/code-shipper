@@ -161,6 +161,10 @@ CREDENTIAL_FILES = (
 # is ordinary filesystem and may be mounted.
 HERMES_CREDENTIAL_DIRS = ("auth", "tokens", "secrets", "credentials", "profiles")
 
+# Tool config directories that hold a token rather than preferences. `.config` itself is ordinary; these
+# two are not.
+CREDENTIAL_CONFIG_DIRS = (("gh",), ("gcloud",), ("hub",), ("glab",))
+
 
 def credential_location(path_text: str) -> str:
     """Why this path must not be mounted, or '' if it is fine.
@@ -181,6 +185,12 @@ def credential_location(path_text: str) -> str:
     for tail in CREDENTIAL_FILES:
         if lowered.endswith(tail) or f"/{tail}/" in lowered + "/":
             return f"it is {tail}, which holds a credential"
+
+    for index, part in enumerate(parts[:-1]):
+        if part != ".config":
+            continue
+        if (parts[index + 1],) in CREDENTIAL_CONFIG_DIRS:
+            return f"it is inside .config/{parts[index + 1]}, which holds an access token"
 
     # A path *through* .hermes/auth (or tokens, secrets...) is a credential store. A path merely under
     # ~/.hermes is not.

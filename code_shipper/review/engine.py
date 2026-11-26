@@ -18,7 +18,7 @@ from ..hosts.base import Diff
 from .framing import untrusted_block
 from .lenses import FINDINGS_SCHEMA, Lens, select
 from .rank import PostingPlan, plan
-from .fingerprint import merge_by_root_cause
+from .fingerprint import apply_root_cause_merge
 from .verify import Finding, Verdict, apply_verdicts, batch, build_prompt, parse_verdicts
 
 MAX_DIFF_CHARS = 60_000

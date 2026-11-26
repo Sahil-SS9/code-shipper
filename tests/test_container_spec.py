@@ -144,11 +144,24 @@ class ValidationTests(SpecFixture):
             self.spec(env={"GH_TOKEN": "x"}).validate()
         self.assertIn("env must be empty", str(caught.exception))
 
-    def test_rejects_a_credential_looking_mount(self) -> None:
-        for path in ("/home/kensei/.hermes/x", "/home/u/.ssh/keys", "/home/u/.config/gh"):
+    def test_rejects_a_credential_mount(self) -> None:
+        """Credential locations, not every path under a dot directory.
+
+        `~/.hermes/x` used to be refused, which meant a checkout at `~/.hermes/repos/x` could not run at
+        all. The rule is now about what the path reaches, and `~/.config/gh` is still refused because the
+        GitHub CLI stores its token there.
+        """
+        for path in ("/home/kensei/.hermes", "/home/kensei/.hermes/auth.json",
+                     "/home/u/.ssh/keys", "/home/u/.config/gh", "/home/u/.aws/credentials"):
             with self.subTest(path=path):
                 with self.assertRaises(ValueError):
                     self.spec(source_dir=Path(path)).validate()
+
+    def test_accepts_a_checkout_under_a_dot_directory(self) -> None:
+        for path in ("/home/kensei/.hermes/repos/x", "/home/kensei/.hermes/cache/scratch",
+                     "/home/u/.config/my-app"):
+            with self.subTest(path=path):
+                self.spec(source_dir=Path(path)).validate()
 
     def test_rejects_relative_mounts(self) -> None:
         with self.assertRaises(ValueError):
