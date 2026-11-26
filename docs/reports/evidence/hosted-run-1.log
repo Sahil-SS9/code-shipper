@@ -1,0 +1,31 @@
+harness: Hermes Agent v0.23.3+2326.gf8ef21f.dirty (2026.9.24) · fork f8ef21f5
+  review  clamp … 3 false confirm(s) in 241s
+          → nit: New NaN and bounds-order guards ship with no tests in this change
+          → nit: Signalling NaN slips past the documented refusal with the wrong exception type
+          → nit: Exact-tie inputs return the bound (with its type), not the value, contradicting the docstring
+  review  chunk … UNEVALUATED (1 lens error(s)) — not counted
+          lens correctness failed: harness timed out
+  review  mean … 1 false confirm(s) in 101s
+          → nit: Float accumulator fails on Decimals (TypeError) and floats out huge ints (OverflowError)
+  review  slugify … 1 false confirm(s) in 128s
+          → important: ASCII fold silently drops letters NFKD cannot decompose and returns '' for non-Latin titles, contradicting the docstring
+  review  retry … 1 false confirm(s) in 188s
+          → nit: NaN or infinite delay bypasses the up-front guard, contradicting the stated invariant
+  review  humanise … 2 false confirm(s) in 166s
+          → nit: Non-finite counts pass the negativity guard and format as 'nan TB' / 'inf TB'
+          → nit: Values just below a rollover format as '1024.0 KB' / '1024.0 MB' instead of rolling up
+  review  windows … clean (47s, 3 lenses)
+  review  dedupe … 1 false confirm(s) in 71s
+          → nit: Unhashable items (list/dict/set) raise TypeError; requirement undocumented
+  review  flatten … clean (90s, 3 lenses)
+  review  percent … UNEVALUATED (2 lens error(s)) — not counted
+          lens security failed: harness timed out
+          lens edge failed: harness timed out
+  review  parsekv … UNEVALUATED (2 lens error(s)) — not counted
+          lens correctness failed: harness timed out
+          lens edge failed: harness timed out
+  review  truncate … UNEVALUATED (3 lens error(s)) — not counted
+          lens correctness failed: harness timed out
+          lens security failed: harness timed out
+          lens edge failed: harness timed out
+  review  once … exit=143
