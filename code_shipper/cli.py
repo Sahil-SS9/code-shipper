@@ -86,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review.add_argument("--json", action="store_true", help="machine-readable output")
     review.add_argument(
+        "--memory-mode",
+        default="shadow",
+        choices=["off", "shadow", "apply"],
+        help="review memory: off, shadow (record only, default), or apply (lessons reach the prompt)",
+    )
+    review.add_argument(
         "--workdir",
         default=".",
         help="directory the agent runs in (default: the current directory)",
@@ -274,10 +280,18 @@ def build_parser() -> argparse.ArgumentParser:
     config.add_argument("--json", action="store_true", help="machine-readable output")
 
     lessons = sub.add_parser("lessons", help="inspect or withdraw review lessons", **_NO_ABBREV)
-    lessons.add_argument("action", choices=["list", "show", "withdraw"])
+    lessons.add_argument("action", choices=["list", "show", "withdraw", "add"])
     lessons.add_argument("lesson_id", nargs="?", default="", help="lesson id, for show and withdraw")
     lessons.add_argument("--state-dir", default="", help="where review state lives")
     lessons.add_argument("--all", action="store_true", help="include withdrawn lessons")
+    lessons.add_argument("--cue", default="", help="for `add`: what this lesson is about")
+    lessons.add_argument("--action", dest="lesson_action", default="",
+                         help="for `add`: what the reviewer should do differently")
+    lessons.add_argument("--evidence", default="", help="for `add`: the adjudication that justifies it")
+    lessons.add_argument("--author", default="", help="for `add`: who supplied the feedback")
+    lessons.add_argument("--permission", default="none",
+                         help="for `add`: the author's permission on this repository")
+    lessons.add_argument("--mode", default="", help="off | shadow | apply (default: shadow)")
     lessons.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
 
@@ -384,6 +398,11 @@ def cmd_review(args: argparse.Namespace) -> int:
             log_tail=log_tail,
             workdir=args.workdir,
             env=scrubbed_env(),
+            # Wired here rather than left to the engine: the state dir the lessons were written to is
+            # the one the review must read. Reading a different dir is how a feature looks wired and
+            # does nothing.
+            lessons_dir=state_root,
+            memory_mode=args.memory_mode,
         ),
         harness=harness,
         store=store,
@@ -482,10 +501,51 @@ def cmd_lessons(args: argparse.Namespace) -> int:
     Read-only except `withdraw`. A lesson that cannot be unlearnt is a permanent bias, so removal is a
     first-class command rather than an edit to a JSON file.
     """
-    from .review.memory import Store, list_lessons
+    from .review.memory import DEFAULT_MODE, Feedback, Store, learn, list_lessons
 
     root = Path(args.state_dir).expanduser() if args.state_dir else _state_dir()
     store = Store(root)
+
+    if args.action == "add":
+        # The write path D15c promised. Without it every adjudicated false confirm is thrown away, and
+        # the reviewer repeats the same scope creep on the next PR.
+        evidence = " ".join((args.evidence or "").split())
+        if not (args.cue or "").strip() or not (args.lesson_action or "").strip():
+            print("lessons add: --cue and --action are required", file=sys.stderr)
+            return 2
+        if not evidence:
+            # The gate, kept from the module: a lesson with no adjudication behind it is an opinion, and
+            # an opinion that changes every future review is worse than no lesson.
+            print(
+                "lessons add: --evidence is required. A lesson is only allowed to change future reviews "
+                "if it records what was adjudicated and why; without that it is an opinion.",
+                file=sys.stderr,
+            )
+            return 2
+
+        feedback = Feedback(
+            finding_fingerprint=args.lesson_id or "",
+            disposition="agreed",
+            author=args.author,
+            # `body` is the evidence column the lesson stores, so the adjudication goes here — not the
+            # cue, which is already carried separately and would leave the lesson unevidenced.
+            body=evidence,
+            permission=args.permission,
+            target_cue=args.cue,
+            target_action=args.lesson_action,
+        )
+        result = learn(store, feedback, mode=args.mode or DEFAULT_MODE)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        elif result.get("accepted"):
+            lesson = result.get("lesson") or {}
+            print(f"recorded lesson {lesson.get('id', '?')}: {args.lesson_action}")
+            print(f"  evidence: {evidence[:200]}")
+            if (args.mode or DEFAULT_MODE) == "shadow":
+                print("  mode: shadow — recorded, not applied to prompts yet")
+        else:
+            print(f"refused: {result.get('reason', 'unknown reason')}", file=sys.stderr)
+        return 0 if result.get("accepted") else 1
 
     if args.action == "list":
         rows = list_lessons(store, include_withdrawn=args.all)

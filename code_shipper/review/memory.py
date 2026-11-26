@@ -32,7 +32,10 @@ from ..atomic import read_json, write_json_atomic
 from typing import Any
 
 # Modes: nothing is reported, lessons are shown separately (shadow), or lessons affect output (on).
-MODES = ("off", "shadow", "on")
+# ``apply`` is the name the spec and the CLI use; ``on`` is the older spelling kept working so the 11
+# existing call sites and their tests do not have to change. They mean the same thing.
+MODES = ("off", "shadow", "apply", "on")
+_APPLYING = ("apply", "on")
 DEFAULT_MODE = "shadow"
 
 
@@ -160,6 +163,44 @@ class Store:
 
 _WRITE_PERMISSIONS = ("admin", "maintain", "write")
 
+# Phrases that mean "ignore a security judgement". A lesson is a permanent change to every future review
+# of the repository, so the one class of lesson that must never be learnt is the one that teaches the
+# reviewer to stop reporting a vulnerability. `never_touches_security()` guards the module's imports;
+# this guards its content, which is a different hole.
+_SECURITY_RELAXING = (
+    "ignore security",
+    "ignore the security",
+    "not a security issue",
+    "no security issue",
+    "skip security",
+    "disable security",
+    "ignore sql injection",
+    "ignore the injection",
+    "ignore injection",
+    "ignore xss",
+    "ignore ssrf",
+    "ignore path traversal",
+    "ignore the secret",
+    "ignore leaked",
+    "stop reporting security",
+    "security findings are noise",
+    "security is not relevant",
+)
+
+
+def relaxes_security(*texts: str) -> str:
+    """The phrase that makes this lesson security-relaxing, or "" if none does.
+
+    Returned rather than a bool so the refusal can name what was wrong, which is the difference between
+    a lesson author understanding the rule and rephrasing to get past it.
+    """
+    for text in texts:
+        lowered = (text or "").lower()
+        for phrase in _SECURITY_RELAXING:
+            if phrase in lowered:
+                return phrase
+    return ""
+
 
 def learn(store: Store, feedback: Feedback, *, mode: str = DEFAULT_MODE) -> dict[str, Any]:
     """Turn feedback into a lesson, or refuse to.
@@ -182,6 +223,16 @@ def learn(store: Store, feedback: Feedback, *, mode: str = DEFAULT_MODE) -> dict
 
     if mode == "off":
         result["reason"] = "review memory is off"
+        return result
+
+    # A security-relaxing lesson is refused whatever the author's permission: an admin can rotate a key,
+    # but nobody gets to teach the reviewer to stop seeing a vulnerability.
+    relaxing = relaxes_security(feedback.target_cue, feedback.target_action, feedback.body)
+    if relaxing:
+        result["reason"] = (
+            f"this lesson would relax a security judgement (matched {relaxing!r}). "
+            "Review memory may narrow what is reported; it may not stop a vulnerability being reported."
+        )
         return result
 
     if (feedback.permission or "none").lower() not in _WRITE_PERMISSIONS:
@@ -215,7 +266,14 @@ def learn(store: Store, feedback: Feedback, *, mode: str = DEFAULT_MODE) -> dict
         result["reason"] = f"unknown disposition {feedback.disposition!r}"
         return result
 
-    if feedback.disposition == "agreed":
+    # An explicit action wins. `learn()` used to derive the action from the cue alone, so a caller that
+    # supplied a precise instruction had it silently replaced with "report: <cue>" — which is how
+    # `lessons add --action "do not ask for NaN handling"` produced the lesson "report: clamp ignores high".
+    # The derived forms remain for the feedback path, where the reader supplies a cue and no action.
+    if feedback.target_action:
+        cue = feedback.target_cue or feedback.finding_fingerprint
+        action = feedback.target_action
+    elif feedback.disposition == "agreed":
         cue = feedback.target_cue or feedback.finding_fingerprint
         action = f"report: {cue}"
     elif feedback.disposition == "missed":
@@ -246,8 +304,15 @@ def apply_to_prompt(store: Store, *, mode: str = DEFAULT_MODE, limit: int = 5) -
     Shadow mode returns "" — that is what shadow means. The lessons are still listed by
     `code-shipper lessons list`, so they can be inspected before being trusted.
     """
-    if mode != "on":
+    if mode not in _APPLYING:
         return ""
+    # Enforced here rather than only asserted in a test: if this module ever grew an import of the
+    # approvals policy, its lessons could be used to talk the reviewer out of a security judgement.
+    # A lesson store that can influence approval decisions is worse than no lesson store.
+    if not never_touches_security():
+        raise MemoryError_(
+            "review memory must not reach the approvals policy; refusing to apply lessons"
+        )
     lessons = [lesson for lesson in store.load() if lesson.disposition == "kept"]
     if not lessons:
         return ""

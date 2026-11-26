@@ -62,6 +62,9 @@ class ReviewRequest:
     risk_score: bool = True
     effort_detection: bool = False
     memory_mode: str = "shadow"
+    # Where lessons live. Defaulted to None, and review() treats None as "no memory": a caller that has
+    # not opted in must be byte-identical to a run before memory was wired.
+    lessons_dir: Any = None
     commit_message: str = ""
     lines_changed: int = 0
     touches_tests: bool | None = None
@@ -257,6 +260,8 @@ def run(
         log_tail=request.log_tail,
         intent=request.intent,
         assertiveness=profile,
+        lessons_dir=request.lessons_dir,
+        lessons_mode=request.memory_mode,
     )
 
     # Volume profile: quiet drops nits, assertive is the caller's business at the lens level. Neither
