@@ -105,16 +105,29 @@ def intent_block(title: str, body: str, *, limit: int = MAX_INTENT_CHARS) -> str
 SECURITY_LENS = "security"
 
 
-def lessons_for_lens(lens: Lens, lessons: str) -> str:
-    """The lessons this lens may see. The security lens sees none, ever.
+# Lenses that may receive lessons, by name. This is an allowlist on purpose.
+#
+# It was a denylist naming the security lens, which was wrong twice over. First, at --level quick the only
+# lens is "combined", whose instruction covers security among everything else — so a security-relaxing
+# lesson reached the single lens that hunts security. Second, a denylist gives every lens added later
+# lessons by default; the docstring claimed the opposite, which made the bug look handled.
+#
+# With an allowlist, an unknown lens gets nothing. Forgetting to update it under-serves a new lens, which is
+# visible and recoverable. Forgetting to update a denylist silently sends lessons to whatever is new, and if
+# that lens touches security the failure is invisible.
+LESSON_LENSES = frozenset({"correctness", "edge", "tests", "contract"})
 
-    One function, consulted by the only caller that builds a lens prompt, so a lens added later cannot
-    accidentally acquire lessons it should not have. Tests assert both directions: a legitimate lesson
-    reaches a non-security lens, and all eight known rewordings never reach the security one.
+
+def lessons_for_lens(lens: Lens, lessons: str) -> str:
+    """The lessons this lens may see — only the named lesson-bearing lenses.
+
+    "combined" is excluded despite being a generalist: its instruction covers security, so it must be
+    treated as a security lens for this purpose. Tests assert the quick level carries no lesson text at
+    all, that each allowlisted lens still receives lessons, and that an unknown lens receives none.
     """
     if not lessons:
         return ""
-    if getattr(lens, "name", "") == SECURITY_LENS:
+    if getattr(lens, "name", "") not in LESSON_LENSES:
         return ""
     return lessons
 
