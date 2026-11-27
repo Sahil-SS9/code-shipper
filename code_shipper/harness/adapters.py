@@ -30,6 +30,12 @@ from .base import (
 
 CLEAN_ENV_KEYS = frozenset({"PATH", "LANG", "LC_ALL", "TERM", "TMPDIR", "HOME", "USER", "LOGNAME"})
 
+# Variables that select which Hermes install and profile an agent run uses. Without them a subprocess falls
+# back to the default profile, so a user's "throwaway" review silently ran on their main setup and spent
+# real money on the wrong account. Selecting the install is not a secret — the credential path is, and that
+# is guarded separately by `_looks_like_credentials`.
+HERMES_SELECTION_KEYS = frozenset({"HERMES_HOME", "HERMES_PROFILE", "HERMES_CONFIG"})
+
 
 def scrubbed_env(base: dict[str, str] | None = None) -> dict[str, str]:
     """Keep only the variables a subprocess needs.
@@ -40,7 +46,11 @@ def scrubbed_env(base: dict[str, str] | None = None) -> dict[str, str]:
     source = os.environ if base is None else base
     out: dict[str, str] = {}
     for key, value in source.items():
-        if key in CLEAN_ENV_KEYS:
+        if key in CLEAN_ENV_KEYS or key in HERMES_SELECTION_KEYS:
+            # Selection keys are passed through, but never if the value points at a credential file: that
+            # would smuggle the thing the scrub exists to keep out. See the check below.
+            if key in HERMES_SELECTION_KEYS and _looks_like_credentials(value):
+                continue
             out[key] = value
             continue
         upper = key.upper()
@@ -51,6 +61,23 @@ def scrubbed_env(base: dict[str, str] | None = None) -> dict[str, str]:
         if "SECRET" in upper or "PASSWORD" in upper:
             continue
     return out
+
+
+def _looks_like_credentials(value: str) -> bool:
+    """Whether a value points at somewhere credentials live.
+
+    `HERMES_HOME` is a directory, not a secret, so it is passed through — but a value naming a key file or
+    a directory whose leaf looks like a credential store would re-introduce exactly what `scrubbed_env`
+    exists to remove. Belt and braces: the value is not the credential, so this is a heuristic, and the
+    container remains the control.
+    """
+    text = (value or "").strip().lower().replace("\\", "/")
+    if not text:
+        return False
+    leaf = text.rstrip("/").rsplit("/", 1)[-1]
+    if any(marker in leaf for marker in (".env", "credential", "secret", "token", "apikey", "api_key")):
+        return True
+    return text.endswith((".json", ".key", ".pem")) and "key" in text
 
 
 def _validate(result: dict[str, Any], task: AgentTask) -> dict[str, Any]:
@@ -191,6 +218,11 @@ class HermesHarness:
 
     def _attempt(self, argv: list[str], task: AgentTask, env: dict[str, str]) -> "_Attempt":
         """One real call, with the failure classified rather than collapsed into one string."""
+        if self._profile:
+            # Both the flag and the variable: `-p` is the documented interface, and the variable is what
+            # makes the choice visible to anything the agent itself spawns. Belt and braces on the one
+            # setting whose silent loss cost the owner a run on the wrong account.
+            env = {**env, "HERMES_PROFILE": self._profile}
         try:
             proc = _run_in_own_process_group(
                 argv,
