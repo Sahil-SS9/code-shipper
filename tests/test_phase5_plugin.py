@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugin" / "code-shipper"
@@ -91,10 +92,27 @@ class ArgvTests(unittest.TestCase):
         self.assertIn("--profile", argv)
         self.assertIn("assertive", argv)
 
-    def test_poll_takes_a_positional_pr_and_repo(self) -> None:
-        argv = self.ship.build_argv("o/r", 2, "watch")
-        self.assertEqual(argv[1], "poll")
-        self.assertIn("2", argv)
+    def test_every_invocation_parses_with_the_real_cli(self) -> None:
+        # Checking the verb alone let `/ship stop` drop the PR number and `/ship status` drop its
+        # action: both reached the CLI and died on a usage error.
+        from code_shipper.cli import build_parser
+
+        parser = build_parser()
+        for subcommand in self.ship.SUBCOMMANDS:
+            argv = self.ship.build_argv("o/r", 2, subcommand)
+            with self.subTest(subcommand=subcommand):
+                try:
+                    args = parser.parse_args(argv[1:])
+                except SystemExit:
+                    self.fail(f"/ship {subcommand} builds {argv[1:]}, which the CLI rejects")
+                if hasattr(args, "pr"):
+                    self.assertEqual(args.pr, 2)
+                self.assertEqual(args.repo, "o/r")
+
+    def test_polling_is_not_a_chat_command(self) -> None:
+        # A chat command waits for its child; a poll loop would hold the agent until the timeout.
+        self.assertNotIn("poll", self.ship.SUBCOMMANDS.values())
+        self.assertNotIn("watch", self.ship.SUBCOMMANDS)
 
     def test_publish_is_refused_without_a_branch(self) -> None:
         with self.assertRaises(self.ship.Refused) as caught:
@@ -153,6 +171,42 @@ class RunTests(unittest.TestCase):
             self.assertNotIn("--token", argument)
 
 
+class ChildEnvTests(unittest.TestCase):
+    """The CLI gets an allowlisted environment, never the agent's own."""
+
+    def setUp(self) -> None:
+        self.ship = _load_command()
+
+    def test_keys_tokens_and_run_settings_are_not_passed(self) -> None:
+        env = self.ship.child_env({
+            "PATH": "/usr/bin", "HOME": "/home/alice", "HERMES_HOME": "/home/alice/.hermes",
+            "OPENAI_API_KEY": "sk-x", "ANTHROPIC_API_KEY": "sk-y", "GITHUB_TOKEN": "ghp_x",
+            "CODE_SHIPPER_GITHUB_TOKEN": "ghp_y", "CODE_SHIPPER_API_KEY": "k",
+            "HERMES_YOLO_MODE": "1", "HERMES_INTERACTIVE": "0", "AWS_SECRET_ACCESS_KEY": "a",
+        })
+        self.assertEqual(env, {"PATH": "/usr/bin", "HOME": "/home/alice",
+                               "HERMES_HOME": "/home/alice/.hermes"})
+
+    def test_the_real_runner_passes_the_allowlisted_env(self) -> None:
+        seen = {}
+
+        def fake_run(argv, **kwargs):
+            seen.update(kwargs)
+            return RunTests._Completed()
+
+        original = self.ship.subprocess.run
+        self.ship.subprocess.run = fake_run
+        try:
+            with unittest.mock.patch.dict(os.environ, {"OPENAI_API_KEY": "sk-x", "PATH": "/usr/bin"}):
+                self.ship._subprocess_runner(["code-shipper", "review"])
+        finally:
+            self.ship.subprocess.run = original
+        self.assertIn("env", seen)
+        self.assertNotIn("OPENAI_API_KEY", seen["env"])
+        self.assertEqual(seen["env"].get("PATH"), "/usr/bin")
+        self.assertIs(seen["stdin"], subprocess.DEVNULL)
+
+
 class InstallTests(unittest.TestCase):
     """A throwaway HERMES_HOME only. ~/.hermes is never touched."""
 
@@ -162,6 +216,16 @@ class InstallTests(unittest.TestCase):
         self.assertIn("manifest_version: 2", text)
         self.assertIn("commands:", text)
         self.assertIn("/ship", text)
+
+    def test_the_manifest_declares_no_token_setting(self) -> None:
+        # The plugin never reads a credential; a token-file setting would suggest it does.
+        self.assertNotIn("token", (PLUGIN / "plugin.yaml").read_text().lower())
+
+    def test_the_manifest_and_module_versions_agree(self) -> None:
+        text = (PLUGIN / "plugin.yaml").read_text()
+        manifest = next(l.split(":", 1)[1].strip() for l in text.splitlines() if l.startswith("version:"))
+        module = (PLUGIN / "__init__.py").read_text()
+        self.assertIn(f'__version__ = "{manifest}"', module)
 
     def test_allow_ship_defaults_off(self) -> None:
         text = (PLUGIN / "plugin.yaml").read_text()

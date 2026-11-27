@@ -10,14 +10,17 @@ silently stops being enforced, so there is exactly one implementation and this i
 `allow_ship` is on, and even then prints the plan the CLI produced. A command that publishes on a
 single word with no confirmation is a footgun with a friendly name.
 
-Subcommands map to CLI verbs, so the two surfaces cannot drift: `review` → `review`, `fix` → `watch`,
-`stop` → `stop`, `watch` → `poll`, `status` → `config effective`, `publish` → `ship`.
+Subcommands map to CLI verbs, so the two surfaces cannot drift: `review` → `review`, `board` → `ui`,
+`fix` → `watch`, `stop` → `stop`, `status` → `config effective`, `publish` → `ship`. Polling for new
+heads (`code-shipper poll`) is a long-running loop, so it stays a terminal command: a chat command waits
+for its child to finish.
 """
 
 from __future__ import annotations
 
-import subprocess
+import os
 import shlex
+import subprocess
 from typing import Any
 
 # What each subcommand becomes. `publish` is separated because it is the only one that writes to a
@@ -26,7 +29,6 @@ SUBCOMMANDS: dict[str, str] = {
     "review": "review",
     "fix": "watch",
     "stop": "stop",
-    "watch": "poll",
     "status": "config",
     # The board: the stored review for this pull request, drawn from real state. Distinct from `status`,
     # which is the approvals policy. Without this the plugin could only ever show policy, never the
@@ -35,13 +37,12 @@ SUBCOMMANDS: dict[str, str] = {
 }
 
 USAGE = (
-    "usage: /ship <owner/repo> <pr> [review|board|fix|watch|stop|status|publish]\n"
+    "usage: /ship <owner/repo> <pr> [review|board|fix|stop|status|publish]\n"
     "\n"
-    "  review   post a review of the current head (comment only) or status\n"
+    "  review   review the current head and store the result (posts nothing)\n"
     "  board    draw the stored review for this pull request\n"
     "  fix      fix within a budget, in a container, and push to the PR branch\n"
-    "  watch    poll for new heads and review each one\n"
-    "  stop     stop a running watch loop\n"
+    "  stop     stop a running fix loop\n"
     "  status   show the effective approvals policy for the repository\n"
     "  publish  open a pull request from a local branch (needs allow_ship)\n"
     "\n"
@@ -98,15 +99,14 @@ def build_argv(
         )
     verb = SUBCOMMANDS[subcommand]
     argv = [binary, verb]
-    if verb == "poll":
-        argv += [str(number), "--repo", repo]
-    elif verb == "ui":
+    if verb == "ui":
         # The board takes repo and PR as flags, not a positional: it draws one stored review.
         argv += ["--repo", repo, "--pr", str(number)]
+    elif verb == "config":
+        argv += ["effective", "--repo", repo]
     else:
-        argv += ["--repo", repo]
-        if verb in ("review", "watch"):
-            argv += [str(number)]
+        # review, watch and stop take the pull request as a positional.
+        argv += ["--repo", repo, str(number)]
     if verb == "review":
         argv += ["--profile", profile]
     if extra:
@@ -155,8 +155,29 @@ def run(
     }
 
 
+# What the CLI is given from the Hermes process. An allowlist, not a scrub: the agent's environment holds
+# provider keys and Hermes's own run settings (approval mode among them), and none of that belongs to the
+# CLI. It needs a PATH, a home, a locale, which Hermes install and profile to use, how to reach the
+# container runtime, and its own non-secret settings. Its GitHub token comes from its own token file,
+# never from here.
+CHILD_ENV_KEYS = frozenset({
+    "PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR",
+    "XDG_STATE_HOME", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR",
+    "HERMES_HOME", "HERMES_PROFILE",
+    "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "CONTAINER_HOST",
+    "CODE_SHIPPER_STATE_DIR", "CS_STAGING_ROOT",
+})
+
+
+def child_env(source: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment the CLI runs with: only the allowlisted names that are set."""
+    base = os.environ if source is None else source
+    return {key: base[key] for key in CHILD_ENV_KEYS if base.get(key)}
+
+
 def _subprocess_runner(argv: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, capture_output=True, text=True, timeout=1800)
+    return subprocess.run(argv, capture_output=True, text=True, timeout=1800, env=child_env(),
+                          stdin=subprocess.DEVNULL)
 
 
 def handle(argument: str, config: dict | None = None) -> str:

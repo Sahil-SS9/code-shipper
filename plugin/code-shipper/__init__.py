@@ -1,6 +1,6 @@
 """/ship: review, fix and prepare pull requests from inside Hermes.
 
-    /ship <owner/repo> <pr> [review|fix|watch|stop|status|publish]
+    /ship <owner/repo> <pr> [review|board|fix|stop|status|publish]
 
 This module is a wrapper, not a second implementation. Every rule lives in the CLI, which holds the
 broker, the secret scan and the publish gate; duplicating any of them here would be a second copy that
@@ -12,14 +12,14 @@ probe calls `register()` in a recording context, so nothing is imported or run a
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 DESCRIPTION = (
     "Review a pull request, fix it within a budget, and get it ready to merge. "
     "Comment-only: never approves and never merges."
 )
 
-ARGS_HINT = "review|fix|watch|stop|status|publish"
+ARGS_HINT = "review|board|fix|stop|status|publish"
 
 
 def register(ctx) -> None:

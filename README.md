@@ -187,7 +187,7 @@ py -3 -m unittest discover -s tests -t . -q
 
 | Platform | Unit tests | A real contained fix run |
 |---|---|---|
-| Linux | **yes** — 1578 tests, 3.11 / 3.12 / 3.13, run locally | yes |
+| Linux | **yes** — 1583 tests, 3.11 / 3.12 / 3.13, run locally | yes |
 | macOS | **last passed on CI at `ccfbefa`; untested since** | no |
 | Windows | **last passed on CI at `ccfbefa`; untested since** | no |
 
@@ -267,7 +267,7 @@ code-shipper status --demo                   # the sample board, labelled as suc
 ```
 
 Inside Hermes the plugin provides `/ship <owner/repo> <pr> <subcommand>`, a thin wrapper over the CLI:
-`review`, `board`, `fix`, `watch`, `stop`, `status`, `publish`. `/ship ... board` draws the stored review;
+`review`, `board`, `fix`, `stop`, `status`, `publish`. `/ship ... board` draws the stored review;
 there is no separate Hermes Desktop panel — the desktop surface is the HTML page `ship-page` writes, or
 the terminal board. That is a deliberate scope line, not an omission: a second UI inside the Hermes
 desktop would be a second place holding presentation logic.
