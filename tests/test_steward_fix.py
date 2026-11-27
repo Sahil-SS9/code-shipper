@@ -393,8 +393,10 @@ class WiringTests(unittest.TestCase):
     def test_editing_outside_the_policy_is_refused(self) -> None:
         class WrongFile:
             def run(self, *, workspace, item, prompt, budget):
-                (workspace.checkout / ".github").mkdir(exist_ok=True)
-                (workspace.checkout / ".github" / "workflows.yml").write_text("on: []\n")
+                # An ordinary file outside the allowed globs. (.github/ was used here before N1; it is now
+                # refused earlier, as a protected path, and that is covered in test_protected_paths.)
+                (workspace.checkout / "docs").mkdir(exist_ok=True)
+                (workspace.checkout / "docs" / "notes.md").write_text("notes\n")
                 return {}
 
         receipt = self.run_fix(WrongFile(), push=True)
