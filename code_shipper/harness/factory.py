@@ -8,6 +8,7 @@ and every summary can name the harness, profile and model that actually ran.
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,22 +37,81 @@ class Selection:
     model: str
     unverified: bool
     reason: str
+    provider: str = ""
 
     def summary_fields(self) -> dict[str, str]:
         """The three facts every summary must name, so a review cannot misreport what ran."""
-        return {"harness": self.name, "profile": self.profile, "model": self.model}
+        fields = {"harness": self.name, "profile": self.profile, "model": self.model}
+        if self.provider:
+            fields["provider"] = self.provider
+        return fields
 
     def banner(self) -> str:
         flag = "  [UNVERIFIED]" if self.unverified else ""
-        return f"harness: {self.name} · profile: {self.profile or '(default)'} · model: {self.model}{flag}"
+        where = self.profile or "(default)"
+        provider = f" · provider: {self.provider}" if self.provider else ""
+        return f"harness: {self.name} · profile: {where} · model: {self.model}{provider}{flag}"
 
 
-def _model_for(harness: Any) -> str:
+def _model_for(harness: Any, profile: str = "") -> str:
+    """The model that will actually answer. Never a placeholder when it can be resolved.
+
+    It used to return "(harness default)" whenever the harness object had no `model` attribute, which the
+    Hermes harness does not — so every summary said the model was unknowable while the whole point of
+    `--hermes-profile` is that the choice changes which model runs. `hermes config get model` is the
+    supported way to ask, per profile, and it costs no tokens.
+    """
     for attribute in ("model", "_model", "model_name"):
         value = getattr(harness, attribute, None)
         if isinstance(value, str) and value:
             return value
+
+    resolved = _hermes_model(profile)
+    if resolved:
+        return resolved
     return "(harness default)"
+
+
+def _hermes_model(profile: str = "") -> str:
+    """Ask Hermes which model is effective for a profile. Empty string when it cannot be determined.
+
+    Reads `default:` from `hermes config get model`, which is YAML-ish and safe to parse line-wise. A
+    failure here must not fail a review: an unknown model is reported as unknown, and the run continues.
+    """
+    argv = ["hermes"]
+    if profile:
+        argv += ["-p", profile]
+    argv += ["config", "get", "model"]
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    for line in proc.stdout.splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "default" and value.strip():
+            return value.strip()
+    return ""
+
+
+def _hermes_provider(profile: str = "") -> str:
+    """The provider name, for the same reason. Empty when unknown."""
+    argv = ["hermes"]
+    if profile:
+        argv += ["-p", profile]
+    argv += ["config", "get", "model"]
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    for line in proc.stdout.splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "provider" and value.strip():
+            return value.strip()
+    return ""
 
 
 def build_harness(
@@ -108,7 +168,8 @@ def build_harness(
         harness=harness,
         name=name,
         profile=profile if name == "hermes" else "",
-        model=_model_for(harness),
+        model=_model_for(harness, profile if name == "hermes" else ""),
+        provider=_hermes_provider(profile) if name == "hermes" else "",
         unverified=unverified,
         reason=reason,
     )

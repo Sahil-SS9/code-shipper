@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import ast
 import inspect
+import sys
 import unittest
 from pathlib import Path
 
 from code_shipper.harness.adapters import CommandHarness, HermesHarness
+from code_shipper.harness.base import AgentTask, Budget
 from code_shipper.harness.factory import (
     DEFAULT_HARNESS,
     HARNESS_NAMES,
@@ -182,3 +184,81 @@ class EverySummaryNamesWhatRanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheProfileFlagIsNotANoOpTests(unittest.TestCase):
+    """`--hermes-profile` set HERMES_PROFILE and stopped there, which Hermes does not read.
+
+    Hermes picks a profile from `-p/--profile` via `scan_profile_flag` in main._apply_profile_override;
+    HERMES_PROFILE is only a label kanban reads. So the flag was documented as choosing a profile while
+    choosing nothing. These tests assert the two things Hermes actually uses: the argv token, and the
+    resolved model that the summary reports.
+    """
+
+    def _task(self) -> AgentTask:
+        return AgentTask(kind="review_lens", prompt="x", workdir=None,
+                         budget=Budget(max_turns=1, max_seconds=60))
+
+    def test_the_profile_reaches_the_argv_hermes_parses(self) -> None:
+        selection = build_harness(name="hermes", profile="mrhermagi")
+        argv = selection.harness.argv(self._task())
+        self.assertIn("-p", argv, "the profile flag is absent from the argv Hermes reads")
+        self.assertEqual(argv[argv.index("-p") + 1], "mrhermagi")
+
+    def test_hermes_itself_reads_that_argv_as_the_profile(self) -> None:
+        """Uses Hermes's own scanner, so this cannot drift from what Hermes does.
+
+        `scan_profile_flag` is the function `_apply_profile_override` calls before argparse runs. Testing
+        against it means the assertion is about Hermes's behaviour, not about our idea of it.
+        """
+        try:
+            sys.path.insert(0, str(Path("/home/kensei/repos/KenseiAgent")))
+            from hermes_cli._parser import scan_profile_flag
+        except (ImportError, OSError):
+            self.skipTest("the Hermes source is not available here")
+
+        selection = build_harness(name="hermes", profile="mrhermagi")
+        argv = selection.harness.argv(self._task())
+        # Hermes scans sys.argv[1:], i.e. everything after the program name.
+        name, consumed, index = scan_profile_flag(argv[1:])
+        self.assertEqual(name, "mrhermagi")
+        self.assertEqual(consumed, 2)
+        self.assertEqual(argv[1:][index], "-p")
+
+    def test_the_summary_names_the_profiles_model_not_a_placeholder(self) -> None:
+        """The second half of the item: the banner said "(harness default)" for every run."""
+        selection = build_harness(name="hermes", profile="mrhermagi")
+        self.assertNotEqual(selection.model, "(harness default)",
+                           "the model could not be resolved, so the summary cannot name it")
+        self.assertIn("model: ", selection.banner())
+        self.assertIn(selection.model, selection.banner())
+        self.assertEqual(selection.summary_fields()["model"], selection.model)
+
+    def test_two_profiles_report_different_models(self) -> None:
+        """If the profile were a no-op, both would report the same model."""
+        default = build_harness(name="hermes", profile="")
+        other = build_harness(name="hermes", profile="mrhermagi")
+        if other.model == "(harness default)":
+            self.skipTest("profiles are not resolvable in this environment")
+        self.assertNotEqual(default.model, other.model,
+                            "both profiles report the same model, so the profile chose nothing")
+
+    def test_the_banner_never_shows_an_empty_profile(self) -> None:
+        self.assertIn("(default)", build_harness(name="hermes").banner())
+
+    def test_a_non_hermes_harness_carries_no_profile(self) -> None:
+        """openai_compat refuses here for want of credentials; that refusal must not be about the profile."""
+        try:
+            selection = build_harness(name="openai_compat", profile="mrhermagi")
+        except HarnessRefused as exc:
+            self.assertIn("openai_compat", str(exc))
+            self.assertNotIn("profile", str(exc).lower())
+            self.skipTest("openai_compat needs credentials in this environment")
+        self.assertEqual(selection.profile, "")
+
+    def test_an_unknown_profile_does_not_crash_the_review(self) -> None:
+        """Resolution must degrade to unknown, not raise: a bad profile is Hermes's to refuse."""
+        selection = build_harness(name="hermes", profile="nope-not-a-profile")
+        self.assertEqual(selection.profile, "nope-not-a-profile")
+        self.assertIsInstance(selection.model, str)
+        self.assertTrue(selection.model)
