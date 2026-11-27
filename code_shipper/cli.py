@@ -74,10 +74,18 @@ def build_parser() -> argparse.ArgumentParser:
                         help="pull request number (same as the positional)")
     review.add_argument(
         "--repo",
-        required=True,
+        default="",
         metavar="OWNER/NAME",
-        help="repository slug on the code host",
+        help="repository slug on the code host (required unless --local)",
     )
+    review.add_argument(
+        "--local",
+        action="store_true",
+        help="review this checkout's branch plus uncommitted changes against its base: no pull request, "
+             "no token, nothing posted or stored (N5)",
+    )
+    review.add_argument("--base", default="", metavar="REF",
+                        help="with --local: the ref to compare against (default: origin/HEAD, main, master)")
     review.add_argument(
         "--level",
         default="standard",
@@ -355,6 +363,12 @@ def cmd_review(args: argparse.Namespace) -> int:
     """Run a review. With --dry-run nothing is posted and no token is required."""
     import os
 
+    if getattr(args, "local", False):
+        return cmd_review_local(args)
+    if not args.repo or args.pr is None:
+        print("review needs --repo OWNER/NAME and a pull request number, or --local", file=sys.stderr)
+        return 2
+
     from .harness.adapters import HermesHarness
     from .harness.adapters import scrubbed_env
     from .hosts.github import GitHubHost
@@ -524,6 +538,65 @@ def cmd_review(args: argparse.Namespace) -> int:
     return _review_exit_code(outcome)
 
 
+def cmd_review_local(args: argparse.Namespace) -> int:
+    """N5: review before you push. Nothing is posted, nothing is stored, no token is read."""
+    from .harness.adapters import scrubbed_env
+    from .harness.factory import HarnessRefused, build_harness
+    from .repo_rules import REVIEW_FILES, load_rules
+    from .review.engine import review as run_review
+    from .review.local import LocalReviewError, LocalRulesHost, local_change
+
+    try:
+        selection = build_harness(
+            name=getattr(args, "harness", "hermes"),
+            profile=getattr(args, "hermes_profile", "") or "",
+            allow_unverified=getattr(args, "allow_unverified_harness", False),
+        )
+    except HarnessRefused as exc:
+        print(str(exc), file=sys.stderr)
+        return exc.exit_code
+    repo_dir = Path(getattr(args, "workdir", None) or ".").resolve()
+    try:
+        change = local_change(repo_dir, getattr(args, "base", "") or "")
+    except LocalReviewError as exc:
+        print(f"cannot review locally: {exc}", file=sys.stderr)
+        return 2
+    if not change.diff.files:
+        print(f"nothing to review: no changes against {change.base_ref} ({change.merge_base[:7]})")
+        return 0
+    ok, reason = selection.harness.available()
+    if not ok:
+        print(f"harness unavailable: {reason}", file=sys.stderr)
+        return 2
+    rules = load_rules(LocalRulesHost(repo_dir, change.base_ref), "local", REVIEW_FILES)
+    outcome = run_review(
+        diff=change.diff, harness=selection.harness, level=args.level, workdir=repo_dir,
+        env=scrubbed_env(), assertiveness=args.profile, repo_rules=rules.text, rules_sources=rules.sources,
+    )
+    if args.json:
+        payload = outcome.as_dict() | {"local": True, "base_ref": change.base_ref,
+                                       "merge_base": change.merge_base, "files": len(change.diff.files)}
+        payload.update(selection.summary_fields())
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"local review: {len(change.diff.files)} file(s) against {change.base_ref} "
+              f"({change.merge_base[:7]}), {change.untracked} untracked, level={args.level}")
+        print(selection.banner())
+        print("nothing was posted and nothing was stored")
+        if rules.sources:
+            print(f"rules: {', '.join(rules.sources)} (at {change.base_ref})")
+        print(f"lenses: {', '.join(outcome.lenses_run) or 'none'}")
+        print(f"findings: {outcome.raw_findings} raw, {outcome.confirmed} confirmed")
+        if not outcome.complete:
+            print("INCOMPLETE: " + "; ".join(outcome.errors))
+        for finding in outcome.findings:
+            print(f"\n  [{finding.severity}] {finding.path}:{finding.line} {finding.title}")
+            if finding.body:
+                print(f"    {finding.body[:300]}")
+        print(NEVER_MERGES)
+    return _review_exit_code(outcome)
+
+
 def cmd_config_confirm_agent_approval(args: argparse.Namespace) -> int:
     """D16b: the second step. Prints what will change, types the repo back, binds to the rules hash."""
     from .approvals.confirm import ConfirmationRefused, confirm_interactively
@@ -584,7 +657,7 @@ def _add_harness_arguments(parser) -> None:
         "--hermes-profile",
         default="",
         metavar="NAME",
-        help="Hermes profile to run under (hermes harness only). Passed to the agent as HERMES_PROFILE.",
+        help="Hermes profile to run under (hermes harness only). Passed to Hermes as -p NAME.",
     )
     parser.add_argument(
         "--allow-unverified-harness",
