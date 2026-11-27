@@ -120,3 +120,25 @@ the audit trail.
    second account with a fine-grained token for v1, a GitHub App later. Decided by the Phase 0
    spike result.
 3. Catalog submission timing. Recommend after Phase 7 and the owner's release go.
+
+## D16 — release-blocking decisions (owner, 26-27/11)
+
+Recorded with their state at the time of the release-prep round.
+
+| ID | Decision | State after this round |
+|----|----------|------------------------|
+| D16a | Code-Shipper never merges. Every surface says so in one sentence: "Code-Shipper never merges. Merge on GitHub." | **Done.** One constant in `surfaces/mantra.py`, rendered by the Desktop page and footer, the TUI footer at both widths, and the CLI review summary. It previously existed in five different phrasings, and the CLI said nothing at all. |
+| D16b | Enabling agent approval is a second step: type the repository name back, bound to the `approvals.yml` hash, with no skip flag. | **Done.** `config confirm-agent-approval`. The record is bound to repo and rules hash; editing a rule turns approval off again. No `--yes`/`--force`/`--skip` exists, and with no terminal it refuses. |
+| D16c | `ui` accepts the PR number positionally, as `review` does; no two commands read as the same tool. | **Done.** A number is a PR, a known word is a demo state, an unknown word is refused with the valid list. `ship-ui` now says it is an alias of `ui` with narrower defaults. |
+| D16d | The README carries a first-review walkthrough that a stranger can follow: which AI, what it costs, dry run first, real exit codes. | **Done.** Every command in it was run as written, with the output quoted. The stale "awaiting sign-off" status line and the 1,236 test count are fixed. |
+| D16e | Receipts are kept 30 days per repository. Never prune a receipt for an open PR or an unreconciled/uncertain write. Prune at command start, not as a daemon, and log it. | **Done.** `code_shipper/receipts.py`, wired into command start. Both exceptions beat age, an unreadable receipt is kept because it cannot be shown safe to delete, and pruning one repo never enters another. |
+| D16f | The inbox label must not read as "ready to merge" without saying who merges. | **Already met**, unchanged: the group says "Ready for you to merge" and appears only when the approval rules are met. The owner confirmed keeping it over "Ready for human review", which is less accurate at that state. |
+
+Memory stays **off by default in v1** (`shadow`); users opt in with `--memory-mode apply`. That is
+unchanged by this round, and the lesson read-path fix it depends on is Fix 6 above.
+
+```text
+Addendum on D16b and D16e: both are second gates on top of existing checks, not replacements. Agent
+approval still requires separated identities and a verified container; a receipt being within retention
+says nothing about whether its write succeeded.
+```

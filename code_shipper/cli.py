@@ -1504,10 +1504,32 @@ def _resolve_pr_alias(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
+def _prune_receipts_once(args: argparse.Namespace) -> None:
+    """D16e: prune at the start of a command, never as a daemon, and never fatally.
+
+    A failed prune must not stop the command the user actually asked for: the receipts it did not reach are
+    still there, and refusing to review because housekeeping failed would be worse than the delay. Pruning
+    is skipped for read-only display commands, where it would be a surprising side effect on a `ui` call.
+    """
+    if getattr(args, "command", "") in {"ui", "ship-ui", "status", "doctor", "lessons", "stop"}:
+        return
+    try:
+        from .receipts import prune_all
+
+        root = str(_state_dir() / "receipts")
+        log: list[str] = []
+        prune_all(receipts_dir=root, log=log)
+        for line in log:
+            print(f"receipts: {line}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - housekeeping must never block the real command
+        print(f"receipts: pruning skipped ({exc})", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     args = _resolve_pr_alias(args)
+    _prune_receipts_once(args)
     if args.command == "doctor":
         return cmd_doctor(args)
     if args.command == "review":
