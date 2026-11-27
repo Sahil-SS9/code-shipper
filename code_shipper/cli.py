@@ -85,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the review and print findings without posting anything",
     )
     review.add_argument("--json", action="store_true", help="machine-readable output")
+    _add_harness_arguments(review)
     review.add_argument(
         "--memory-mode",
         default="shadow",
@@ -127,6 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     watch = sub.add_parser("watch", help="watch a pull request and fix it within a budget", **_NO_ABBREV)
+    _add_harness_arguments(watch)
     watch.add_argument("pr", type=int, help="pull request number")
     watch.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     watch.add_argument(
@@ -150,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     stop.add_argument("--json", action="store_true", help="machine-readable output")
 
     ship = sub.add_parser("ship", help="take a local change to an open pull request", **_NO_ABBREV)
+    _add_harness_arguments(ship)
     ship.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     ship.add_argument("--branch", required=True, help="branch to create and push")
     ship.add_argument("--base", required=True, help="base branch for the pull request")
@@ -177,6 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
     ship.add_argument("--json", action="store_true", help="machine-readable output")
 
     poll = sub.add_parser("poll", help="watch for new heads and review each one", **_NO_ABBREV)
+    _add_harness_arguments(poll)
     poll.add_argument("pr", type=int, help="pull request number")
     poll.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
     poll.add_argument("--interval", type=float, default=30.0, help="seconds between polls")
@@ -191,14 +195,19 @@ def build_parser() -> argparse.ArgumentParser:
     poll.add_argument("--state-dir", default="", help="where review state lives")
     poll.add_argument("--json", action="store_true", help="machine-readable output")
 
-    ship_ui = sub.add_parser("ship-ui", help="draw the terminal board for a pull request", **_NO_ABBREV)
+    ship_ui = sub.add_parser(
+        "ship-ui",
+        help="alias of `ui` (narrower default width); draws the terminal board for a pull request",
+        **_NO_ABBREV,
+    )
     ship_ui.add_argument(
         "state",
         nargs="?",
         default="auto",
-        choices=["auto"] + ["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
-                 "approvals-satisfied", "observe", "paused", "stopped", "error"],
-        help="a state name draws DEMO data (requires --demo); 'auto' draws a real review",
+        # No `choices`: a number here is a pull request, exactly as `review 25` works. Restricting this to
+        # state names is why `ui 25` failed with "invalid choice: '25'" while `review 25` worked.
+        help="a pull request number, or a state name to draw demo data (requires --demo); "
+             "'auto' draws a real review",
     )
     ship_ui.add_argument("--repo", default="", help="owner/name; defaults to the most recent review")
     ship_ui.add_argument("--pr", type=int, default=None, help="pull request number")
@@ -208,14 +217,17 @@ def build_parser() -> argparse.ArgumentParser:
     ship_ui.add_argument("--width", type=int, default=113, help="columns")
     ship_ui.add_argument("--height", type=int, default=30, help="rows")
 
-    ui = sub.add_parser("ui", help="draw the terminal board for a pull request", **_NO_ABBREV)
+    ui = sub.add_parser(
+        "ui",
+        help="draw the terminal board for a pull request; accepts a PR number or a demo state",
+        **_NO_ABBREV,
+    )
     ui.add_argument(
         "state",
         nargs="?",
         default="auto",
-        choices=["auto"] + ["empty", "reviewing", "findings", "incomplete", "approvals-blocked",
-                 "approvals-satisfied", "observe", "paused", "stopped", "error"],
-        help="a state name draws DEMO data (requires --demo); 'auto' draws a real review",
+        help="a pull request number, or a state name to draw demo data (requires --demo); "
+             "'auto' draws a real review",
     )
     ui.add_argument("--repo", default="", help="owner/name; defaults to the most recent review")
     ui.add_argument("--pr", type=int, default=None, help="pull request number")
@@ -228,6 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
     ui.add_argument("--json", action="store_true", help="the same facts as data")
 
     fix = sub.add_parser("fix", help="run one bounded fix round on a pull request", **_NO_ABBREV)
+    _add_harness_arguments(fix)
     fix.add_argument("pr", type=int, help="pull request number")
     fix.add_argument("--repo", required=True, help="owner/name")
     fix.add_argument("--branch", required=True, help="the pull request's head branch")
@@ -279,7 +292,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     config.add_argument("--json", action="store_true", help="machine-readable output")
 
-    lessons = sub.add_parser("lessons", help="inspect or withdraw review lessons", **_NO_ABBREV)
+    lessons = sub.add_parser(
+        "lessons",
+        help="inspect, add or withdraw review lessons",
+        **_NO_ABBREV,
+    )
     lessons.add_argument("action", choices=["list", "show", "withdraw", "add"])
     lessons.add_argument("lesson_id", nargs="?", default="", help="lesson id, for show and withdraw")
     lessons.add_argument("--state-dir", default="", help="where review state lives")
@@ -344,7 +361,19 @@ def cmd_review(args: argparse.Namespace) -> int:
         print(f"could not read PR #{args.pr} in {args.repo}: {exc}", file=sys.stderr)
         return 2
 
-    harness = HermesHarness()
+    from .harness.factory import HarnessRefused, build_harness
+
+    try:
+        selection = build_harness(
+            name=getattr(args, "harness", "hermes"),
+            profile=getattr(args, "hermes_profile", "") or "",
+            allow_unverified=getattr(args, "allow_unverified_harness", False),
+        )
+    except HarnessRefused as exc:
+        # Refused before any work: exit 2, with doctor's own reason.
+        print(str(exc), file=sys.stderr)
+        return exc.exit_code
+    harness = selection.harness
     ok, reason = harness.available()
     if not ok:
         print(f"harness unavailable: {reason}", file=sys.stderr)
@@ -415,12 +444,19 @@ def cmd_review(args: argparse.Namespace) -> int:
     outcome_dict["pr"] = args.pr
     outcome_dict["repo"] = args.repo
     outcome_dict["head_sha"] = pr.head_sha
+    # Every summary names what actually ran. Without this a user cannot tell which install, profile or
+    # model spent their money, which is exactly the A2/A3 complaint.
+    outcome_dict.update(selection.summary_fields())
+    outcome_dict["harness_unverified"] = selection.unverified
 
     if args.json:
         print(json.dumps(outcome_dict, indent=2))
     else:
         print(f"PR #{args.pr} {pr.title} ({pr.head_sha[:7]}) level={args.level} "
               f"profile={args.profile}")
+        # Deliberately not folded into the line above: `profile=` there is the review level's profile,
+        # and a Hermes profile with the same word would read as the same thing.
+        print(selection.banner())
         if args.dry_run:
             print("dry run: nothing was posted and no review state was stored")
         else:
@@ -457,6 +493,33 @@ def cmd_review(args: argparse.Namespace) -> int:
         if not args.dry_run:
             print(f"\nsee it: code-shipper ui --repo {args.repo} --pr {args.pr}")
     return _review_exit_code(outcome)
+
+
+def _add_harness_arguments(parser) -> None:
+    """The harness selection flags, added by one function so no command can offer a partial set.
+
+    Before this, `--harness` existed nowhere and `HermesHarness()` was constructed at three call sites: the
+    README promised "any agent harness" and no command could select one.
+    """
+    from .harness.factory import DEFAULT_HARNESS, HARNESS_NAMES
+
+    parser.add_argument(
+        "--harness",
+        default=DEFAULT_HARNESS,
+        choices=list(HARNESS_NAMES),
+        help=f"which agent harness runs the review (default: {DEFAULT_HARNESS})",
+    )
+    parser.add_argument(
+        "--hermes-profile",
+        default="",
+        metavar="NAME",
+        help="Hermes profile to run under (hermes harness only). Passed to the agent as HERMES_PROFILE.",
+    )
+    parser.add_argument(
+        "--allow-unverified-harness",
+        action="store_true",
+        help="allow a harness doctor reports UNVERIFIED; its output is not covered by any measured control",
+    )
 
 
 def _review_exit_code(outcome) -> int:
@@ -709,7 +772,20 @@ def cmd_poll(args: argparse.Namespace) -> int:
     state_root = Path(args.state_dir).expanduser() if args.state_dir else _state_dir()
     store = ReviewStore(state_root)
     cache = ReviewCache(state_root)
-    harness = HermesHarness()
+    # Through the factory, like every other command: one place decides, and a refused harness stops the
+    # watch before it starts rather than failing on its first round.
+    from .harness.factory import HarnessRefused, build_harness
+
+    try:
+        selection = build_harness(
+            name=getattr(args, "harness", "hermes"),
+            profile=getattr(args, "hermes_profile", "") or "",
+            allow_unverified=getattr(args, "allow_unverified_harness", False),
+        )
+    except HarnessRefused as exc:
+        print(str(exc), file=sys.stderr)
+        return exc.exit_code
+    harness = selection.harness
 
     def current_head() -> str:
         return host.get_pr(repo, args.pr).head_sha
@@ -752,7 +828,7 @@ def cmd_poll(args: argparse.Namespace) -> int:
                 workdir=None,
                 env=scrubbed_env(),
             ),
-            harness=HermesHarness(),
+            harness=harness,
             store=store,
             cache=cache,
         )
@@ -995,6 +1071,12 @@ def cmd_fix(args: argparse.Namespace) -> int:
     return cli_view.EXIT_ERROR
 
 
+# Shared with the argument help, so a state accepted by the parser and a state the handler honours cannot
+# drift apart.
+_DEMO_STATES = ("empty", "reviewing", "findings", "incomplete", "approvals-blocked",
+                "approvals-satisfied", "observe", "paused", "stopped", "error")
+
+
 def _projection_for(args: argparse.Namespace):
     """The projection a surface should draw: stored state, or the sample board under --demo.
 
@@ -1008,7 +1090,24 @@ def _projection_for(args: argparse.Namespace):
     repo = getattr(args, "repo", "") or ""
     pr = getattr(args, "pr", None)
 
+    # A number in the positional slot is a pull request, exactly as `review 25` reads. A word is a demo
+    # state. This is the whole of A5: `ui 25` used to fail with "invalid choice: '25'" while `review 25`
+    # worked, because the positional was restricted to state names.
+    if isinstance(state_name, str) and state_name.isdigit():
+        if pr is None:
+            pr = int(state_name)
+        state_name = "auto"
+
     if state_name and state_name != "auto":
+        if state_name not in _DEMO_STATES:
+            # Not a number and not a state: a typo. Refusing beats drawing the most recent board and
+            # letting the user believe they asked for it.
+            print(
+                f"unknown state {state_name!r}. Pass a pull request number, or one of: "
+                f"{', '.join(['auto'] + list(_DEMO_STATES))}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
         # A named state is a design-review screen. Treating it as real would need a PR to name too.
         if not demo and (not repo or not pr):
             print(
