@@ -68,6 +68,8 @@ class ReviewRequest:
     # N3: the repository's review rules, already read at the default branch by the caller.
     repo_rules: str = ""
     rules_sources: list[str] = field(default_factory=list)
+    # N6: comments from bots the user named with --trust-bot, as claims to check.
+    claims: str = ""
     commit_message: str = ""
     lines_changed: int = 0
     touches_tests: bool | None = None
@@ -267,6 +269,7 @@ def run(
         lessons_mode=request.memory_mode,
         repo_rules=request.repo_rules,
         rules_sources=request.rules_sources,
+        claims=request.claims,
     )
 
     # Volume profile: quiet drops nits, assertive is the caller's business at the lens level. Neither

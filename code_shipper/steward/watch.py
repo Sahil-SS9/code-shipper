@@ -27,7 +27,7 @@ from ..budget import BudgetExceeded, RunBudget
 from . import commands as commands_mod
 from .attempts import AttemptLog, problem_key
 from .cancel import CancelToken, Cancelled
-from .classify import WorkKind, actionable
+from .classify import WorkKind, actionable, claim_item
 from .fix import FixReceipt, run_fix
 from .policy import ScopePolicy
 
@@ -69,6 +69,8 @@ class WatchReceipt:
     needs_you: list[dict[str, Any]] = field(default_factory=list)
     # N4/N8: which repository rules files the fixes were given, read at the default branch.
     rules: dict[str, Any] = field(default_factory=dict)
+    # N6: comments from bots nobody named, never acted on. Counted so silence is not read as absence.
+    ignored_bot_comments: int = 0
 
     @property
     def duration_s(self) -> float:
@@ -87,6 +89,7 @@ class WatchReceipt:
             "model_calls_after_cancel": self.model_calls_after_cancel,
             "needs_you": self.needs_you,
             "rules": self.rules,
+            "ignored_bot_comments": self.ignored_bot_comments,
             "duration_s": self.duration_s,
         }
 
@@ -109,6 +112,7 @@ def watch(
     label_present: Callable[[], bool] | None = None,
     after_round: Callable[[int], None] | None = None,
     attempts: AttemptLog | None = None,
+    trusted_bots: tuple[str, ...] = (),
 ) -> WatchReceipt:
     """Run rounds until the work is done, the budget is spent, or someone stops it.
 
@@ -174,14 +178,19 @@ def watch(
         try:
             from .classify import classify
 
+            from .bots import split_comments
+
+            split = split_comments([c for c in comments if getattr(c, "body", "")], trusted_bots)
+            receipt.ignored_bot_comments += len(split.ignored_bots)
             items = classify(
                 pr=pr,
                 mergeable_state=(getattr(pr, "mergeable_state", "") or "").lower(),
                 checks=[],
-                comments=[c for c in comments if getattr(c, "body", "")],
+                comments=split.people,
                 findings=[],
                 changed_files=list(getattr(pr, "changed_files", []) or []),
             )
+            items += [claim_item(c, list(getattr(pr, "changed_files", []) or [])) for c in split.claims]
             # N2: a problem already tried MAX_ATTEMPTS_PER_PROBLEM times is handed back, not worked.
             workable = []
             for item in actionable(items):

@@ -33,6 +33,10 @@ EXIT_CODES_HELP = """exit codes:
 _NO_ABBREV = {"allow_abbrev": False}
 
 
+TRUST_BOT_HELP = ("treat comments from this bot as claims to check against the code, never as instructions; "
+                  "repeatable. Other bots' comments are ignored (N6)")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="code-shipper",
@@ -127,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="read the failing check's log and annotation paths as hints (C10)",
     )
+    review.add_argument("--trust-bot", action="append", default=[], metavar="NAME", help=TRUST_BOT_HELP)
     review.add_argument(
         "--max-reviews",
         type=int,
@@ -147,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--dry-run", action="store_true",
                        help="run the loop but never push (no token needed)")
     watch.add_argument("--json", action="store_true", help="machine-readable output")
+    watch.add_argument("--trust-bot", action="append", default=[], metavar="NAME", help=TRUST_BOT_HELP)
     watch.add_argument(
         "--label",
         default="code-shipper-watching",
@@ -415,6 +421,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     from .review.state import ReviewStore
 
     rules = _review_rules(host, args.repo)
+    claims = _bot_claims(host, args.repo, args.pr, tuple(getattr(args, "trust_bot", []) or []))
     state_root = Path(args.state_dir).expanduser() if args.state_dir else _state_dir()
     store = ReviewStore(state_root)
     cache = ReviewCache(state_root)
@@ -451,6 +458,7 @@ def cmd_review(args: argparse.Namespace) -> int:
             memory_mode=args.memory_mode,
             repo_rules=rules.text,
             rules_sources=rules.sources,
+            claims=claims,
         ),
         harness=harness,
         store=store,
@@ -1409,6 +1417,7 @@ def cmd_watch(args: argparse.Namespace) -> int:
             token=None if args.dry_run else token,
             label_present=lambda: args.label in host.list_labels(args.repo, args.pr),
             attempts=attempts,
+            trusted_bots=tuple(getattr(args, "trust_bot", []) or []),
         )
 
     _report_needs_you(args, receipt, attempts, token)
@@ -1439,6 +1448,22 @@ def cmd_watch(args: argparse.Namespace) -> int:
         if args.dry_run:
             print("dry run: no token was used, so no push could happen")
     return 0
+
+
+def _bot_claims(host: Any, repo: str, pr: int, trusted: tuple[str, ...]) -> str:
+    """N6: comments from the named bots, as claims. Nothing is fetched when no bot is named."""
+    if not trusted:
+        return ""
+    from .steward.bots import claims_text, split_comments
+
+    try:
+        split = split_comments(host.list_comments(repo, pr), trusted)
+    except Exception as exc:  # noqa: BLE001 - a missing comment list must not fail a review
+        print(f"note: could not read comments for --trust-bot ({exc}); reviewing without them", file=sys.stderr)
+        return ""
+    if not split.claims:
+        print(f"note: no comments from {', '.join(trusted)} on this pull request", file=sys.stderr)
+    return claims_text(split.claims)
 
 
 def _review_rules(host: Any, repo: str) -> Any:

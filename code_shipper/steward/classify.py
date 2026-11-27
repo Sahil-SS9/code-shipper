@@ -312,6 +312,23 @@ def classify_review_comment(comment: Any, changed_files: list[str]) -> WorkItem:
     )
 
 
+def claim_item(comment: Any, changed_files: list[str]) -> WorkItem:
+    """N6: a named bot's comment, as a claim to confirm in the code before anything changes."""
+    item = classify_review_comment(comment, changed_files)
+    author = str(getattr(comment, "author", "") or "bot")
+    body = str(getattr(comment, "body", "") or "")[:2000]
+    if item.kind == WorkKind.NONE:
+        return item
+    return WorkItem(
+        item.kind,
+        f"the automated reviewer {author} claims a problem; confirm it in the code before changing anything",
+        paths=item.paths,
+        source_id=item.source_id,
+        reply_only=item.reply_only,
+        detail={"claim": True, "author": author, "claim_text": body},
+    )
+
+
 def _looks_like_a_directive(body: str) -> bool:
     """A question that is really an instruction: "why not just clamp it?" is a change request."""
     return bool(re.search(r"\b(please|could you|can you|should|instead|let's|lets|just)\b",
