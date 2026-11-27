@@ -12,6 +12,7 @@ another host would be a credential leak, which is the same defect already fixed 
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -137,6 +138,31 @@ class GitHubHost:
         if not isinstance(data, list):
             raise HostError("unexpected payload for PR list")
         return [_to_pr(entry) for entry in data]
+
+    def list_merged_prs(self, repo: str, since: float, *, limit: int = 100) -> list[PullRequest]:
+        """Pull requests merged at or after `since` (epoch), newest first. Read-only; at most 3 pages."""
+        import calendar
+
+        owner, name = split_slug(repo)
+        found: list[PullRequest] = []
+        for page in range(1, 4):
+            data, _ = self._get(f"/repos/{owner}/{name}/pulls?state=closed&sort=updated&direction=desc"
+                                f"&per_page=100&page={page}")
+            if not isinstance(data, list):
+                raise HostError("unexpected payload for PR list")
+            for entry in data:
+                merged_at = str((entry or {}).get("merged_at") or "") if isinstance(entry, dict) else ""
+                if not merged_at:
+                    continue
+                stamp = calendar.timegm(time.strptime(merged_at, "%Y-%m-%dT%H:%M:%SZ"))
+                if stamp >= since:
+                    found.append(_to_pr(entry))
+            updated = [str((e or {}).get("updated_at") or "") for e in data if isinstance(e, dict)]
+            oldest = min((calendar.timegm(time.strptime(u, "%Y-%m-%dT%H:%M:%SZ")) for u in updated if u),
+                         default=0)
+            if len(data) < 100 or oldest < since or len(found) >= limit:
+                break
+        return found[:limit]
 
     def compare_status(self, repo: str, base: str, head: str) -> dict:
         """The compare endpoint's `status` and file count, for the D5 ancestry guard.

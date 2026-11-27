@@ -318,6 +318,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     config.add_argument("--json", action="store_true", help="machine-readable output")
 
+    approvals = sub.add_parser(
+        "approvals", help="check an approvals policy against what reviewers actually did", **_NO_ABBREV
+    )
+    approvals.add_argument("action", choices=["report"],
+                           help="report: for merged pull requests, the policy's answer next to the reviewers' (N7)")
+    approvals.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
+    approvals.add_argument("--since", default="14d", help="window, like 14d, 2w or 36h (default 14d)")
+    approvals.add_argument("--json", action="store_true", help="machine-readable output")
+
     lessons = sub.add_parser(
         "lessons",
         help="inspect, add or withdraw review lessons",
@@ -536,6 +545,70 @@ def cmd_review(args: argparse.Namespace) -> int:
         if not args.dry_run:
             print(f"\nsee it: code-shipper ui --repo {args.repo} --pr {args.pr}")
     return _review_exit_code(outcome)
+
+
+def cmd_approvals(args: argparse.Namespace) -> int:
+    """N7: read-only. Merged PRs in the window, the current policy's answer, the reviewers' answer."""
+    import os
+
+    from .approvals.policy import PolicyError, parse
+    from .approvals.report import build_report, parse_since
+    from .approvals.shared import merge
+    from .hosts.github import GitHubHost
+
+    try:
+        since = parse_since(args.since)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    token = os.environ.get("CODE_SHIPPER_GITHUB_TOKEN") or _read_token_quietly()
+    if not token:
+        print("no GitHub token found; the report reads pull requests and reviews", file=sys.stderr)
+        return 2
+    host = _approvals_host(token)
+    try:
+        branch = host.default_branch(args.repo)
+        ref = host.resolve_ref(args.repo, branch) or branch
+        texts = {}
+        for name in (".code-shipper/approvals.yml", "code-shipper.yml"):
+            try:
+                raw = host.read_file(args.repo, ref, name)
+            except Exception:  # noqa: BLE001 - an absent file is normal
+                raw = None
+            texts[name] = raw.decode() if raw else ""
+        central = parse(texts[".code-shipper/approvals.yml"], source="central") if texts[".code-shipper/approvals.yml"] else None
+        local = parse(texts["code-shipper.yml"], source="base") if texts["code-shipper.yml"] else None
+    except PolicyError as exc:
+        print(f"the approvals policy is invalid: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001
+        print(f"could not read the policy: {exc}", file=sys.stderr)
+        return 2
+    policy = merge(central, local, repo=args.repo).policy
+    # merge() returns an empty Policy(source="none") when neither file exists, never None.
+    if policy is None or not policy.rules:
+        print(f"no approvals policy on {branch}: nothing to calibrate", file=sys.stderr)
+        return 2
+    merged = []
+    for pr in host.list_merged_prs(args.repo, since):
+        try:
+            merged.append({"pr": pr, "files": [f.path for f in host.get_diff(args.repo, pr.number).files],
+                           "reviews": host.list_reviews(args.repo, pr.number)})
+        except Exception as exc:  # noqa: BLE001 - one unreadable PR is reported, not fatal
+            merged.append({"pr": pr, "error": str(exc)})
+    report = build_report(policy, merged)
+    if args.json:
+        print(json.dumps(report.as_dict() | {"repo": args.repo, "since": args.since, "policy_ref": ref}, indent=2))
+    else:
+        print(f"approvals report for {args.repo}, merged in the last {args.since}, policy at {branch} ({str(ref)[:7]})")
+        print(report.render())
+    return 0
+
+
+def _approvals_host(token: str):
+    from .hosts.github import GitHubHost
+
+    return GitHubHost(token)
 
 
 def cmd_review_local(args: argparse.Namespace) -> int:
@@ -1685,7 +1758,7 @@ def _prune_receipts_once(args: argparse.Namespace) -> None:
     most PRUNE_CLOSURE_CAP are asked per run, read-only, and any error or missing token means "not
     closed", so the record is kept and considered again next time.
     """
-    if getattr(args, "command", "") in {"ui", "ship-ui", "status", "doctor", "lessons", "stop"}:
+    if getattr(args, "command", "") in {"ui", "ship-ui", "status", "doctor", "lessons", "stop", "approvals"}:
         return
     try:
         import os
@@ -1730,6 +1803,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_stop(args)
     if args.command == "config":
         return cmd_config(args)
+    if args.command == "approvals":
+        return cmd_approvals(args)
     if args.command == "fix":
         return cmd_fix(args)
     if args.command == "ui":
