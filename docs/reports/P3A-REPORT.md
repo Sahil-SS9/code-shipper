@@ -1,7 +1,7 @@
 # P3-A — Broker roles, allowlists, exact head, receipts, lease, reconciliation
 
 Status: complete, awaiting review. No requests were sent to GitHub by this checkpoint's tests.
-Commit: `740b6d4`
+Commit: `b716e18` — the same change as initially recorded under `740b6d4`, which was amended before merge and is not in this repository's history. The citation is corrected so it names a commit that can actually be checked out.
 
 ## The rule this checkpoint is built around
 

@@ -130,7 +130,7 @@ is narrower than the reviewer's reports false misses. Both PRs were then read by
 - macOS/Windows containment of a real fix run — unit tests only on the matrix; GitHub Actions still cannot
   start (billing).
 - A hosted CI run ID for `9d240ff` — same billing block; `local-ci` output substitutes.
-- `docs/reports/P3B-REPORT.md` still cites amended commit `740b6d4`.
+- ~~`docs/reports/P3B-REPORT.md` still cites amended commit `740b6d4`.~~ **Fixed in this round:** the file is `P3B2-REPORT.md`, and the stale citation was in `P3A-REPORT.md`, which is the report that named `740b6d4`. That commit was amended before merge and is not in history; the citation now names `b716e18`, the commit on main carrying the same change.
 
 ## Fix 5 — the security filter only guarded one door
 
