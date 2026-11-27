@@ -65,6 +65,9 @@ class ReviewRequest:
     # Where lessons live. Defaulted to None, and review() treats None as "no memory": a caller that has
     # not opted in must be byte-identical to a run before memory was wired.
     lessons_dir: Any = None
+    # N3: the repository's review rules, already read at the default branch by the caller.
+    repo_rules: str = ""
+    rules_sources: list[str] = field(default_factory=list)
     commit_message: str = ""
     lines_changed: int = 0
     touches_tests: bool | None = None
@@ -262,6 +265,8 @@ def run(
         assertiveness=profile,
         lessons_dir=request.lessons_dir,
         lessons_mode=request.memory_mode,
+        repo_rules=request.repo_rules,
+        rules_sources=request.rules_sources,
     )
 
     # Volume profile: quiet drops nits, assertive is the caller's business at the lens level. Neither

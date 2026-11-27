@@ -414,6 +414,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     from .review.service import ReviewRequest, run as run_service
     from .review.state import ReviewStore
 
+    rules = _review_rules(host, args.repo)
     state_root = Path(args.state_dir).expanduser() if args.state_dir else _state_dir()
     store = ReviewStore(state_root)
     cache = ReviewCache(state_root)
@@ -448,6 +449,8 @@ def cmd_review(args: argparse.Namespace) -> int:
             # does nothing.
             lessons_dir=state_root,
             memory_mode=args.memory_mode,
+            repo_rules=rules.text,
+            rules_sources=rules.sources,
         ),
         harness=harness,
         store=store,
@@ -868,6 +871,7 @@ def cmd_poll(args: argparse.Namespace) -> int:
 
     def on_new_head(old: str, new: str) -> None:
         pr = host.get_pr(repo, args.pr)
+        rules = _review_rules(host, repo)
         existing = store.load(repo, args.pr)
         since_diff = None
         if existing.has_baseline:
@@ -887,6 +891,8 @@ def cmd_poll(args: argparse.Namespace) -> int:
                 intent=intent_block(pr.title, pr.body),
                 workdir=None,
                 env=scrubbed_env(),
+                repo_rules=rules.text,
+                rules_sources=rules.sources,
             ),
             harness=harness,
             store=store,
@@ -1428,6 +1434,16 @@ def cmd_watch(args: argparse.Namespace) -> int:
         if args.dry_run:
             print("dry run: no token was used, so no push could happen")
     return 0
+
+
+def _review_rules(host: Any, repo: str) -> Any:
+    """N3: the repository's review rules, read at its default branch — never at the pull request."""
+    from .repo_rules import REVIEW_FILES, load_rules
+
+    rules = load_rules(host, repo, REVIEW_FILES)
+    for problem in rules.errors:
+        print(f"note: {problem}; reviewing without it", file=sys.stderr)
+    return rules
 
 
 def _report_needs_you(args: argparse.Namespace, receipt: Any, attempts: Any, token: str) -> None:
