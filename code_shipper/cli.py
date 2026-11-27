@@ -86,6 +86,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review.add_argument("--base", default="", metavar="REF",
                         help="with --local: the ref to compare against (default: origin/HEAD, main, master)")
+    review.add_argument("--apply", action="store_true",
+                        help="with --local: fix Important findings in this checkout, in the contained worker. "
+                             "Only files your change already touches (or the repo's scope block) may be edited; "
+                             "nothing is staged, committed or pushed")
     review.add_argument(
         "--level",
         default="standard",
@@ -667,7 +671,47 @@ def cmd_review_local(args: argparse.Namespace) -> int:
             if finding.body:
                 print(f"    {finding.body[:300]}")
         print(NEVER_MERGES)
+    if getattr(args, "apply", False):
+        _apply_local_fixes(args, repo_dir, change, outcome)
     return _review_exit_code(outcome)
+
+
+def _apply_local_fixes(args: argparse.Namespace, repo_dir: Path, change, outcome) -> None:
+    """`--apply`: fix Important findings in the checkout. Reports to stderr when --json is set."""
+    from .config import read_scope_block
+    from .repo_rules import STEWARD_FILES, VERIFY_FILES, load_rules
+    from .review.local import LocalRulesHost
+    from .review.local_apply import apply_findings
+
+    say = (lambda text: print(text, file=sys.stderr)) if args.json else print
+    if not outcome.complete:
+        say("--apply skipped: the review was INCOMPLETE, so there is nothing trustworthy to fix")
+        return
+    host = LocalRulesHost(repo_dir, change.base_ref)
+    raw = host.read_file("local", change.base_ref, "code-shipper.yml")
+    try:
+        scope = read_scope_block(raw.decode("utf-8", "replace")) if raw else {}
+    except ValueError as exc:
+        say(f"--apply refused: code-shipper.yml at {change.base_ref} has an invalid scope block: {exc}")
+        return
+    house = load_rules(host, "local", STEWARD_FILES)
+    recipe = load_rules(host, "local", VERIFY_FILES)
+    results = apply_findings(
+        repo_dir=repo_dir, findings=list(outcome.findings),
+        changed_paths=[f.path for f in change.diff.files], merge_base=change.merge_base,
+        worker=_container_worker(), scope_config=scope or None,
+        house_rules=house.text, verify_recipe=recipe.text, staging_parent=_state_dir(),
+    )
+    if not results:
+        say("--apply: no Important findings to fix")
+        return
+    for fix in results:
+        say(f"--apply: {fix.title}: {fix.verdict}" + (f" ({', '.join(fix.applied)})" if fix.applied else ""))
+        for problem in fix.problems:
+            say(f"    {problem}")
+        for step in fix.verification.get("steps", []) or []:
+            say(f"    check reported: {step.get('ran', '')} -> {step.get('saw', '')}")
+    say("nothing was staged, committed or pushed: review with `git diff`, undo with `git checkout -- FILE`")
 
 
 def cmd_config_confirm_agent_approval(args: argparse.Namespace) -> int:

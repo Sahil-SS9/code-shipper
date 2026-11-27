@@ -47,11 +47,6 @@ stops in reading order, each with its files, notes and questions to consider. Co
 sit at the stop they belong to. The guide records the head commit it was written for and says plainly when
 the branch has moved on. Advisory only: no approve, no merge. Shown in the CLI, the TUI and the desktop page.
 
-### `review --local --apply`
-`review --local` reviews before you push but does not write fixes. Writing into a developer's own checkout
-needs the contained worker and its scope checks applied to a different trust boundary, so it was left out
-of v1.1 rather than shipped half-made.
-
 ### Smaller, related
 - The Hermes `/ship` plugin remembers which pull requests the current conversation is looking after.
 - Optional: findings in a format Tern's `prs` panel can show, so the two tools sit side by side.

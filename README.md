@@ -313,7 +313,8 @@ These files guide the agent but cannot loosen any limit. Fixes can never edit CI
 says. A fix gets three tries per problem. After that, Code-Shipper stops and lists what it tried.
 
 Before you push, `code-shipper review --local` reviews your branch and uncommitted changes. It needs no
-token and posts nothing. Comments from other bots are ignored unless you name the bot with
+token and posts nothing. Add `--apply` to fix Important findings in the contained worker: only files
+your change already touches may be edited, and nothing is staged, committed or pushed. Comments from other bots are ignored unless you name the bot with
 `--trust-bot NAME`. Even then they are claims to check, never instructions.
 
 ## Documents
