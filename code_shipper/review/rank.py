@@ -19,6 +19,11 @@ MAX_NIT = 10
 SEVERITY_ORDER = {"important": 0, "nit": 1, "pre_existing": 2}
 
 
+# Kept here rather than imported from engine: rank is imported by engine, and a cycle would be worse than
+# one repeated string constant guarded by a test that the two agree.
+SECURITY_LENS = "security"
+
+
 @dataclass(frozen=True)
 class PostingPlan:
     to_post: list[Finding]
@@ -32,7 +37,14 @@ class PostingPlan:
         A quiet profile hides nits from the posted review; the count still goes into the body so a
         reader knows something was found and is not being shown.
         """
-        kept = [f for f in self.to_post if (getattr(f, "severity", "") or "").lower() != "nit"]
+        # A security finding is never dropped as a nit, whatever severity the lens gave it. The quiet
+        # profile exists to cut noise; a vulnerability is not noise, and the lens that finds it is the one
+        # whose findings this product must not hide.
+        kept = [
+            f for f in self.to_post
+            if (getattr(f, "severity", "") or "").lower() != "nit"
+            or getattr(f, "lens", "") == SECURITY_LENS
+        ]
         dropped = len(self.to_post) - len(kept)
         return PostingPlan(
             to_post=kept,

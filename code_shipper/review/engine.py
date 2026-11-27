@@ -98,6 +98,27 @@ def intent_block(title: str, body: str, *, limit: int = MAX_INTENT_CHARS) -> str
     return header + "\n" + untrusted_block("pr_description", text, limit=limit)
 
 
+# The lens whose job is to find vulnerabilities. Lessons come from human feedback and are text, so they
+# can be reworded to mean "stop reporting this" in ways no phrase list can catch. Buying fewer false
+# positives by muting the security lens is the one trade this product must not make, so the exclusion is
+# by lens name and lives here rather than in a prompt-level instruction.
+SECURITY_LENS = "security"
+
+
+def lessons_for_lens(lens: Lens, lessons: str) -> str:
+    """The lessons this lens may see. The security lens sees none, ever.
+
+    One function, consulted by the only caller that builds a lens prompt, so a lens added later cannot
+    accidentally acquire lessons it should not have. Tests assert both directions: a legitimate lesson
+    reaches a non-security lens, and all eight known rewordings never reach the security one.
+    """
+    if not lessons:
+        return ""
+    if getattr(lens, "name", "") == SECURITY_LENS:
+        return ""
+    return lessons
+
+
 def lens_prompt(
     lens: Lens,
     diff: Diff,
@@ -147,6 +168,9 @@ def lens_prompt(
         "Reply with JSON only: {\"findings\": [...]}. An empty list is a valid answer.",
         "",
     ]
+    # Filtered here as well as at the caller: `lens_prompt` is public, so the rule has to hold for any
+    # caller, not only `review()`.
+    lessons = lessons_for_lens(lens, lessons)
     if lessons:
         # A cue is authored text from a reviewer, so it is framed like every other outside input. The
         # header lives here and only here: printing it in apply_to_prompt as well showed it twice.
@@ -227,6 +251,11 @@ def verify_findings(
 
     ``contract`` is what the changed code says it does. Without it the verifier cannot tell a violation
     from a preference, which is precisely how both false confirms survived the last measurement.
+
+    Deliberately absent: ``lessons``. The verifier decides which findings survive, so a lesson reaching it
+    would be a way to suppress a finding without touching any lens prompt — the same hole with a different
+    door. The signature is the guard: there is no parameter to pass lessons through, and a test asserts
+    that none of ``verify_findings``' parameters can carry them.
     """
     confirmed: list[Finding] = []
     errors: list[str] = []

@@ -156,6 +156,10 @@ class MergedFinding:
     # Carried so `enclosing_function` can read the quoted code. Without it the root-cause merge cannot
     # tell which function a finding is in, and silently merges nothing — which is how this was found.
     evidence: str = ""
+    # Which lens produced it. Carried so the merge can refuse to absorb or be absorbed by a security
+    # finding: without it a security finding could vanish into a lower-severity neighbour and nothing
+    # downstream could tell that one had ever existed.
+    lens: str = ""
 
     @property
     def merged_count(self) -> int:
@@ -184,6 +188,11 @@ def enclosing_function(evidence: str) -> str:
         return ""
     # The last def in a quoted window is the innermost one, which is the function the snippet is about.
     return matches[-1]
+
+
+# The lens name that must never be merged away or downgraded. Imported lazily by name to avoid a cycle:
+# engine imports this module, so this module cannot import engine at module level.
+SECURITY_LENS = "security"
 
 
 def _root_cause_key(item: Any) -> str | None:
@@ -256,8 +265,18 @@ def merge_by_root_cause(items: list[Any]) -> list[MergedFinding]:
         if len(group) == 1:
             out.append(group[0])
             continue
-        survivor = max(group, key=lambda f: _severity_rank(f.severity))
-        for other in group:
+        # A security finding is never merged away and never absorbs another. Two findings about one
+        # expression can be a correctness bug and a vulnerability; collapsing them leaves one line in the
+        # posted review where a maintainer needed two, which is the "missed bug" this merge must not
+        # cause. Security findings therefore come out as their own entries, always.
+        security = [item for item in group if item.lens == SECURITY_LENS]
+        rest = [item for item in group if item.lens != SECURITY_LENS]
+        out.extend(security)
+        if len(rest) <= 1:
+            out.extend(rest)
+            continue
+        survivor = max(rest, key=lambda f: _severity_rank(f.severity))
+        for other in rest:
             if other is survivor:
                 continue
             survivor.merged_titles.append(_merged_label(survivor, other))
@@ -275,10 +294,13 @@ def merge_by_fingerprint(items: list[Any]) -> list[MergedFinding]:
     A finding that has not had its fingerprint computed gets one here, from its own fields. That
     keeps the merge usable on raw lens output, where nothing has stamped an identity yet.
     """
-    groups: dict[str, list[Any]] = {}
-    order: list[str] = []
+    # Grouped by identity AND lens. A security finding and a correctness finding can quote the same line —
+    # one expression, two defects — and they share a fingerprint. Grouping on the fingerprint alone
+    # collapsed them into one entry, which is exactly the merged-away vulnerability this must not do.
+    groups: dict[tuple[str, str], list[Any]] = {}
+    order: list[tuple[str, str]] = []
     for item in items:
-        key = _identity_of(item)
+        key = (_identity_of(item), getattr(item, "lens", "") or "")
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -288,6 +310,7 @@ def merge_by_fingerprint(items: list[Any]) -> list[MergedFinding]:
     for key in order:
         group = groups[key]
         survivor = group[0]
+        lens = getattr(survivor, "lens", "") or ""
         for candidate in group[1:]:
             if _severity_rank(getattr(candidate, "severity", "")) > _severity_rank(
                 getattr(survivor, "severity", "")
@@ -300,13 +323,14 @@ def merge_by_fingerprint(items: list[Any]) -> list[MergedFinding]:
         ]
         merged.append(
             MergedFinding(
-                fingerprint=key,
+                fingerprint=key[0],
                 path=getattr(survivor, "path", ""),
                 line=getattr(survivor, "line", 0),
                 severity=getattr(survivor, "severity", ""),
                 title=getattr(survivor, "title", ""),
                 merged_titles=[title for title in others if title],
                 evidence=getattr(survivor, "evidence", "") or getattr(survivor, "body", ""),
+                lens=lens,
             )
         )
     return merged
@@ -353,13 +377,25 @@ def apply_root_cause_merge(findings: list[Any]) -> list[Any]:
     if len(merged) == len(findings):
         return findings
 
-    by_fingerprint = {_identity_of(item): item for item in findings}
+    # Keyed by fingerprint AND lens: a security finding and a correctness finding can share a
+    # fingerprint, and they now come out as two entries. Keying on the fingerprint alone would let the
+    # second overwrite the first in this dict and drop it from `out` — a lost finding in the one place
+    # that exists to prevent lost findings.
+    by_key = {(_identity_of(item), getattr(item, "lens", "") or ""): item for item in findings}
     out: list[Any] = []
     for survivor in merged:
-        original = by_fingerprint.get(survivor.fingerprint)
+        original = by_key.get((survivor.fingerprint, survivor.lens))
         if original is None:
-            # Should not happen: the survivor came from this list. Keeping it rather than dropping it
-            # is the safe direction — a lost finding is indistinguishable from one never found.
+            # Fall back to the fingerprint alone, then keep the entry. Should not happen: the survivor
+            # came from this list. Keeping it rather than dropping it is the safe direction — a lost
+            # finding is indistinguishable from one never found.
+            original = next(
+                (item for item in findings
+                 if _identity_of(item) == survivor.fingerprint
+                 and (getattr(item, "lens", "") or "") == survivor.lens),
+                None,
+            )
+        if original is None:
             continue
         suffix = survivor.body_suffix()
         if suffix and hasattr(original, "body"):
