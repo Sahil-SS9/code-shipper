@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from pathlib import Path
 
 from code_shipper.surfaces.mantra import NEVER_MERGES
 
@@ -99,3 +100,18 @@ def _render_board() -> list[str]:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoBuilderNameInTheProductTests(unittest.TestCase):
+    """The TUI header and Desktop used to say 'kensei · standard' to every user."""
+
+    def test_no_surface_defaults_to_a_personal_name(self) -> None:
+        from code_shipper.surfaces.projection import Projection
+        from code_shipper.surfaces.tui import render as render_tui  # noqa: F401  (import must work)
+
+        projection = Projection(state="empty", profile="standard")
+        self.assertEqual((projection.author, projection.who), ("", ""))
+        root = Path(__file__).resolve().parents[1] / "code_shipper"
+        for path in root.rglob("*.py"):
+            self.assertNotIn("kensei", path.read_text(encoding="utf-8").replace("/home/kensei", ""),
+                             f"{path.name} names the builder's agent")

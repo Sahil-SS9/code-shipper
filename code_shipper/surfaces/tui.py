@@ -234,7 +234,7 @@ def render(projection: Projection, *, width: int = DEFAULT_WIDTH,
     left_width = max(34, min(42, width // 3))
     right_width = width - left_width - 1
 
-    lines = [_pad(f" code-shipper · {projection.repo} · {projection.who}", width)]
+    lines = [_pad(f" code-shipper · {projection.repo} · {projection.who or projection.profile}", width)]
     lines.append(_pad("─" * left_width + "┬" + "─" * right_width, width))
 
     left = _inbox(projection, left_width - 1)

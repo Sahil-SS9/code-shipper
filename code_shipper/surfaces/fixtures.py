@@ -83,7 +83,7 @@ def _base(
         reviewed_head=HEAD, findings=list(findings or []), complete=complete,
         approvals_state=approvals_state, policy_state=policy_state, ci_state=ci_state,
         paused_reason=paused_reason, refusal=refusal, error=error,
-        budget=budget or BUDGET, profile="standard", runtime_owner="kensei@sandbox",
+        budget=budget or BUDGET, profile="standard", runtime_owner="maintainer@sandbox",
     )
     projection.approvers_missing = approvers_missing
     projection.approvals_have = approvals_have
@@ -92,13 +92,13 @@ def _base(
     projection.rows = ROWS
     projection.branch = "feat/clamp"
     projection.base_ref = "demo/base"
-    projection.author = "kensei"
-    projection.who = "kensei · standard"
+    projection.author = "maintainer"
+    projection.who = "maintainer · standard"
     return projection
 
 
 def state_empty() -> Projection:
-    projection = Projection(state="empty", profile="standard", runtime_owner="kensei@sandbox")
+    projection = Projection(state="empty", profile="standard", runtime_owner="maintainer@sandbox")
     projection.rows = []
     return projection
 

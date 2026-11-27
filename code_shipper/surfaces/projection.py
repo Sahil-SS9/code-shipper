@@ -160,8 +160,8 @@ class Projection:
     authority_note: str = NEVER_MERGES
     branch: str = ""
     base_ref: str = ""
-    author: str = "kensei"
-    who: str = "kensei · standard"
+    author: str = ""
+    who: str = ""
     approvers_missing: tuple[str, ...] = ()
     approvals_have: int = 0
     approvals_needed_count: int = 0

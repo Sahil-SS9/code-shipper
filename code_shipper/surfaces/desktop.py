@@ -454,7 +454,7 @@ def render(projection: Projection, *, title: str = "Code-Shipper", demo: bool = 
     <div class="brand"><b></b>Code-Shipper</div>
     <div class="search"><span>Search pull requests or run a command</span>
       <label class="k" for="palette-toggle" style="cursor:pointer">{_kbd("Ctrl")} {_kbd("K")}</label></div>
-    <div class="who">{_esc(projection.who or "kensei · standard")}</div>
+    <div class="who">{_esc(projection.who or projection.profile)}</div>
   </div>
   {main}
   <div class="status">{_status_bar(projection)}</div>
