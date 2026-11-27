@@ -1424,6 +1424,11 @@ def cmd_watch(args: argparse.Namespace) -> int:
         print(f"PR #{args.pr} {pr.title}")
         for record in receipt.rounds:
             print(f"  round {record.index}: {record.verdict}")
+            check = (record.detail or {}).get("verification") or {}
+            if check.get("summary"):
+                print(f"    check: {check['summary']}")
+                for step in check.get("steps", []):
+                    print(f"      ran {step['ran']} -> {step.get('saw') or '(nothing reported)'}")
         print(f"stopped: {receipt.stopped_because or 'reason not recorded'}")
         if receipt.pushed:
             print(f"pushed: {', '.join(sha[:7] for sha in receipt.pushed)}")

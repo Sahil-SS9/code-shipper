@@ -90,4 +90,6 @@ class ContainedWorker:
             "ok": result.ok,
             "adapter_calls": result.adapter_calls,
             "canary": result.canary,
+            # N8: the end of the agent's reply, where it reports the verification steps it ran.
+            "reply_tail": result.stdout_tail,
         }

@@ -67,6 +67,8 @@ class WatchReceipt:
     model_calls_after_cancel: int = 0
     # N2: problems handed back after MAX_ATTEMPTS_PER_PROBLEM tries, each with the attempts made.
     needs_you: list[dict[str, Any]] = field(default_factory=list)
+    # N4/N8: which repository rules files the fixes were given, read at the default branch.
+    rules: dict[str, Any] = field(default_factory=dict)
 
     @property
     def duration_s(self) -> float:
@@ -84,6 +86,7 @@ class WatchReceipt:
             "pushed": self.pushed,
             "model_calls_after_cancel": self.model_calls_after_cancel,
             "needs_you": self.needs_you,
+            "rules": self.rules,
             "duration_s": self.duration_s,
         }
 
@@ -114,7 +117,14 @@ def watch(
     """
     cancel = cancel or CancelToken()
     attempts = attempts if attempts is not None else AttemptLog()
+    # N4/N8: house rules and the verify recipe, read once per watch at the default branch.
+    from ..repo_rules import STEWARD_FILES, VERIFY_FILES, load_rules
+
+    house = load_rules(host, repo, STEWARD_FILES)
+    recipe = load_rules(host, repo, VERIFY_FILES)
+    receipt_rules = {"house_rules": house.as_dict(), "verify_recipe": recipe.as_dict()}
     receipt = WatchReceipt()
+    receipt.rules = receipt_rules
     seen: set[str] = set()
 
     for index in range(1, max_rounds + 1):
@@ -190,6 +200,8 @@ def watch(
                 )
                 break
             result: FixReceipt = run_fix(
+                house_rules=house.text,
+                verify_recipe=recipe.text,
                 items=workable,
                 repo_dir=repo_dir,
                 base_sha=getattr(pr, "base_sha", ""),
@@ -203,7 +215,8 @@ def watch(
                 push=token is not None,
                 cancel=cancel,
             )
-            round_record = Round(index, result.verdict, {"ok": result.ok, "stage": result.stage})
+            round_record = Round(index, result.verdict, {"ok": result.ok, "stage": result.stage,
+                                                         "verification": result.verification})
             if workable and result.verdict not in ("nothing_to_do", "cancelled", "in_scope_not_pushed"):
                 detail = "; ".join(result.problems)[:300] if result.problems else ""
                 attempts.record(workable[0], verdict=result.verdict, detail=detail)
