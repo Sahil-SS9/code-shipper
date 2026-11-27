@@ -38,6 +38,19 @@ Concretely, when this is built:
 Why it is not in v1.0: it is a new way to write to GitHub that no real repository has exercised, and the
 failure mode is a merge that should not have happened.
 
+## Future (after v1.1) — noted, not scheduled
+
+### PR reading guide
+Idea borrowed from [hermes-tern](https://github.com/alt-glitch/hermes-tern)'s `write_review_guide`. On
+request ("walk me through #22"), Code-Shipper writes a guide for the human reviewer: a short summary, then
+stops in reading order, each with its files, notes and questions to consider. Code-Shipper's open findings
+sit at the stop they belong to. The guide records the head commit it was written for and says plainly when
+the branch has moved on. Advisory only: no approve, no merge. Shown in the CLI, the TUI and the desktop page.
+
+### Smaller, related
+- The Hermes `/ship` plugin remembers which pull requests the current conversation is looking after.
+- Optional: findings in a format Tern's `prs` panel can show, so the two tools sit side by side.
+
 ## v1.0 — deliberate non-goals
 
 | Not built | Why |
