@@ -69,7 +69,24 @@ def _model_for(harness: Any, profile: str = "") -> str:
     resolved = _hermes_model(profile)
     if resolved:
         return resolved
-    return "(harness default)"
+    return unresolved_model_note(profile)
+
+
+UNRESOLVED_MODEL = "(unknown"
+
+
+def unresolved_model_note(profile: str = "") -> str:
+    """Say *why* the model is unknown, in one line, instead of a placeholder that reads like an answer.
+
+    The common cause, measured in the release-prep walkthrough: a throwaway HERMES_HOME plus
+    `--hermes-profile` — Hermes looks the profile up under the effective home, where it does not exist.
+    """
+    import os
+
+    home = os.environ.get("HERMES_HOME") or "~/.hermes"
+    if profile:
+        return f"(unknown: profile {profile} is not visible from HERMES_HOME {home})"
+    return f"(unknown: `hermes config get model` gave no answer under HERMES_HOME {home})"
 
 
 def _hermes_model(profile: str = "") -> str:

@@ -74,8 +74,16 @@ that repository.
 figure. Every review summary names the harness, profile and model that actually ran:
 
 ```
-harness: hermes · profile: (default) · model: (harness default)
+harness: hermes · profile: (default) · model: claude-opus-5-5 · provider: anthropic
 ```
+
+If the model cannot be determined, the summary says why in one line instead of guessing — most often
+`(unknown: profile NAME is not visible from HERMES_HOME PATH)`, when a custom `HERMES_HOME` does not
+contain the profile you named.
+
+**What `HERMES_HOME` does and does not do.** Setting it chooses which Hermes *configuration* Code-Shipper
+reads: model, provider, profile. It is not an isolated inference path. Hermes may still route calls through
+services already running on the machine, so do not treat a throwaway `HERMES_HOME` as a sandbox.
 
 **1. Check the machine.**
 

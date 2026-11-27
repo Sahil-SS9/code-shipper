@@ -8,6 +8,7 @@ summary names the harness, profile and model that actually ran.
 from __future__ import annotations
 
 import ast
+import os
 import inspect
 import sys
 import unittest
@@ -18,7 +19,9 @@ from code_shipper.harness.base import AgentTask, Budget
 from code_shipper.harness.factory import (
     DEFAULT_HARNESS,
     HARNESS_NAMES,
+    UNRESOLVED_MODEL,
     HarnessRefused,
+    _model_for,
     build_harness,
 )
 
@@ -228,8 +231,8 @@ class TheProfileFlagIsNotANoOpTests(unittest.TestCase):
     def test_the_summary_names_the_profiles_model_not_a_placeholder(self) -> None:
         """The second half of the item: the banner said "(harness default)" for every run."""
         selection = build_harness(name="hermes", profile="mrhermagi")
-        self.assertNotEqual(selection.model, "(harness default)",
-                           "the model could not be resolved, so the summary cannot name it")
+        if selection.model.startswith(UNRESOLVED_MODEL):
+            self.skipTest("profile mrhermagi is not visible on this machine: " + selection.model)
         self.assertIn("model: ", selection.banner())
         self.assertIn(selection.model, selection.banner())
         self.assertEqual(selection.summary_fields()["model"], selection.model)
@@ -238,10 +241,20 @@ class TheProfileFlagIsNotANoOpTests(unittest.TestCase):
         """If the profile were a no-op, both would report the same model."""
         default = build_harness(name="hermes", profile="")
         other = build_harness(name="hermes", profile="mrhermagi")
-        if other.model == "(harness default)":
+        if other.model.startswith(UNRESOLVED_MODEL):
             self.skipTest("profiles are not resolvable in this environment")
         self.assertNotEqual(default.model, other.model,
                             "both profiles report the same model, so the profile chose nothing")
+
+    def test_an_unresolvable_profile_says_why_in_one_line(self) -> None:
+        """A throwaway HERMES_HOME with --hermes-profile cannot see the profile. Say so, not a placeholder."""
+        from unittest import mock
+
+        with mock.patch.dict(os.environ, {"HERMES_HOME": "/tmp/throwaway-home"}), \
+                mock.patch("code_shipper.harness.factory._hermes_model", return_value=""):
+            model = _model_for(object(), "mrhermagi")
+        self.assertEqual(model, "(unknown: profile mrhermagi is not visible from HERMES_HOME /tmp/throwaway-home)")
+        self.assertNotIn("\n", model)
 
     def test_the_banner_never_shows_an_empty_profile(self) -> None:
         self.assertIn("(default)", build_harness(name="hermes").banner())
