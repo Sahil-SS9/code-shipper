@@ -1381,6 +1381,13 @@ def cmd_watch(args: argparse.Namespace) -> int:
     # The policy comes from the repository's own config, never from a hard-coded path list.
     policy = ScopePolicy.from_config(_read_scope_config(args.repo) or {})
 
+    # N2: attempts per problem survive between watches, so a fourth watch does not start the count again.
+    from .hosts.github import split_slug
+    from .steward.attempts import AttemptLog
+
+    owner, name = split_slug(args.repo)
+    attempts = AttemptLog.load(_state_dir() / "attempts" / owner / name / f"{int(args.pr)}.json")
+
     with tempfile.TemporaryDirectory(prefix="cs-watch-") as workdir:
         receipt = run_watch(
             repo=args.repo,
@@ -1395,7 +1402,10 @@ def cmd_watch(args: argparse.Namespace) -> int:
             repo_dir=Path(workdir),
             token=None if args.dry_run else token,
             label_present=lambda: args.label in host.list_labels(args.repo, args.pr),
+            attempts=attempts,
         )
+
+    _report_needs_you(args, receipt, attempts, token)
 
     payload = receipt.as_dict()
     payload["pr"] = args.pr
@@ -1413,9 +1423,30 @@ def cmd_watch(args: argparse.Namespace) -> int:
             print(f"pushed: {', '.join(sha[:7] for sha in receipt.pushed)}")
         else:
             print("pushed: nothing")
+        for entry in receipt.needs_you:
+            print(f"needs you: {entry['reason']} ({len(entry['attempts'])} attempts)")
         if args.dry_run:
             print("dry run: no token was used, so no push could happen")
     return 0
+
+
+def _report_needs_you(args: argparse.Namespace, receipt: Any, attempts: Any, token: str) -> None:
+    """Post one comment for problems handed back in this watch, once per problem, never in a dry run."""
+    fresh = [entry for entry in receipt.needs_you if not attempts.reported(entry["key"])]
+    if not fresh or args.dry_run:
+        return
+    from .broker.roles import Broker
+    from .steward.attempts import needs_you_comment
+
+    try:
+        Broker(token=token, repo=args.repo).post_comment(pr=args.pr, body=needs_you_comment(fresh),
+                                                         role="user")
+    except Exception as exc:  # noqa: BLE001 - the receipt still says it; the comment is the courtesy
+        print(f"could not post the needs-you comment: {exc}", file=sys.stderr)
+        return
+    for entry in fresh:
+        attempts.mark_reported(entry["key"])
+        entry["reported"] = True
 
 
 def cmd_stop(args: argparse.Namespace) -> int:

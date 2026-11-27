@@ -25,8 +25,9 @@ from typing import Any, Callable, Protocol
 
 from ..budget import BudgetExceeded, RunBudget
 from . import commands as commands_mod
+from .attempts import AttemptLog, problem_key
 from .cancel import CancelToken, Cancelled
-from .classify import WorkKind
+from .classify import WorkKind, actionable
 from .fix import FixReceipt, run_fix
 from .policy import ScopePolicy
 
@@ -64,6 +65,8 @@ class WatchReceipt:
     label_removed: bool = False
     pushed: list[str] = field(default_factory=list)
     model_calls_after_cancel: int = 0
+    # N2: problems handed back after MAX_ATTEMPTS_PER_PROBLEM tries, each with the attempts made.
+    needs_you: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def duration_s(self) -> float:
@@ -80,6 +83,7 @@ class WatchReceipt:
             "label_removed": self.label_removed,
             "pushed": self.pushed,
             "model_calls_after_cancel": self.model_calls_after_cancel,
+            "needs_you": self.needs_you,
             "duration_s": self.duration_s,
         }
 
@@ -101,9 +105,15 @@ def watch(
     clock: Callable[[], float] = time.monotonic,
     label_present: Callable[[], bool] | None = None,
     after_round: Callable[[int], None] | None = None,
+    attempts: AttemptLog | None = None,
 ) -> WatchReceipt:
-    """Run rounds until the work is done, the budget is spent, or someone stops it."""
+    """Run rounds until the work is done, the budget is spent, or someone stops it.
+
+    `attempts` carries the per-problem count across watches. Omitting it does not switch the cap off: an
+    in-memory log is used, so three tries per problem holds within this watch regardless.
+    """
     cancel = cancel or CancelToken()
+    attempts = attempts if attempts is not None else AttemptLog()
     receipt = WatchReceipt()
     seen: set[str] = set()
 
@@ -162,8 +172,25 @@ def watch(
                 findings=[],
                 changed_files=list(getattr(pr, "changed_files", []) or []),
             )
+            # N2: a problem already tried MAX_ATTEMPTS_PER_PROBLEM times is handed back, not worked.
+            workable = []
+            for item in actionable(items):
+                key = problem_key(item)
+                if attempts.exhausted(key):
+                    if not any(entry["key"] == key for entry in receipt.needs_you):
+                        receipt.needs_you.append({"key": key, "reason": item.reason,
+                                                  "attempts": attempts.attempts(key),
+                                                  "reported": attempts.reported(key)})
+                else:
+                    workable.append(item)
+            if receipt.needs_you and not workable:
+                receipt.stopped_because = (
+                    f"needs you: {len(receipt.needs_you)} problem(s) still failing after "
+                    f"{attempts.limit} attempts each"
+                )
+                break
             result: FixReceipt = run_fix(
-                items=items,
+                items=workable,
                 repo_dir=repo_dir,
                 base_sha=getattr(pr, "base_sha", ""),
                 head_sha=getattr(pr, "head_sha", ""),
@@ -177,6 +204,9 @@ def watch(
                 cancel=cancel,
             )
             round_record = Round(index, result.verdict, {"ok": result.ok, "stage": result.stage})
+            if workable and result.verdict not in ("nothing_to_do", "cancelled", "in_scope_not_pushed"):
+                detail = "; ".join(result.problems)[:300] if result.problems else ""
+                attempts.record(workable[0], verdict=result.verdict, detail=detail)
             if result.ok and result.push.get("ok"):
                 receipt.pushed.append(result.push.get("new_sha", ""))
             receipt.rounds.append(round_record)
