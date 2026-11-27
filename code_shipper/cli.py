@@ -1020,7 +1020,6 @@ def cmd_poll(args: argparse.Namespace) -> int:
     from .harness.adapters import HermesHarness
     from .steward import commands as commands_mod
     from .steward.poll import poll
-    from .steward.watch import read_stop_signals
 
     token = _read_token_quietly()
     if not token:
