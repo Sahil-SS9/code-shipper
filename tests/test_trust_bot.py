@@ -114,7 +114,7 @@ class InAWatchTests(unittest.TestCase):
         self.assertIn('<untrusted source="bot_claim">', prompt)
         self.assertIn("change nothing and say why", prompt)
 
-    def _watch(self, comments, trusted):
+    def _watch(self, comments, trusted, permission="none"):
         worked = []
 
         class Host:
@@ -126,7 +126,9 @@ class InAWatchTests(unittest.TestCase):
                 return comments
 
             def permission_of(self, repo, login):
-                return "none"
+                if permission == "error":
+                    raise RuntimeError("api down")
+                return permission
 
             def list_labels(self, repo, number):
                 return ["code-shipper-watching"]
@@ -157,6 +159,26 @@ class InAWatchTests(unittest.TestCase):
         claims = [i for i in worked if i.detail.get("claim")]
         self.assertEqual(len(claims), 1)
         self.assertEqual(receipt.ignored_bot_comments, 0)
+
+
+class OnlyPeopleWhoCanPushCanSteerTests(unittest.TestCase):
+    """Found while doing N6: any account that could comment could steer the fixer."""
+
+    _watch = InAWatchTests._watch
+
+    def test_a_read_only_persons_comment_is_not_work(self) -> None:
+        for permission in ("read", "none", "", "error"):
+            receipt, worked = self._watch([HUMAN], (), permission)
+            with self.subTest(permission=permission):
+                self.assertEqual([i for i in worked if i.source_id == "1"], [])
+                self.assertEqual(receipt.ignored_no_permission_comments, 1)
+
+    def test_a_writer_s_comment_is_work(self) -> None:
+        for permission in ("write", "maintain", "admin"):
+            receipt, worked = self._watch([HUMAN], (), permission)
+            with self.subTest(permission=permission):
+                self.assertEqual([i.source_id for i in worked], ["1"])
+                self.assertEqual(receipt.ignored_no_permission_comments, 0)
 
 
 if __name__ == "__main__":

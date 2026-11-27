@@ -71,6 +71,8 @@ class WatchReceipt:
     rules: dict[str, Any] = field(default_factory=dict)
     # N6: comments from bots nobody named, never acted on. Counted so silence is not read as absence.
     ignored_bot_comments: int = 0
+    # Comments from people without write access: never work, counted for the same reason.
+    ignored_no_permission_comments: int = 0
 
     @property
     def duration_s(self) -> float:
@@ -90,6 +92,7 @@ class WatchReceipt:
             "needs_you": self.needs_you,
             "rules": self.rules,
             "ignored_bot_comments": self.ignored_bot_comments,
+            "ignored_no_permission_comments": self.ignored_no_permission_comments,
             "duration_s": self.duration_s,
         }
 
@@ -182,11 +185,27 @@ def watch(
 
             split = split_comments([c for c in comments if getattr(c, "body", "")], trusted_bots)
             receipt.ignored_bot_comments += len(split.ignored_bots)
+            # A person's comment becomes work only if that person may push to the repository. Before this,
+            # any account that could comment could steer the fixer. Permission comes from the host, as it
+            # does for commands; an unknown answer means no permission.
+            permissions: dict[str, str] = {}
+
+            def may_steer(comment: Any) -> bool:
+                login = str(getattr(comment, "author", "") or "")
+                if login not in permissions:
+                    try:
+                        permissions[login] = str(host.permission_of(repo, login) or "")
+                    except Exception:  # noqa: BLE001 - no answer is no permission
+                        permissions[login] = ""
+                return permissions[login] in ("admin", "maintain", "write")
+
+            people = [c for c in split.people if may_steer(c)]
+            receipt.ignored_no_permission_comments += len(split.people) - len(people)
             items = classify(
                 pr=pr,
                 mergeable_state=(getattr(pr, "mergeable_state", "") or "").lower(),
                 checks=[],
-                comments=split.people,
+                comments=people,
                 findings=[],
                 changed_files=list(getattr(pr, "changed_files", []) or []),
             )
