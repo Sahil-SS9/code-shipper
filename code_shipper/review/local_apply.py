@@ -31,6 +31,11 @@ from ..steward.fix import run_fix
 from ..steward.policy import ScopePolicy, protected_reason
 
 MAX_LOCAL_FIXES = 3
+# The broker socket lives at <scratch>/s/run-XXXXXXXX/broker/broker.sock and AF_UNIX paths stop at
+# about 100 characters (the broker refuses longer). Found by the first live --apply run, whose
+# ~/.local/state path came to 102.
+SOCKET_TAIL = len("/s/run-xxxxxxxx/broker/broker.sock")
+SOCKET_LIMIT = 100
 
 
 @dataclass
@@ -121,7 +126,13 @@ def apply_findings(
     budget = RunBudget(fix_rounds=max_fixes, pushes_per_day=1, wall_clock_seconds=20 * 60)  # never pushes: push=False
     for finding, item in work:
         title = str(getattr(finding, "title", "") or item.reason)
-        scratch = Path(tempfile.mkdtemp(prefix="cs-local-apply-", dir=staging_parent))
+        scratch = Path(tempfile.mkdtemp(prefix="a-", dir=staging_parent))
+        if len(str(scratch)) + SOCKET_TAIL > SOCKET_LIMIT:
+            shutil.rmtree(scratch, ignore_errors=True)
+            results.append(AppliedFix(title, "refused", problems=[
+                f"the working directory {scratch.parent} is too deep for the fixer's socket; "
+                "set XDG_STATE_HOME to a shorter path"]))
+            break
         try:
             export = scratch / "export"
             export.mkdir()
@@ -129,7 +140,7 @@ def apply_findings(
             receipt = run_fix(
                 items=[item], repo_dir=export, base_sha=merge_base, head_sha="", head_branch="local",
                 worker=worker, policy=policy, budget=budget, push=False, keep=True,
-                staging_root=scratch / "staging", house_rules=house_rules, verify_recipe=verify_recipe,
+                staging_root=scratch / "s", house_rules=house_rules, verify_recipe=verify_recipe,
             )
             fix = AppliedFix(title, receipt.verdict, problems=list(receipt.problems),
                              verification=dict(receipt.verification or {}))
@@ -138,6 +149,8 @@ def apply_findings(
                 applied, problems = write_back(repo_dir, fixed_root, export, list(receipt.changed))
                 fix.applied, fix.problems = applied, fix.problems + problems
                 fix.verdict = "applied" if applied else "refused"
+            if receipt.verdict == "out_of_scope" and receipt.problems == ["no change was made"]:
+                fix.verdict = "no_change"  # the fixing agent declined or failed; not a scope breach
             results.append(fix)
             if receipt.verdict == "budget_exhausted":
                 break

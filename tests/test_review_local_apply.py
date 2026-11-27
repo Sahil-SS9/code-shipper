@@ -50,7 +50,8 @@ FIXED = "def clamp(x, lo, hi):\n    return max(lo, min(x, hi))\n"
 class ApplyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.repo = Path(tempfile.mkdtemp(prefix="cs-apply-"))
-        self.state = Path(tempfile.mkdtemp(prefix="cs-apply-state-"))
+        # Short on purpose: the fixer's socket path must fit AF_UNIX, and TMPDIR can be deep.
+        self.state = Path(tempfile.mkdtemp(prefix="cs-", dir="/tmp" if Path("/tmp").is_dir() else None))
         git(self.repo, "init", "-q", "-b", "main")
         (self.repo / "calc.py").write_text("def clamp(x, lo, hi):\n    return lo\n")
         (self.repo / "other.py").write_text("X = 1\n")
@@ -113,6 +114,25 @@ class ApplyTests(unittest.TestCase):
         self.assertEqual(self._apply(worker, findings=[Finding(severity="nit")]), [])
         many = [Finding(title=f"f{i}", fingerprint=f"p{i}") for i in range(5)]
         self.assertEqual(len(self._apply(EditingWorker({"calc.py": FIXED}), findings=many)), 3)
+
+    def test_a_state_dir_too_deep_for_the_socket_is_refused_before_the_worker_runs(self) -> None:
+        deep = self.state / ("d" * 90)
+        worker = EditingWorker({"calc.py": FIXED})
+        results = apply_findings(repo_dir=self.repo, findings=[Finding()], changed_paths=["calc.py"],
+                                 merge_base=self.base, worker=worker, staging_parent=deep)
+        self.assertEqual(results[0].verdict, "refused")
+        self.assertIn("XDG_STATE_HOME", results[0].problems[0])
+        self.assertEqual(worker.seen, [])
+
+    def test_the_socket_fits_under_the_usual_state_dir(self) -> None:
+        from code_shipper.review.local_apply import SOCKET_LIMIT, SOCKET_TAIL
+
+        usual = "/home/someone/.local/state/code-shipper/a-xxxxxxxx"
+        self.assertLessEqual(len(usual) + SOCKET_TAIL, SOCKET_LIMIT)
+
+    def test_a_fixer_that_changes_nothing_is_reported_as_no_change(self) -> None:
+        results = self._apply(EditingWorker({}))
+        self.assertEqual(results[0].verdict, "no_change")
 
     def test_local_scope_drops_protected_paths_from_the_default(self) -> None:
         policy = local_scope(None, ["calc.py", ".github/workflows/ci.yml", ".env"])
