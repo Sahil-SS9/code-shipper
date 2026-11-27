@@ -1,7 +1,7 @@
 """One disposable cached-image confinement probe; fake credentials only, no downloads."""
 import json,os,subprocess,tempfile,uuid
 from pathlib import Path
-root=Path(tempfile.mkdtemp(prefix='cs-containment-',dir='/home/kensei/.hermes/cache/scratch'))
+root=Path(tempfile.mkdtemp(prefix='cs-containment-',dir=os.environ.get('TMPDIR')))
 source=root/'source';work=root/'work';source.mkdir();work.mkdir();work.chmod(0o777)
 (source/'fixture.txt').write_text('synthetic-source')
 (source/'visible-canary.txt').write_text('FAKE-CREDENTIAL-POSITIVE-CONTROL')

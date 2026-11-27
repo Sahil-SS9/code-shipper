@@ -99,7 +99,7 @@ re-export. The P2-B tests still pass against it unchanged apart from two field n
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 ./scripts/run_tests.sh                                  # 435 tests
 python3 -m unittest tests.test_broker_roles -v          # 30 broker tests, incl. the ADV cases
 ```

@@ -119,7 +119,7 @@ was lost.
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 ./scripts/run_tests.sh                                       # 617 tests
 python3 -B spikes/b1/p3c_cancel.py --pr 24 --json            # cancels on the first model call
 python3 -m unittest tests.test_p3c -v                        # 34 tests, incl. the kill tests

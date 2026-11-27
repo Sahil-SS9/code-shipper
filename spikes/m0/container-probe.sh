@@ -1,4 +1,5 @@
 #!/bin/sh
+PROBE_HOME="${PROBE_HOME:-$HOME}"
 set -eu
 umask 022
 pass() { printf 'PASS %s\n' "$1"; }
@@ -13,10 +14,10 @@ printf 'temporary-ok' > /tmp/test
 pass temporary_write
 # Negative controls: no host paths or sockets are mounted, and writes outside /work fail.
 [ ! -e "$HOST_CANARY" ] && pass host_canary_absent || fail host_canary_absent
-[ ! -e /home/kensei/.config/code-shipper/tokens/fixer ] && pass fixer_path_absent || fail fixer_path_absent
-[ ! -e /home/kensei/.config/gh/hosts.yml ] && pass github_path_absent || fail github_path_absent
-[ ! -e /home/kensei/.hermes/.env ] && pass hermes_path_absent || fail hermes_path_absent
-[ ! -e /home/kensei/.ssh/id_ed25519 ] && pass ssh_path_absent || fail ssh_path_absent
+[ ! -e $PROBE_HOME/.config/code-shipper/tokens/fixer ] && pass fixer_path_absent || fail fixer_path_absent
+[ ! -e $PROBE_HOME/.config/gh/hosts.yml ] && pass github_path_absent || fail github_path_absent
+[ ! -e $PROBE_HOME/.hermes/.env ] && pass hermes_path_absent || fail hermes_path_absent
+[ ! -e $PROBE_HOME/.ssh/id_ed25519 ] && pass ssh_path_absent || fail ssh_path_absent
 [ ! -e /var/run/docker.sock ] && [ ! -e /run/user/1001/docker.sock ] && pass docker_sockets_absent || fail docker_sockets_absent
 [ ! -e /run/dbus/system_bus_socket ] && pass system_bus_absent || fail system_bus_absent
 if (printf forbidden > /source/blocked-write) 2>/dev/null; then fail source_read_only; else pass source_read_only; fi

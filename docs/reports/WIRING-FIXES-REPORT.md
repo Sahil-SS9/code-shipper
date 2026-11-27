@@ -6,7 +6,7 @@ Evidence is the local-ci output, not a CI run ID, as instructed.
 
 ```
 $ ./scripts/local-ci.sh
-local-ci  ·  repo /home/kensei/repos/code-shipper
+local-ci  ·  repo ~/repos/code-shipper
 sealed: yes
 
 gates

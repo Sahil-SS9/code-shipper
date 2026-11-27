@@ -47,5 +47,5 @@ harness: auto at http://127.0.0.1:8091
 reviewed 10 clean seeds, 0 discarded
 false confirms: 12 across 6 seed(s)
 rate: 60% of clean seeds (6/10)
-wrote /home/kensei/repos/code-shipper/docs/reports/evidence/clean-run.json
+wrote ~/repos/code-shipper/docs/reports/evidence/clean-run.json
 exit=1

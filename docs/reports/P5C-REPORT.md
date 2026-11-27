@@ -110,7 +110,7 @@ unpressable button teaches or teases. The test now asserts the approved choice, 
 Absolute paths, in your own SSH session:
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 
 # The board, every state
 python3 -m code_shipper.cli ui findings
@@ -137,7 +137,7 @@ python3 -m code_shipper.cli ship-page findings --out /tmp/findings.html
 The review pack, one self-contained file, 3.9 MB, 10 inlined screenshots, no JS, no external assets:
 
 ```
-scp sahil@<rig>:/home/kensei/shared/code-shipper-review/phase5c-surfaces.html .
+scp sahil@<rig>:~/shared/code-shipper-review/phase5c-surfaces.html .
 ```
 
 ## Not done

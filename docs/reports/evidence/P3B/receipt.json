@@ -99,9 +99,9 @@
       "branch": "p3b-string-format",
       "file_count": 42,
       "head_sha": "71b4ceba90eb965854a24b906dca32b4ae96de2b",
-      "pristine": "/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/pristine",
-      "root": "/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x",
-      "work": "/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/work"
+      "pristine": "~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/pristine",
+      "root": "~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x",
+      "work": "~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/work"
     }
   },
   "head_after": "01cc4381010bcb9656e75b0642f79473f69d1bcd",
@@ -119,7 +119,7 @@
     "calc.divide"
   ],
   "title": "divide() returns a labelled string",
-  "work_root": "/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m",
+  "work_root": "~/repos/code-shipper/.staging/p3b-jz_2ir5m",
   "worker": {
     "adapter_calls": 5,
     "adapter_refused": 0,
@@ -152,42 +152,42 @@
         },
         {
           "detail": "",
-          "name": "absent: /home/kensei/.hermes/.env",
+          "name": "absent: ~/.hermes/.env",
           "ok": true
         },
         {
           "detail": "",
-          "name": "absent: /home/kensei/.config/gh/hosts.yml",
+          "name": "absent: ~/.config/gh/hosts.yml",
           "ok": true
         },
         {
           "detail": "",
-          "name": "absent: /home/kensei/.git-credentials",
+          "name": "absent: ~/.git-credentials",
           "ok": true
         },
         {
           "detail": "",
-          "name": "absent: /home/kensei/.ssh/id_rsa",
+          "name": "absent: ~/.ssh/id_rsa",
           "ok": true
         },
         {
           "detail": "",
-          "name": "absent: /home/kensei/.config/code-shipper/tokens/fixer",
+          "name": "absent: ~/.config/code-shipper/tokens/fixer",
           "ok": true
         },
         {
           "detail": "",
-          "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/out-of-container-canary)",
+          "name": "absent: outside canary (~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/out-of-container-canary)",
           "ok": true
         },
         {
           "detail": "",
-          "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/fake-gh-hosts.yml)",
+          "name": "absent: outside fake gh config (~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/fake-gh-hosts.yml)",
           "ok": true
         },
         {
           "detail": "",
-          "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/fake-fixer-token)",
+          "name": "absent: outside fake fixer token (~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/fake-fixer-token)",
           "ok": true
         },
         {
@@ -302,6 +302,6 @@
     "run_dir_mode": "0o700",
     "seconds": 38.5,
     "stderr_tail": "",
-    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=1839488]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\nfix-run: exit 0, changed 1, completions 5, refused 0\n"
+    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: ~/.hermes/.env\nPASS absent: ~/.config/gh/hosts.yml\nPASS absent: ~/.git-credentials\nPASS absent: ~/.ssh/id_rsa\nPASS absent: ~/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/out-of-container-canary)\nPASS absent: outside fake gh config (~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (~/repos/code-shipper/.staging/p3b-jz_2ir5m/staging/run-31vo7n1x/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=1839488]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\nfix-run: exit 0, changed 1, completions 5, refused 0\n"
   }
 }

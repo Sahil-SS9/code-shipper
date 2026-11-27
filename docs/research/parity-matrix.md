@@ -11,7 +11,7 @@ read on the page named in that row during this pass. Where a page could not be r
 so and carries UNVERIFIED instead of a guess.
 
 Internal secondary source (orientation only, not cited as evidence):
-`/home/kensei/handoffs/code-shipper/research-refresh.md`. Several of its rows were re-checked
+`~/handoffs/code-shipper/research-refresh.md`. Several of its rows were re-checked
 against the live docs here; the differences are noted in the rows concerned.
 
 ---

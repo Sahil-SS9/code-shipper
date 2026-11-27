@@ -50,7 +50,7 @@ updated in place.
 | Run only in a throwaway HERMES_HOME | **Done** — surfaces need no HERMES_HOME at all; they are pure renderers, and nothing was installed |
 | ONE self-contained HTML file, images inlined, no external assets, no JS | **Done** — 3.8 MB, 10 inlined screenshots, 0 external refs, 0 script tags |
 | All ten states | **Done** — empty, reviewing, findings, INCOMPLETE, approvals blocked, approvals satisfied, observe-only, paused/capped, stop, error |
-| Path Sahil can read | **Done** — `/home/kensei/shared/code-shipper-review/phase5b-surfaces.html` |
+| Path Sahil can read | **Done** — `~/shared/code-shipper-review/phase5b-surfaces.html` |
 | Exact commands for Sahil to run the TUI himself | **Done** — below |
 | Stop for visual sign-off | **Stopped** |
 
@@ -59,7 +59,7 @@ updated in place.
 The review pack (start here):
 
 ```
-scp sahil@<rig>:/home/kensei/shared/code-shipper-review/phase5b-surfaces.html .
+scp sahil@<rig>:~/shared/code-shipper-review/phase5b-surfaces.html .
 ```
 
 Then open it in a browser. It is one file; nothing else is needed.

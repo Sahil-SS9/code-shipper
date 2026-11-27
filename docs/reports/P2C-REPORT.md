@@ -117,7 +117,7 @@ refactor.
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 ./scripts/run_tests.sh                                  # 521 tests
 python3 -m unittest tests.test_p2c -v                   # 43 tests, the honesty pack
 python3 -m unittest tests.test_fixloop_scope -v          # 23 tests, incl. the structural check

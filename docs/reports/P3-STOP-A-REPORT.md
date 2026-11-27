@@ -86,7 +86,7 @@ finding; only the real run exposed that the pipeline does not stamp one.
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 ./scripts/run_tests.sh                                        # 651 tests
 
 # the real incremental sequence, on the sandbox

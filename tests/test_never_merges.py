@@ -113,5 +113,5 @@ class NoBuilderNameInTheProductTests(unittest.TestCase):
         self.assertEqual((projection.author, projection.who), ("", ""))
         root = Path(__file__).resolve().parents[1] / "code_shipper"
         for path in root.rglob("*.py"):
-            self.assertNotIn("kensei", path.read_text(encoding="utf-8").replace("/home/kensei", ""),
+            self.assertNotIn("kensei", path.read_text(encoding="utf-8"),
                              f"{path.name} names the builder's agent")

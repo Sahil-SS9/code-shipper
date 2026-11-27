@@ -214,7 +214,7 @@ Two consequences for the real implementation:
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 
 # unit tests
 ./scripts/run_tests.sh

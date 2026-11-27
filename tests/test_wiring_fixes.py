@@ -246,33 +246,33 @@ class CredentialGuardTests(unittest.TestCase):
     """Fix 5: refuse credential locations, not any path under a dot directory."""
 
     def test_the_live_hermes_home_is_refused(self) -> None:
-        self.assertTrue(credential_location("/home/kensei/.hermes"))
+        self.assertTrue(credential_location("/home/alice/.hermes"))
 
     def test_hermes_auth_is_refused(self) -> None:
-        for path in ("/home/kensei/.hermes/auth.json", "/home/kensei/.hermes/auth/token",
-                     "/home/kensei/.hermes/tokens/github", "/home/kensei/.hermes/secrets/x"):
+        for path in ("/home/alice/.hermes/auth.json", "/home/alice/.hermes/auth/token",
+                     "/home/alice/.hermes/tokens/github", "/home/alice/.hermes/secrets/x"):
             self.assertTrue(credential_location(path), path)
 
     def test_a_checkout_under_hermes_is_allowed(self) -> None:
         """The defect: a clone at ~/.hermes/repos/x could not run a review at all."""
-        for path in ("/home/kensei/.hermes/repos/code-shipper",
-                     "/home/kensei/.hermes/cache/scratch/x",
-                     "/home/kensei/.hermes/logs"):
+        for path in ("/home/alice/.hermes/repos/code-shipper",
+                     "/home/alice/.hermes/cache/scratch/x",
+                     "/home/alice/.hermes/logs"):
             self.assertEqual(credential_location(path), "", path)
 
     def test_ssh_and_cloud_credentials_are_refused(self) -> None:
-        for path in ("/home/kensei/.ssh", "/home/kensei/.ssh/id_rsa",
-                     "/home/kensei/.aws/credentials", "/home/kensei/.gnupg/secring.gpg",
-                     "/home/kensei/.docker/config.json", "/home/kensei/.kube/config"):
+        for path in ("/home/alice/.ssh", "/home/alice/.ssh/id_rsa",
+                     "/home/alice/.aws/credentials", "/home/alice/.gnupg/secring.gpg",
+                     "/home/alice/.docker/config.json", "/home/alice/.kube/config"):
             self.assertTrue(credential_location(path), path)
 
     def test_an_ordinary_checkout_is_allowed(self) -> None:
-        for path in ("/home/kensei/repos/code-shipper", "/workspace/src", "/tmp/run-1/work"):
+        for path in ("/home/alice/repos/code-shipper", "/workspace/src", "/tmp/run-1/work"):
             self.assertEqual(credential_location(path), "", path)
 
     def test_a_dot_config_dir_is_allowed(self) -> None:
         """`/.config` was refused before, which is an ordinary directory, not a credential store."""
-        self.assertEqual(credential_location("/home/kensei/.config/some-app"), "")
+        self.assertEqual(credential_location("/home/alice/.config/some-app"), "")
 
     def test_windows_paths_are_matched(self) -> None:
         self.assertTrue(credential_location("C:\\Users\\x\\.hermes"))
@@ -281,19 +281,19 @@ class CredentialGuardTests(unittest.TestCase):
 
     def test_a_lookalike_directory_is_not_refused(self) -> None:
         """`.sshfoo` is not `.ssh`; matching components rather than substrings is the point."""
-        self.assertEqual(credential_location("/home/kensei/.sshfoo/key"), "")
+        self.assertEqual(credential_location("/home/alice/.sshfoo/key"), "")
 
     def test_the_refusal_names_the_path_and_the_fix(self) -> None:
         from code_shipper.contain.spec import ContainerSpec
 
         with self.assertRaises(ValueError) as caught:
             ContainerSpec(
-                image="img", source_dir=Path("/home/kensei/.ssh/repo"),
+                image="img", source_dir=Path("/home/alice/.ssh/repo"),
                 work_dir=Path("/tmp/w"), broker_dir=Path("/tmp/broker"),
                 entrypoint="/bin/true",
             ).validate()
         message = str(caught.exception)
-        self.assertIn("/home/kensei/.ssh/repo", message)
+        self.assertIn("/home/alice/.ssh/repo", message)
         self.assertIn("~/repos", message, "the error must say what to do")
 
 

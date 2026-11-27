@@ -177,13 +177,13 @@ These are choices, not oversights, and each is a real limitation.
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 
 # unit tests
 python3 -B -m unittest discover -s tests -t .
 
 # CP1 review probe (independent)
-python3 /home/kensei/.hermes/cache/scratch/cs-cp1-probe.py
+python3 ~/.hermes/cache/scratch/cs-cp1-probe.py
 
 # CP2: normal run
 python3 -B spikes/b1/cp2_run.py

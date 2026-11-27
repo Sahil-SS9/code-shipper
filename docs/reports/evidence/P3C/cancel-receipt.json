@@ -86,9 +86,9 @@
       "branch": "p3c-cancel",
       "file_count": 42,
       "head_sha": "2bc644d040a6027dad620358dca878db570de6ff",
-      "pristine": "/home/kensei/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq/pristine",
-      "root": "/home/kensei/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq",
-      "work": "/home/kensei/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq/work"
+      "pristine": "~/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq/pristine",
+      "root": "~/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq",
+      "work": "~/repos/code-shipper/.staging/p3c-nl8y6xfg/staging/run-bnyooxcq/work"
     }
   },
   "head_after": "2bc644d040a6027dad620358dca878db570de6ff",
@@ -97,7 +97,7 @@
   "pushed": false,
   "started": 1795575335.754836,
   "verdict": "PASS",
-  "work_root": "/home/kensei/repos/code-shipper/.staging/p3c-nl8y6xfg",
+  "work_root": "~/repos/code-shipper/.staging/p3c-nl8y6xfg",
   "worker": {
     "cancelled": true,
     "cancelled_at": 1795575353.644282,

@@ -151,14 +151,14 @@ class ValidationTests(SpecFixture):
         all. The rule is now about what the path reaches, and `~/.config/gh` is still refused because the
         GitHub CLI stores its token there.
         """
-        for path in ("/home/kensei/.hermes", "/home/kensei/.hermes/auth.json",
+        for path in ("/home/alice/.hermes", "/home/alice/.hermes/auth.json",
                      "/home/u/.ssh/keys", "/home/u/.config/gh", "/home/u/.aws/credentials"):
             with self.subTest(path=path):
                 with self.assertRaises(ValueError):
                     self.spec(source_dir=Path(path)).validate()
 
     def test_accepts_a_checkout_under_a_dot_directory(self) -> None:
-        for path in ("/home/kensei/.hermes/repos/x", "/home/kensei/.hermes/cache/scratch",
+        for path in ("/home/alice/.hermes/repos/x", "/home/alice/.hermes/cache/scratch",
                      "/home/u/.config/my-app"):
             with self.subTest(path=path):
                 self.spec(source_dir=Path(path)).validate()

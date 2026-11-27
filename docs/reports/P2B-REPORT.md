@@ -133,7 +133,7 @@ review — the ledger and the readback disagreed, and the ledger was right.
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 ./scripts/run_tests.sh                                  # 388 tests
 python3 spikes/b1/post_review.py --pr 18                # posts once, then skips on re-run
 gh api repos/Sahil-SS9/code-shipper-sandbox/pulls/18/reviews

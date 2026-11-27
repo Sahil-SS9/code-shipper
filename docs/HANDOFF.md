@@ -2,7 +2,7 @@
 
 BUILD APPROVED 24/11/2026. The owner approved the CLI/TUI/Desktop wireframes (`docs/ux/`), and
 this file is the pinned handoff. Start with Phase 0; its first task and checkpoints are in
-`/home/kensei/handoffs/code-shipper/container-hermes-proof.md`. REVISION-2 is consolidated into the
+`~/handoffs/code-shipper/container-hermes-proof.md`. REVISION-2 is consolidated into the
 canonical docs, so read them rather than the addendum; `REVISION-2.md` stays as the audit trail.
 
 You are a coding agent building Code-Shipper from this spec pack. Read this file first, then in
@@ -40,7 +40,7 @@ repository approval policy, with Hermes Agent as the first deep integration. Hum
     each, tests in the same commit as the code. Run tests before every commit and quote the
     real output in your report; red tests mean the commit does not count. Within a phase, stop
     at each named checkpoint for Kensei to review; the first task's checkpoints are in
-    `/home/kensei/handoffs/code-shipper/container-hermes-proof.md`.
+    `~/handoffs/code-shipper/container-hermes-proof.md`.
 
 ## Machine state (verified 24/11/2026 on the build machine, user `kensei`)
 

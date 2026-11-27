@@ -91,7 +91,7 @@ unrelated failing test does not become work. The rule needed the evidence, not j
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 python3 -B spikes/b1/p3b_run.py --pr 23 --json          # full run, pushes
 python3 -B spikes/b1/p3b_run.py --pr 23 --no-push       # stop after the scope check
 python3 -m unittest tests.test_steward_fix -v           # 35 tests incl. the deletion regression

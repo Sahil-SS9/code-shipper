@@ -19,7 +19,7 @@ Status: **stopping for review.** Commits `633d16b`, `255307b`, `08753b6`, `9655c
 
 ```
 $ ./scripts/local-ci.sh
-local-ci  ·  repo /home/kensei/repos/code-shipper
+local-ci  ·  repo ~/repos/code-shipper
 sealed: yes
 run dir: /tmp/local-ci.r34qqx
 

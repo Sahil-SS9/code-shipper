@@ -168,7 +168,7 @@ is out of date.
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 
 ./scripts/run_tests.sh                 # 167 unit tests
 

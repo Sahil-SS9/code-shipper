@@ -122,7 +122,7 @@ def main(argv: list[str]) -> int:
                         help="2 is the measured ceiling: at 4 every lens times out (see module docstring)")
     parser.add_argument("--limit", type=int, default=len(SEEDS))
     parser.add_argument("--harness", choices=("hermes", "openai"), default="hermes")
-    parser.add_argument("--hermes-bin", default="/home/kensei/.local/bin/hermes")
+    parser.add_argument("--hermes-bin", default=shutil.which("hermes") or "hermes")
     parser.add_argument("--base-url", default="http://127.0.0.1:8091")
     parser.add_argument("--model", default="auto")
     parser.add_argument("--level", default="standard")

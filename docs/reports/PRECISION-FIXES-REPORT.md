@@ -110,7 +110,7 @@ different-line findings, and the titles are distinguished only by the appended l
 
 ## Recall guard
 
-`/home/kensei/.hermes/cache/scratch/recall_guard.py`, log `/tmp/recall_guard.log`. Re-reviews the
+`~/.hermes/cache/scratch/recall_guard.py`, log `/tmp/recall_guard.log`. Re-reviews the
 bug-carrying sandbox PRs through the hosted harness.
 
 | PR | Seeded bug | Result |

@@ -1,5 +1,5 @@
 harness: hermes · workers: 2 · seeds: 20
-work root: /home/kensei/.hermes/cache/scratch/par-measure-wbwzu5ww
+work root: ~/.hermes/cache/scratch/par-measure-wbwzu5ww
 
   chunk        clean (30s)
   clamp        clean (48s)
@@ -36,5 +36,5 @@ discarded   : 0  (own control failed — excluded from the rate)
 errored     : 0
 findings    : 7 across 4 seed(s)
 rate        : 20% of evaluated seeds (4/20)
-wrote /home/kensei/repos/code-shipper/docs/reports/evidence/final-run.json
+wrote ~/repos/code-shipper/docs/reports/evidence/final-run.json
 EXIT=0

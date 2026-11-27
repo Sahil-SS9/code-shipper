@@ -215,7 +215,7 @@ class TheProfileFlagIsNotANoOpTests(unittest.TestCase):
         against it means the assertion is about Hermes's behaviour, not about our idea of it.
         """
         try:
-            sys.path.insert(0, str(Path("/home/kensei/repos/KenseiAgent")))
+            sys.path.insert(0, os.environ.get("HERMES_SOURCE_DIR", str(Path.home() / "repos/KenseiAgent")))
             from hermes_cli._parser import scan_profile_flag
         except (ImportError, OSError):
             self.skipTest("the Hermes source is not available here")

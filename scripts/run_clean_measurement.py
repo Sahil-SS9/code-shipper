@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -54,7 +55,7 @@ def main(argv: list[str]) -> int:
     # provider outage.
     parser.add_argument("--harness", choices=("hermes", "openai"), default="hermes",
                         help="hermes = the CLI's configured (hosted) model, no credential handled here")
-    parser.add_argument("--hermes-bin", default="/home/kensei/.local/bin/hermes")
+    parser.add_argument("--hermes-bin", default=shutil.which("hermes") or "hermes")
     parser.add_argument("--base-url", default=os.environ.get("CODE_SHIPPER_LLM_BASE",
                                                              "http://127.0.0.1:8091"))
     parser.add_argument("--model", default=os.environ.get("CODE_SHIPPER_LLM_MODEL", "auto"))

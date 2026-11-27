@@ -86,7 +86,7 @@ PR #22 wording verbatim, so this specific regression cannot come back.
 ## Reproduce
 
 ```
-cd /home/kensei/repos/code-shipper
+cd ~/repos/code-shipper
 ./scripts/run_tests.sh                       # 363 tests
 
 python3 spikes/b1/seed_prs.py                # create/refresh the five seeded PRs

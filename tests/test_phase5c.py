@@ -17,6 +17,7 @@ import ast
 import inspect
 import io
 import json
+from pathlib import Path
 import unittest
 
 from code_shipper.surfaces import cli_view, desktop, fixtures, projection as proj, tui
@@ -509,7 +510,7 @@ class PortableSyntaxTests(unittest.TestCase):
     """
 
     PYTHONS = (
-        "/home/kensei/.local/bin/python3.11",
+        str(Path.home() / ".local/bin/python3.11"),
         "/usr/bin/python3.11",
         "python3.11",
     )

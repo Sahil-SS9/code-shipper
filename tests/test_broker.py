@@ -101,7 +101,7 @@ class RefusesNonInferenceTests(unittest.TestCase):
         self.assertRefused(encode(op="shell", capability=self.token), "unsupported_operation")
 
     def test_refuses_file_read_operation(self) -> None:
-        self.assertRefused(encode(op="read_file", path="/home/kensei/.hermes/.env"), "unsupported_operation")
+        self.assertRefused(encode(op="read_file", path="/home/alice/.hermes/.env"), "unsupported_operation")
 
     def test_refuses_http_proxy_operation(self) -> None:
         self.assertRefused(

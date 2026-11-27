@@ -1,12 +1,12 @@
 {
-  "scratch": "/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs",
+  "scratch": "~/repos/code-shipper/.staging/cp3-yhb4fzbs",
   "container": "cs-cp3-33cc5b7773",
   "credential": "synthetic",
   "run_dir_mode": "0o700",
   "run_dir_uid": 1001,
   "socket_mode": "0o666",
   "broker": {
-    "socket": "/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/broker/broker.sock",
+    "socket": "~/repos/code-shipper/.staging/cp3-yhb4fzbs/broker/broker.sock",
     "capability_public": {
       "run_id": "cp3-d8099799",
       "provider": "local",
@@ -35,19 +35,19 @@
     ],
     "mounts": {
       "/source": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/source",
+        "src": "~/repos/code-shipper/.staging/cp3-yhb4fzbs/source",
         "mode": "ro"
       },
       "/work": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/work",
+        "src": "~/repos/code-shipper/.staging/cp3-yhb4fzbs/work",
         "mode": "rw"
       },
       "/app": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/app",
+        "src": "~/repos/code-shipper/.staging/cp3-yhb4fzbs/app",
         "mode": "ro"
       },
       "/run/cs": {
-        "src": "/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/broker",
+        "src": "~/repos/code-shipper/.staging/cp3-yhb4fzbs/broker",
         "mode": "ro"
       }
     },
@@ -58,7 +58,7 @@
   "run": {
     "returncode": 0,
     "seconds": 20.15,
-    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: /home/kensei/.hermes/.env\nPASS absent: /home/kensei/.config/gh/hosts.yml\nPASS absent: /home/kensei/.git-credentials\nPASS absent: /home/kensei/.ssh/id_rsa\nPASS absent: /home/kensei/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/out-of-container-canary)\nPASS absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=2834397]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\nhermes-run: exit 0, completions 2, refused 0\n",
+    "stdout_tail": "PASS source mounted read-only and readable\nPASS source file content readable\nPASS workspace writable\nPASS tmp writable\nPASS positive control: mounted canary readable\nPASS absent: ~/.hermes/.env\nPASS absent: ~/.config/gh/hosts.yml\nPASS absent: ~/.git-credentials\nPASS absent: ~/.ssh/id_rsa\nPASS absent: ~/.config/code-shipper/tokens/fixer\nPASS absent: outside canary (~/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/out-of-container-canary)\nPASS absent: outside fake gh config (~/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/fake-gh-hosts.yml)\nPASS absent: outside fake fixer token (~/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/fake-fixer-token)\nPASS no credential-shaped environment variables\nPASS environment carries no host paths\nPASS no docker socket\nPASS no system bus socket\nPASS host process is not visible [host_pid=2834397]\nPASS root filesystem not writable\nPASS source not writable\nPASS uid is not root [uid=65534]\nPASS no-new-privileges effective\nPASS capabilities empty\nPASS network namespace is not the host's\nPASS no non-loopback route\nPASS broker socket present [/run/cs/broker.sock]\nPASS no credential file beside the socket\nDONE\nhermes-run: exit 0, completions 2, refused 0\n",
     "stderr_tail": ""
   },
   "container_removed": true,
@@ -90,42 +90,42 @@
         "detail": ""
       },
       {
-        "name": "absent: /home/kensei/.hermes/.env",
+        "name": "absent: ~/.hermes/.env",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: /home/kensei/.config/gh/hosts.yml",
+        "name": "absent: ~/.config/gh/hosts.yml",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: /home/kensei/.git-credentials",
+        "name": "absent: ~/.git-credentials",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: /home/kensei/.ssh/id_rsa",
+        "name": "absent: ~/.ssh/id_rsa",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: /home/kensei/.config/code-shipper/tokens/fixer",
+        "name": "absent: ~/.config/code-shipper/tokens/fixer",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside canary (/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/out-of-container-canary)",
+        "name": "absent: outside canary (~/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/out-of-container-canary)",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside fake gh config (/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/fake-gh-hosts.yml)",
+        "name": "absent: outside fake gh config (~/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/fake-gh-hosts.yml)",
         "ok": true,
         "detail": ""
       },
       {
-        "name": "absent: outside fake fixer token (/home/kensei/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/fake-fixer-token)",
+        "name": "absent: outside fake fixer token (~/repos/code-shipper/.staging/cp3-yhb4fzbs/outside/fake-fixer-token)",
         "ok": true,
         "detail": ""
       },
