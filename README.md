@@ -107,6 +107,13 @@ Merge risk: elevated — 2 important finding(s) open.
 Exit codes: **0** clean, **1** findings, **2** usage or setup error, **3** review incomplete (a partial
 review is not a pass).
 
+Two things that surprise people on a second run, both correct:
+
+- **A re-run on a head already reviewed is cached** (`cached: this head was already reviewed…`) and exits
+  **0**, because no *new* findings were recorded. `--no-cache` forces a fresh pass.
+- **The exit code describes this run, not the pull request.** `important open across the whole PR: 2` is the
+  line that tells you the PR state.
+
 **3. Post for real.** Drop `--dry-run` and add a token that can comment on the repository:
 
 ```
@@ -174,7 +181,7 @@ py -3 -m unittest discover -s tests -t . -q
 
 | Platform | Unit tests | A real contained fix run |
 |---|---|---|
-| Linux | **yes** — 1408 tests, 3.11 / 3.12 / 3.13, run locally | yes |
+| Linux | **yes** — 1458 tests, 3.11 / 3.12 / 3.13, run locally | yes |
 | macOS | **last passed on CI at `ccfbefa`; untested since** | no |
 | Windows | **last passed on CI at `ccfbefa`; untested since** | no |
 

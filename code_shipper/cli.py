@@ -86,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the review and print findings without posting anything",
     )
     review.add_argument("--json", action="store_true", help="machine-readable output")
+    review.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="review even if this head was already reviewed. Without it a cached head makes no model call "
+             "and exits 0, because no new findings were recorded",
+    )
     _add_harness_arguments(review)
     review.add_argument(
         "--memory-mode",
@@ -445,7 +451,7 @@ def cmd_review(args: argparse.Namespace) -> int:
         ),
         harness=harness,
         store=store,
-        cache=cache,
+        cache=None if getattr(args, "no_cache", False) else cache,
         max_reviews_per_pr=args.max_reviews,
     )
     outcome = result.outcome
@@ -884,7 +890,7 @@ def cmd_poll(args: argparse.Namespace) -> int:
             ),
             harness=harness,
             store=store,
-            cache=cache,
+            cache=None if getattr(args, "no_cache", False) else cache,
         )
         if not args.dry_run:
             _post_review(token=token, repo=repo, pr=args.pr, result=result)
