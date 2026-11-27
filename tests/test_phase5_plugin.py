@@ -139,7 +139,16 @@ class RunTests(unittest.TestCase):
         result = self.ship.run("o/r 1 publish", allow_ship=False,
                                runner=lambda argv: self._Completed())
         self.assertFalse(result["ok"])
-        self.assertIn("disabled", result["output"])
+        self.assertIn("publishing from chat is off", result["output"])
+
+    def test_publish_never_runs_the_cli_even_when_allowed(self) -> None:
+        # allow_ship only changes the message. A chat command has no branch, base or author to give.
+        calls = []
+        result = self.ship.run("o/r 1 publish", allow_ship=True,
+                               runner=lambda argv: calls.append(argv) or self._Completed())
+        self.assertFalse(result["ok"])
+        self.assertEqual(calls, [])
+        self.assertIn("code-shipper ship", result["output"])
 
     def test_a_missing_binary_is_a_message(self) -> None:
         def boom(argv):
@@ -214,8 +223,22 @@ class InstallTests(unittest.TestCase):
         text = (PLUGIN / "plugin.yaml").read_text()
         self.assertIn("name: code-shipper", text)
         self.assertIn("manifest_version: 2", text)
-        self.assertIn("commands:", text)
-        self.assertIn("/ship", text)
+
+    def test_the_manifest_uses_only_fields_hermes_knows(self) -> None:
+        # Hermes warns on load about any other top-level key ("unknown manifest field(s) ignored").
+        # The /ship command is registered in code, so a `commands:` block was dead and noisy.
+        known = {
+            "name", "version", "description", "author", "requires_env", "provides_tools", "provides_hooks",
+            "kind", "hooks", "label", "optional_env", "platforms", "external_dependencies",
+            "pip_dependencies", "provides_browser_providers", "provides_web_providers",
+            "manifest_version", "api_version", "requires_plugins", "python_dependencies", "config_schema",
+            "license", "homepage", "tags", "capabilities", "emits", "listens", "hermes", "depends",
+            "requires_hermes", "python_runtime", "provides_locales", "requires_auth", "oauth", "config_keys",
+        }
+        text = (PLUGIN / "plugin.yaml").read_text()
+        top = {line.split(":", 1)[0] for line in text.splitlines()
+               if line and not line[0].isspace() and not line.startswith("#") and ":" in line}
+        self.assertEqual(top - known, set())
 
     def test_the_manifest_declares_no_token_setting(self) -> None:
         # The plugin never reads a credential; a token-file setting would suggest it does.

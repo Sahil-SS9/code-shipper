@@ -12,7 +12,7 @@ probe calls `register()` in a recording context, so nothing is imported or run a
 
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 DESCRIPTION = (
     "Review a pull request, fix it within a budget, and get it ready to merge. "

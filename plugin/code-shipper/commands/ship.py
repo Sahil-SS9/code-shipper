@@ -6,8 +6,8 @@ Two rules shape this file.
 broker, the secret scan and the authorisation gate. A second copy of a rule in a UI layer is how a rule
 silently stops being enforced, so there is exactly one implementation and this is not it.
 
-**Every write names what it will do before doing it.** `/ship ... publish` refuses unless
-`allow_ship` is on, and even then prints the plan the CLI produced. A command that publishes on a
+**Every write names what it will do before doing it.** `/ship ... publish` never publishes: with
+`allow_ship` off it is refused, and with it on it names the terminal command, which prints the plan. A command that publishes on a
 single word with no confirmation is a footgun with a friendly name.
 
 Subcommands map to CLI verbs, so the two surfaces cannot drift: `review` → `review`, `board` → `ui`,
@@ -127,9 +127,8 @@ def run(
         repo, number, subcommand = parse(argument)
         if subcommand == "publish" and not allow_ship:
             raise Refused(
-                "publishing is disabled for this plugin. Set allow_ship if you want a command to be "
-                "able to open pull requests, and prefer `code-shipper ship` from a terminal, which "
-                "shows the plan first."
+                "publishing from chat is off. Run `code-shipper ship` from a terminal: it prints the "
+                "plan and asks before it opens a pull request."
             )
         argv = build_argv(repo, number, subcommand, binary=binary, profile=profile)
     except Refused as refused:

@@ -187,7 +187,7 @@ py -3 -m unittest discover -s tests -t . -q
 
 | Platform | Unit tests | A real contained fix run |
 |---|---|---|
-| Linux | **yes** — 1583 tests, 3.11 / 3.12 / 3.13, run locally | yes |
+| Linux | **yes** — 1585 tests, 3.11 / 3.12 / 3.13, run locally | yes |
 | macOS | **last passed on CI at `ccfbefa`; untested since** | no |
 | Windows | **last passed on CI at `ccfbefa`; untested since** | no |
 

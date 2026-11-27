@@ -1,5 +1,5 @@
 name: code-shipper
-version: 0.1.1
+version: 0.1.2
 manifest_version: 2
 description: "Review a pull request, fix it in a contained environment, and get it ready to merge. Never approves and never merges: a human does that."
 author: Sahil Saghir
@@ -13,8 +13,4 @@ requires_env: []
 config_schema:
   binary: {type: str, default: "code-shipper", label: "CLI binary", description: "The code-shipper executable to call. Default assumes it is on PATH."}
   default_profile: {type: str, default: "standard", choices: [quiet, standard, assertive], label: "Review profile", description: "How much the reviewer reports: quiet is high-bar, assertive is low-bar and noisier."}
-  allow_ship: {type: bool, default: false, label: "Allow /ship to publish", description: "Off by default. With it off, /ship plans and scans only and refuses to publish. Turning it on allows a command to create a branch, a commit and a pull request, which is a publish you cannot take back."}
-commands:
-  - name: ship
-    description: "Review, fix or publish a pull request. Usage: /ship <owner/repo> <pr> [review|board|fix|stop|status|publish]"
-    argument_hint: "<owner/repo> <pr> [subcommand]"
+  allow_ship: {type: bool, default: false, label: "Explain /ship publish", description: "Off by default. /ship never opens a pull request from chat. Off: /ship publish is refused. On: /ship publish names the terminal command (code-shipper ship), which prints the plan and asks before it publishes."}

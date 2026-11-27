@@ -38,7 +38,7 @@ Run `/ship` with no arguments for the full list.
 |---|---|---|
 | `binary` | `code-shipper` | The CLI to call. |
 | `default_profile` | `standard` | How much the reviewer reports: `quiet`, `standard` or `assertive`. |
-| `allow_ship` | `false` | Off: `/ship ... publish` is refused. Even when on, the plugin points you to the terminal command, which shows the plan first. |
+| `allow_ship` | `false` | `/ship ... publish` never publishes from chat. Off: refused. On: it names the terminal command, `code-shipper ship`, which shows the plan and asks first. |
 
 ## What it touches
 
