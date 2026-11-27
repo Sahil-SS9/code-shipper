@@ -139,7 +139,7 @@ class GitHubHost:
             raise HostError("unexpected payload for PR list")
         return [_to_pr(entry) for entry in data]
 
-    def list_merged_prs(self, repo: str, since: float, *, limit: int = 100) -> list[PullRequest]:
+    def list_landed_prs(self, repo: str, since: float, *, limit: int = 100) -> list[PullRequest]:
         """Pull requests merged at or after `since` (epoch), newest first. Read-only; at most 3 pages."""
         import calendar
 

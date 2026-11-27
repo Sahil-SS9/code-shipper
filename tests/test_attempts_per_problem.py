@@ -140,7 +140,7 @@ class TheReportTests(unittest.TestCase):
         self.assertIn("tried 3 times", body)
         for verdict in ("pushed", "out_of_scope", "worker_failed"):
             self.assertIn(verdict, body)
-        self.assertIn("never approves or merges", body)
+        self.assertIn("Code-Shipper never merges. Merge on GitHub.", body)
 
     def test_the_cli_posts_once_and_never_in_a_dry_run(self) -> None:
         import argparse

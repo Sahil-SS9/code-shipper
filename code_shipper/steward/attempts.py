@@ -93,6 +93,7 @@ def needs_you_comment(entries: list[dict[str, Any]]) -> str:
             detail = f" — {attempt['detail']}" if attempt.get("detail") else ""
             lines.append(f"{number}. {attempt.get('verdict', '?')}{detail}")
         lines.append("")
-    lines.append("I will not try these again on this pull request. Advisory. Code-Shipper never approves "
-                 "or merges.")
+    from ..surfaces.mantra import NEVER_MERGES
+
+    lines.append(f"I will not try these again on this pull request. {NEVER_MERGES}")
     return "\n".join(lines)

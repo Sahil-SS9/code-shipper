@@ -96,7 +96,7 @@ class TheReportTests(unittest.TestCase):
         text = report.render()
         self.assertIn("fix these first", text)
         self.assertIn("#1", text)
-        self.assertIn("never approves or merges", text)
+        self.assertIn("Code-Shipper never merges. Merge on GitHub.", text)
 
     def test_observe_only_rules_are_judged_as_if_enforced(self) -> None:
         """That is the point of observe mode: the report says what enforcing them would have done."""
@@ -118,7 +118,7 @@ class TheCommandTests(unittest.TestCase):
         host.default_branch.return_value = "main"
         host.resolve_ref.return_value = "abc1234def"
         host.read_file.side_effect = lambda repo, ref, path: POLICY_TEXT.encode() if path == "code-shipper.yml" else None
-        host.list_merged_prs.return_value = [pr(1)]
+        host.list_landed_prs.return_value = [pr(1)]
         host.get_diff.return_value = Diff(files=(FilePatch(path="app.py"),))
         host.list_reviews.return_value = [R("alice", "APPROVED"), R("bob", "CHANGES_REQUESTED")]
         out = io.StringIO()
@@ -133,7 +133,7 @@ class TheCommandTests(unittest.TestCase):
         host.read_file.assert_any_call("o/n", "abc1234def", "code-shipper.yml")
         for write in ("post_comment", "update_comment", "add_label", "create_review", "merge"):
             self.assertFalse(getattr(host, write).called, write)
-        since = host.list_merged_prs.call_args[0][1]
+        since = host.list_landed_prs.call_args[0][1]
         self.assertAlmostEqual(since, time.time() - 14 * 86400, delta=60)
 
     def test_a_bad_window_and_no_policy_exit_2(self) -> None:
@@ -167,7 +167,7 @@ class TheHostReaderTests(unittest.TestCase):
         ]
         host = GitHubHost("t")
         with mock.patch.object(host, "_get", return_value=(page, {})) as get:
-            found = host.list_merged_prs("o/n", time.time() - 14 * 86400)
+            found = host.list_landed_prs("o/n", time.time() - 14 * 86400)
         self.assertEqual([p.number for p in found], [1])
         self.assertIn("state=closed", get.call_args[0][0])
         self.assertEqual(get.call_count, 1)

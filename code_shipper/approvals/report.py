@@ -101,7 +101,9 @@ class Report:
                 lines.append(f"  #{row.number} {row.title[:60]} — {row.policy}; reviewers: {row.human}")
         for problem in self.errors:
             lines.append(f"  could not assess: {problem}")
-        lines.append("Read-only: nothing was posted. Advisory. Code-Shipper never approves or merges.")
+        from ..surfaces.mantra import NEVER_MERGES
+
+        lines.append(f"Read-only: nothing was posted. {NEVER_MERGES}")
         return "\n".join(lines)
 
 

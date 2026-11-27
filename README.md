@@ -284,7 +284,7 @@ we add is the repository-committed policy with seats and observe/enforce). See
 
 ## Rolling it out
 
-Code-Shipper is advisory. It never approves or merges. These steps are what make it useful on a real team.
+Code-Shipper is advisory: it never merges, you merge on GitHub. These steps are what make it useful on a real team.
 
 1. **Watch first, enforce later.** Leave the approval rules in observe mode for one to two weeks. Then
    run `code-shipper approvals report --repo owner/name --since 14d` and actually read it. Fix the

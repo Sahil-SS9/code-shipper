@@ -590,7 +590,7 @@ def cmd_approvals(args: argparse.Namespace) -> int:
         print(f"no approvals policy on {branch}: nothing to calibrate", file=sys.stderr)
         return 2
     merged = []
-    for pr in host.list_merged_prs(args.repo, since):
+    for pr in host.list_landed_prs(args.repo, since):
         try:
             merged.append({"pr": pr, "files": [f.path for f in host.get_diff(args.repo, pr.number).files],
                            "reviews": host.list_reviews(args.repo, pr.number)})
