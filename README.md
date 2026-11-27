@@ -184,7 +184,7 @@ py -3 -m unittest discover -s tests -t . -q
 
 | Platform | Unit tests | A real contained fix run |
 |---|---|---|
-| Linux | **yes** — 1507 tests, 3.11 / 3.12 / 3.13, run locally | yes |
+| Linux | **yes** — 1560 tests, 3.11 / 3.12 / 3.13, run locally | yes |
 | macOS | **last passed on CI at `ccfbefa`; untested since** | no |
 | Windows | **last passed on CI at `ccfbefa`; untested since** | no |
 
@@ -281,6 +281,40 @@ Related work: Claude Ship (Anthropic, Claude-only) and
 informs ours; it already has a host-side `human_paths` gate and experimental native macOS, so what
 we add is the repository-committed policy with seats and observe/enforce). See
 `docs/research/prior-art.md`.
+
+## Rolling it out
+
+Code-Shipper is advisory. It never approves or merges. These steps are what make it useful on a real team.
+
+1. **Watch first, enforce later.** Leave the approval rules in observe mode for one to two weeks. Then
+   run `code-shipper approvals report --repo owner/name --since 14d` and actually read it. Fix the
+   "policy satisfied, reviewers asked for changes" rows first: those are the rules that are too loose.
+2. **Write rules down slowly.** Add a line to `.code-shipper/REVIEW.md` only after the same comment has
+   come up on at least two pull requests. Have a person approve it. Delete rules that no longer apply.
+3. **Make the check required.** Unless the Code-Shipper check is required in branch protection, it is
+   only advice.
+4. **Watch out for auto-merge.** If auto-merge is on, a fix push can be the thing that lets GitHub
+   merge. Decide which paths that is acceptable for.
+5. **Trust the people who can change the base branch.** Fixes run in a container, but anyone who can
+   push to the base branch decides which tests run. Use it on repositories where you trust them.
+6. **Keep your other safeguards.** It can miss bugs and security problems. Keep your tests, scanners and
+   human reviewers.
+
+Files a repository can keep, all read from the **default branch**, never from the pull request:
+
+| File | What it does |
+|------|--------------|
+| `.code-shipper/REVIEW.md` | What matters here and what to always check. `AGENTS.md` and `CLAUDE.md` are read too. |
+| `.code-shipper/STEWARD.md` | House rules for fixes, such as "regenerate the lockfile, don't hand-edit it". |
+| `.code-shipper/VERIFY.md` | How to start the app and test a change. Each fix reports what it ran and what it saw. |
+
+These files guide the agent but cannot loosen any limit. Fixes can never edit CI, `CODEOWNERS`,
+`.code-shipper/`, agent instructions, git hooks or anything that looks like a secret, whatever the config
+says. A fix gets three tries per problem. After that, Code-Shipper stops and lists what it tried.
+
+Before you push, `code-shipper review --local` reviews your branch and uncommitted changes. It needs no
+token and posts nothing. Comments from other bots are ignored unless you name the bot with
+`--trust-bot NAME`. Even then they are claims to check, never instructions.
 
 ## Documents
 
