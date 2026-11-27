@@ -63,9 +63,16 @@ def store_with_lesson(root: str) -> Store:
 
 
 def lens_prompts(**kwargs) -> str:
+    """The prompt for a lens that may receive lessons.
+
+    This ran at level="quick", whose only lens is "combined" — and combined must never receive lessons
+    because its instruction covers security. So these mode tests were asserting the one behaviour the
+    security filter forbids, and would have kept failing until the filter was removed. "standard" runs
+    correctness, which is an allowlisted lesson-bearing lens.
+    """
     harness = Recorder()
-    review(diff=DIFF, harness=harness, level="quick", workdir=None, **kwargs)
-    return next(p for p in harness.prompts if "Your lens is" in p)
+    review(diff=DIFF, harness=harness, level="standard", workdir=None, **kwargs)
+    return next(p for p in harness.prompts if "Your lens is" in p and "Correctness" in p)
 
 
 class TheThreeModesTests(unittest.TestCase):
@@ -198,9 +205,9 @@ class TheStoreIsAFileSoTheReadPathFiltersTooTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             store_with_lesson(root)
             harness = Recorder()
-            outcome = review(diff=DIFF, harness=harness, level="quick", workdir=None,
+            outcome = review(diff=DIFF, harness=harness, level="standard", workdir=None,
                              lessons_dir=root, lessons_mode="apply")
-            prompt = next(p for p in harness.prompts if "Your lens is" in p)
+            prompt = next(p for p in harness.prompts if "Your lens is" in p and "Correctness" in p)
             self.assertIn("report a clamp that ignores its upper bound as important", prompt)
             self.assertEqual(outcome.lessons_dropped, 0)
 
@@ -209,9 +216,9 @@ class TheStoreIsAFileSoTheReadPathFiltersTooTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             store_with_lesson(root)
             harness = Recorder()
-            review(diff=DIFF, harness=harness, level="quick", workdir=None,
+            review(diff=DIFF, harness=harness, level="standard", workdir=None,
                    lessons_dir=root, lessons_mode="apply")
-            prompt = next(p for p in harness.prompts if "Your lens is" in p)
+            prompt = next(p for p in harness.prompts if "Your lens is" in p and "Correctness" in p)
             self.assertEqual(prompt.count("Lessons from feedback on earlier reviews"), 1)
 
     def test_store_add_refuses_a_security_relaxing_lesson(self) -> None:
@@ -237,9 +244,13 @@ class TheStoreIsAFileSoTheReadPathFiltersTooTests(unittest.TestCase):
             memory.relaxes_security = lambda *texts: ""
             try:
                 harness = Recorder()
-                review(diff=DIFF, harness=harness, level="quick", workdir=None,
+                # "standard", so the lens being watched is correctness — one that may receive lessons.
+                # At "quick" the only lens is combined, which is excluded structurally, so the lesson
+                # would be missing whether or not the content filter worked and the mutation would prove
+                # nothing. Two different mechanisms stop it; this test is about the content one.
+                review(diff=DIFF, harness=harness, level="standard", workdir=None,
                        lessons_dir=root, lessons_mode="apply")
-                prompt = next(p for p in harness.prompts if "Your lens is" in p)
+                prompt = next(p for p in harness.prompts if "Your lens is" in p and "Correctness" in p)
                 self.assertIn(
                     "security findings are noise", prompt,
                     "with the read-path filter disabled the lesson reaches the prompt, so the filter is "
