@@ -1,350 +1,354 @@
 {
-  "started": "2026-11-26T21:55:51Z",
-  "finished": "2026-11-26T22:03:44Z",
-  "harness_kind": "hermes",
-  "workers": 2,
-  "level": "standard",
-  "seeds_attempted": 20,
-  "seeds_evaluated": 20,
-  "seeds_unevaluated": 0,
-  "unevaluated_detail": [],
-  "seeds_discarded": [],
-  "seeds_errored": [],
-  "seeds_with_findings": 4,
   "finding_count": 7,
-  "rate": 0.2,
-  "runs": [
-    {
-      "slug": "clamp",
-      "status": "evaluated",
-      "title": "Add a clamp() helper",
-      "seconds": 48.0,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "chunk",
-      "status": "evaluated",
-      "title": "Add chunk() for splitting a list",
-      "seconds": 30.3,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "mean",
-      "status": "evaluated",
-      "title": "Add mean() over an iterable",
-      "seconds": 33.3,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "slugify",
-      "status": "evaluated",
-      "title": "Add a slug helper",
-      "seconds": 92.8,
-      "raw_findings": 3,
-      "confirmed": 3,
-      "posted": 2,
-      "findings": [
-        {
-          "id": "edge-91fe79a7ca",
-          "path": "textx/slug.py",
-          "line": 23,
-          "severity": "important",
-          "title": "Latin letters with no NFKD decomposition (\u00f8, \u0142, \u0111, \u00df, \u00e6) are silently dropped, so titles lose letters",
-          "body": "The docstring promises that accents are folded rather than dropped, giving \"Caf\u00e9\" as \"cafe\", not \"caf\", \"or a title loses letters\". The comment says only non-Latin scripts lack a decomposition, which suggests Latin text is safe.\n\nThat is not true for several common Latin letters. \u00f8, \u00d8, \u0142, \u0141, \u0111, \u0127, \u00df, \u00e6 and \u0153 have no NFKD decomposition, so `encode(\"ascii\", \"ignore\")` deletes them:\n- slugify('K\u00f8benhavn') returns 'kbenhavn'\n- slugify('\u0141\u00f3d\u017a') returns 'odz'\n- slugify('Stra\u00dfe') returns 'strae'\n- slugify('\u00c6r\u00f8') returns 'r'\n\nThis is the \"caf\" failure the docstring says the function prevents. Other ASCII characters survive, so the empty-result guard does not catch it either.\n\nFix: either add a small fold table for these letters (\u00f8\u2192o, \u0142\u2192l, \u0111\u2192d, \u00df\u2192ss, \u00e6\u2192ae, \u0153\u2192oe and so on) before the ASCII encode, or narrow the docstring's promise.",
-          "evidence": "+    folded = unicodedata.normalize(\"NFKD\", text)\n+    ascii_text = folded.encode(\"ascii\", \"ignore\").decode(\"ascii\").strip().lower()",
-          "lens": "edge"
-        },
-        {
-          "id": "correctness-20ed0df785",
-          "path": "textx/slug.py",
-          "line": 24,
-          "severity": "important",
-          "title": "Empty-result guard checks the folded text, not the final slug, so non-Latin titles with punctuation still return \"\"",
-          "body": "The comment says a title that loses everything in the fold should raise an error rather than quietly become nothing. The guard only checks `ascii_text`, which is the text before `_NON_WORD` removes separators. If any ASCII punctuation survives the fold, `ascii_text` is not empty and the guard does not fire. The return line then turns that punctuation into hyphens and strips them, so the result is still \"\".\n\nExamples:\n- `slugify(\"\u041c\u043e\u0441\u043a\u0432\u0430!\")`: `ascii_text` is \"!\", so there is no ValueError, and the function returns \"\".\n- `slugify(\"\u4e2d\u6587, \u6807\u9898\")`: `ascii_text` is \",\", and the function returns \"\".\n- `slugify(\"\u65e5\u672c\u8a9e (2)\")` returns \"2\". It keeps a digit, which the guard at least allows on purpose, but the bare-punctuation cases above clearly go against the stated intent.\n\nThese are the same scripts the comment says it measured. Callers will get empty slugs, and empty slugs can collide or resolve to a parent route, which is what this branch was added to prevent. To fix it, compute the slug first and raise if it is empty while `text.strip()` is not.",
-          "evidence": "+    ascii_text = folded.encode(\"ascii\", \"ignore\").decode(\"ascii\").strip().lower()\n+    if not ascii_text and text.strip():\n+        raise ValueError(f\"cannot make an ASCII slug from {text!r}: no character survives the fold\")\n+    return _NON_WORD.sub(\"-\", ascii_text).strip(\"-\")",
-          "lens": "correctness"
-        }
-      ]
-    },
-    {
-      "slug": "retry",
-      "status": "evaluated",
-      "title": "Add a bounded retry helper",
-      "seconds": 82.2,
-      "raw_findings": 1,
-      "confirmed": 1,
-      "posted": 1,
-      "findings": [
-        {
-          "id": "edge-b59c865735",
-          "path": "netx/retry.py",
-          "line": 19,
-          "severity": "nit",
-          "title": "Very large finite delay still lets time.sleep raise and hide the operation's exception",
-          "body": "The guard's comment says it exists so that `sleep` cannot raise its own error and hide the operation's exception. The docstring promises that the last exception is re-raised. The guard refuses NaN, infinities and negative values, but it accepts any finite value. `time.sleep` also raises OverflowError for finite values beyond its internal range, about 9.2e9 seconds (for example, a delay of 1e10 or 1e300).\n\nWith such a delay, the first failed attempt reaches `sleep(delay)` inside the `except` branch. The caller then gets OverflowError ('timestamp too large to convert to C _PyTime_t') instead of the operation's own exception. The operation's error survives only as `__context__`. This is the masking the guard was written to prevent, and it breaks the docstring's promise.\n\nIt is rated nit because such delays are unrealistic. To fix it, either check for overflow when the arguments are validated (for example, set an upper bound or try a zero-cost conversion), or change the comment so it does not claim the guard prevents every case where `sleep` hides the error.",
-          "evidence": "    if delay != delay or delay in (float(\"inf\"), float(\"-inf\")) or delay < 0:\n        raise ValueError(\"delay must be a finite number that is not negative\")\n...\n            if attempt < attempts - 1 and delay:\n                sleep(delay)",
-          "lens": "edge"
-        }
-      ]
-    },
-    {
-      "slug": "humanise",
-      "status": "evaluated",
-      "title": "Add a byte-count humaniser",
-      "seconds": 57.1,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "windows",
-      "status": "evaluated",
-      "title": "Add a sliding-window iterator",
-      "seconds": 30.7,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "dedupe",
-      "status": "evaluated",
-      "title": "Add order-preserving dedupe",
-      "seconds": 44.7,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "flatten",
-      "status": "evaluated",
-      "title": "Add a one-level flatten",
-      "seconds": 32.4,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "percent",
-      "status": "evaluated",
-      "title": "Add a percentage formatter",
-      "seconds": 34.5,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "parsekv",
-      "status": "evaluated",
-      "title": "Add a key=value line parser",
-      "seconds": 40.7,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "truncate",
-      "status": "evaluated",
-      "title": "Add a safe truncate helper",
-      "seconds": 71.2,
-      "raw_findings": 3,
-      "confirmed": 1,
-      "posted": 1,
-      "findings": [
-        {
-          "id": "edge-b10fbfc917",
-          "path": "textx/truncate.py",
-          "line": 10,
-          "severity": "important",
-          "title": "When width is smaller than the marker, the result is longer than width",
-          "body": "The docstring promises a result of \"at most `width` characters\". The guard only rejects width <= 0, so a width from 1 to len(marker) - 1 gets through. In that range, max(0, width - len(marker)) is 0, head becomes '', and the function returns the whole marker. With the default marker '...', truncate('hello', 1) and truncate('hello', 2) both return '...', which is 3 characters. The same happens with a longer custom marker: truncate('hello world', 4, marker='[more]') returns 6 characters. The caller gets an over-wide string and no error, which breaks the main guarantee of a helper meant to fit text into a fixed display width. Fix: raise ValueError when width < len(marker), or cut the marker down so it fits (marker[:width]).\n\nAlso noted: truncate() returns more than `width` characters when width is smaller than the marker; When width is smaller than the marker, the result is longer than width",
-          "evidence": "    if width <= 0:\n        raise ValueError(\"width must be positive\")\n    if len(text) <= width:\n        return text\n    head = text[: max(0, width - len(marker))]\n    if \" \" in head:\n        head = head[: head.rfind(\" \")]\n    return head.rstrip() + marker",
-          "lens": "edge"
-        }
-      ]
-    },
-    {
-      "slug": "once",
-      "status": "evaluated",
-      "title": "Add a once-only decorator",
-      "seconds": 109.5,
-      "raw_findings": 5,
-      "confirmed": 4,
-      "posted": 3,
-      "findings": [
-        {
-          "id": "correctness-caaeec141c",
-          "path": "functx/once.py",
-          "line": 14,
-          "severity": "nit",
-          "title": "Docstring says BaseException is caught, but the code only catches KeyboardInterrupt/SystemExit (re-raised) and Exception",
-          "body": "The docstring says \"`BaseException` is caught as well as `Exception`\". The code never catches `BaseException`. It catches `(KeyboardInterrupt, SystemExit)` only to re-raise them, then caches `Exception`. Other `BaseException` subclasses, such as `GeneratorExit`, `asyncio.CancelledError` and custom `BaseException` types, are not mentioned anywhere and pass through uncaught. As with the two named signals, they leave the result unset, so the next call runs the function again. That runtime behaviour matches the stated intent: stop signals are not remembered. The docstring describes a mechanism the code does not have, though. A maintainer who trusts it could \"fix\" the code into an `except BaseException` that caches cancellations. Either reword the docstring to say only `Exception` is cached and every other `BaseException` propagates without setting the result, or make the code match it.",
-          "evidence": "+    `BaseException` is caught as well as `Exception`, because `SystemExit` and `KeyboardInterrupt`\n+                    except (KeyboardInterrupt, SystemExit):\n+                        raise\n+                    except Exception as exc:  # noqa: BLE001 - remember the failure too",
-          "lens": "correctness"
-        },
-        {
-          "id": "edge-569a659912",
-          "path": "functx/once.py",
-          "line": 31,
-          "severity": "nit",
-          "title": "Docstring says BaseException is caught, but the code catches only KeyboardInterrupt/SystemExit and Exception",
-          "body": "The docstring says \"`BaseException` is caught as well as `Exception`\". The code never catches BaseException. It names only KeyboardInterrupt and SystemExit, re-raises them, and then catches Exception. Any other BaseException subclass, such as asyncio.CancelledError or GeneratorExit, is not caught by either clause. It propagates and leaves both slots unset, so the next call runs the function again.\n\nIn practice this matches the stated intent that stop signals are not remembered. The docstring still describes a catch that does not exist, so anyone maintaining this will misread the control flow. A future edit that 'restores' `except BaseException` to match the docstring would start caching shutdown signals, which is exactly what the docstring says must not happen. Fix the docstring: say that BaseException subclasses that are not Exception propagate uncached. Or add an explicit `except BaseException: raise` so the code says it too.",
-          "evidence": "+    `BaseException` is caught as well as `Exception`, because `SystemExit` and `KeyboardInterrupt`\n...\n+                    except (KeyboardInterrupt, SystemExit):\n+                        raise\n+                    except Exception as exc:  # noqa: BLE001 - remember the failure too",
-          "lens": "edge"
-        },
-        {
-          "id": "correctness-df6db44a7d",
-          "path": "functx/once.py",
-          "line": 36,
-          "severity": "nit",
-          "title": "Re-raising the same cached exception instance makes its traceback grow on every call",
-          "body": "When `func` fails, the wrapper stores the exception object and runs `raise stored[\"error\"]` on every later call. Each time the same instance is raised again, Python adds the current frames to that instance's existing `__traceback__`. A once-decorated function that failed and is called N more times therefore has a traceback chain that grows with N. That chain keeps every caller frame and its locals in memory for the life of the process, and the reported tracebacks get longer and longer. This clashes with the intent of caching one fixed failure. Re-raise with a fixed traceback, for example `raise err.with_traceback(original_tb)` with `original_tb` saved at capture time, or raise a fresh copy.",
-          "evidence": "+        if stored[\"error\"] is not None:\n+            raise stored[\"error\"]",
-          "lens": "correctness"
-        }
-      ]
-    },
-    {
-      "slug": "groups",
-      "status": "evaluated",
-      "title": "Add grouping by a key function",
-      "seconds": 28.3,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "safeget",
-      "status": "evaluated",
-      "title": "Add a dotted-path getter",
-      "seconds": 36.3,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "iso",
-      "status": "evaluated",
-      "title": "Add an ISO date formatter",
-      "seconds": 34.6,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "counter",
-      "status": "evaluated",
-      "title": "Add a counting helper over an iterable",
-      "seconds": 28.6,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "normalise",
-      "status": "evaluated",
-      "title": "Add whitespace normalisation",
-      "seconds": 29.4,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "windowmean",
-      "status": "evaluated",
-      "title": "Add a rolling mean",
-      "seconds": 35.1,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    },
-    {
-      "slug": "is_palindrome",
-      "status": "evaluated",
-      "title": "Add a palindrome check",
-      "seconds": 28.2,
-      "raw_findings": 0,
-      "confirmed": 0,
-      "posted": 0,
-      "findings": []
-    }
-  ],
   "findings": [
     {
-      "slug": "slugify",
-      "title": "Latin letters with no NFKD decomposition (\u00f8, \u0142, \u0111, \u00df, \u00e6) are silently dropped, so titles lose letters",
-      "path": "textx/slug.py",
       "line": 23,
-      "severity": "important",
-      "text": "The docstring promises that accents are folded rather than dropped, giving \"Caf\u00e9\" as \"cafe\", not \"caf\", \"or a title loses letters\". The comment says only non-Latin scripts lack a decomposition, which suggests Latin text is safe.\n\nThat is not true for several common Latin letters. \u00f8, \u00d8, \u0142, \u0141, \u0111, \u0127, \u00df, \u00e6 and \u0153 have no NFKD decomposition, so `encode(\"ascii\", \"ignore\")` deletes them:\n- slugify('K\u00f8benhavn') returns 'kbenhavn'\n- slugify('\u0141\u00f3d\u017a') returns 'odz'\n- slugify('Stra\u00dfe') returns 'strae'\n- slugify('\u00c6r\u00f8') returns 'r'\n\nThis is the \"caf\" failure the docstring says the function prevents. Other ASCII characters survive, so the empty-result guard does not catch it either.\n\nFix: either add a small fold table for these letters (\u00f8\u2192o, \u0142\u2192l, \u0111\u2192d, \u00df\u2192ss, \u00e6\u2192ae, \u0153\u2192oe and so on) before the ASCII encode, or narrow the docstring's promise."
-    },
-    {
-      "slug": "slugify",
-      "title": "Empty-result guard checks the folded text, not the final slug, so non-Latin titles with punctuation still return \"\"",
       "path": "textx/slug.py",
+      "severity": "important",
+      "slug": "slugify",
+      "text": "The docstring promises that accents are folded rather than dropped, giving \"Caf\u00e9\" as \"cafe\", not \"caf\", \"or a title loses letters\". The comment says only non-Latin scripts lack a decomposition, which suggests Latin text is safe.\n\nThat is not true for several common Latin letters. \u00f8, \u00d8, \u0142, \u0141, \u0111, \u0127, \u00df, \u00e6 and \u0153 have no NFKD decomposition, so `encode(\"ascii\", \"ignore\")` deletes them:\n- slugify('K\u00f8benhavn') returns 'kbenhavn'\n- slugify('\u0141\u00f3d\u017a') returns 'odz'\n- slugify('Stra\u00dfe') returns 'strae'\n- slugify('\u00c6r\u00f8') returns 'r'\n\nThis is the \"caf\" failure the docstring says the function prevents. Other ASCII characters survive, so the empty-result guard does not catch it either.\n\nFix: either add a small fold table for these letters (\u00f8\u2192o, \u0142\u2192l, \u0111\u2192d, \u00df\u2192ss, \u00e6\u2192ae, \u0153\u2192oe and so on) before the ASCII encode, or narrow the docstring's promise.",
+      "title": "Latin letters with no NFKD decomposition (\u00f8, \u0142, \u0111, \u00df, \u00e6) are silently dropped, so titles lose letters"
+    },
+    {
       "line": 24,
+      "path": "textx/slug.py",
       "severity": "important",
-      "text": "The comment says a title that loses everything in the fold should raise an error rather than quietly become nothing. The guard only checks `ascii_text`, which is the text before `_NON_WORD` removes separators. If any ASCII punctuation survives the fold, `ascii_text` is not empty and the guard does not fire. The return line then turns that punctuation into hyphens and strips them, so the result is still \"\".\n\nExamples:\n- `slugify(\"\u041c\u043e\u0441\u043a\u0432\u0430!\")`: `ascii_text` is \"!\", so there is no ValueError, and the function returns \"\".\n- `slugify(\"\u4e2d\u6587, \u6807\u9898\")`: `ascii_text` is \",\", and the function returns \"\".\n- `slugify(\"\u65e5\u672c\u8a9e (2)\")` returns \"2\". It keeps a digit, which the guard at least allows on purpose, but the bare-punctuation cases above clearly go against the stated intent.\n\nThese are the same scripts the comment says it measured. Callers will get empty slugs, and empty slugs can collide or resolve to a parent route, which is what this branch was added to prevent. To fix it, compute the slug first and raise if it is empty while `text.strip()` is not."
+      "slug": "slugify",
+      "text": "The comment says a title that loses everything in the fold should raise an error rather than quietly become nothing. The guard only checks `ascii_text`, which is the text before `_NON_WORD` removes separators. If any ASCII punctuation survives the fold, `ascii_text` is not empty and the guard does not fire. The return line then turns that punctuation into hyphens and strips them, so the result is still \"\".\n\nExamples:\n- `slugify(\"\u041c\u043e\u0441\u043a\u0432\u0430!\")`: `ascii_text` is \"!\", so there is no ValueError, and the function returns \"\".\n- `slugify(\"\u4e2d\u6587, \u6807\u9898\")`: `ascii_text` is \",\", and the function returns \"\".\n- `slugify(\"\u65e5\u672c\u8a9e (2)\")` returns \"2\". It keeps a digit, which the guard at least allows on purpose, but the bare-punctuation cases above clearly go against the stated intent.\n\nThese are the same scripts the comment says it measured. Callers will get empty slugs, and empty slugs can collide or resolve to a parent route, which is what this branch was added to prevent. To fix it, compute the slug first and raise if it is empty while `text.strip()` is not.",
+      "title": "Empty-result guard checks the folded text, not the final slug, so non-Latin titles with punctuation still return \"\""
     },
     {
-      "slug": "retry",
-      "title": "Very large finite delay still lets time.sleep raise and hide the operation's exception",
-      "path": "netx/retry.py",
       "line": 19,
+      "path": "netx/retry.py",
       "severity": "nit",
-      "text": "The guard's comment says it exists so that `sleep` cannot raise its own error and hide the operation's exception. The docstring promises that the last exception is re-raised. The guard refuses NaN, infinities and negative values, but it accepts any finite value. `time.sleep` also raises OverflowError for finite values beyond its internal range, about 9.2e9 seconds (for example, a delay of 1e10 or 1e300).\n\nWith such a delay, the first failed attempt reaches `sleep(delay)` inside the `except` branch. The caller then gets OverflowError ('timestamp too large to convert to C _PyTime_t') instead of the operation's own exception. The operation's error survives only as `__context__`. This is the masking the guard was written to prevent, and it breaks the docstring's promise.\n\nIt is rated nit because such delays are unrealistic. To fix it, either check for overflow when the arguments are validated (for example, set an upper bound or try a zero-cost conversion), or change the comment so it does not claim the guard prevents every case where `sleep` hides the error."
+      "slug": "retry",
+      "text": "The guard's comment says it exists so that `sleep` cannot raise its own error and hide the operation's exception. The docstring promises that the last exception is re-raised. The guard refuses NaN, infinities and negative values, but it accepts any finite value. `time.sleep` also raises OverflowError for finite values beyond its internal range, about 9.2e9 seconds (for example, a delay of 1e10 or 1e300).\n\nWith such a delay, the first failed attempt reaches `sleep(delay)` inside the `except` branch. The caller then gets OverflowError ('timestamp too large to convert to C _PyTime_t') instead of the operation's own exception. The operation's error survives only as `__context__`. This is the masking the guard was written to prevent, and it breaks the docstring's promise.\n\nIt is rated nit because such delays are unrealistic. To fix it, either check for overflow when the arguments are validated (for example, set an upper bound or try a zero-cost conversion), or change the comment so it does not claim the guard prevents every case where `sleep` hides the error.",
+      "title": "Very large finite delay still lets time.sleep raise and hide the operation's exception"
     },
     {
-      "slug": "truncate",
-      "title": "When width is smaller than the marker, the result is longer than width",
-      "path": "textx/truncate.py",
       "line": 10,
+      "path": "textx/truncate.py",
       "severity": "important",
-      "text": "The docstring promises a result of \"at most `width` characters\". The guard only rejects width <= 0, so a width from 1 to len(marker) - 1 gets through. In that range, max(0, width - len(marker)) is 0, head becomes '', and the function returns the whole marker. With the default marker '...', truncate('hello', 1) and truncate('hello', 2) both return '...', which is 3 characters. The same happens with a longer custom marker: truncate('hello world', 4, marker='[more]') returns 6 characters. The caller gets an over-wide string and no error, which breaks the main guarantee of a helper meant to fit text into a fixed display width. Fix: raise ValueError when width < len(marker), or cut the marker down so it fits (marker[:width]).\n\nAlso noted: truncate() returns more than `width` characters when width is smaller than the marker; When width is smaller than the marker, the result is longer than width"
+      "slug": "truncate",
+      "text": "The docstring promises a result of \"at most `width` characters\". The guard only rejects width <= 0, so a width from 1 to len(marker) - 1 gets through. In that range, max(0, width - len(marker)) is 0, head becomes '', and the function returns the whole marker. With the default marker '...', truncate('hello', 1) and truncate('hello', 2) both return '...', which is 3 characters. The same happens with a longer custom marker: truncate('hello world', 4, marker='[more]') returns 6 characters. The caller gets an over-wide string and no error, which breaks the main guarantee of a helper meant to fit text into a fixed display width. Fix: raise ValueError when width < len(marker), or cut the marker down so it fits (marker[:width]).\n\nAlso noted: truncate() returns more than `width` characters when width is smaller than the marker; When width is smaller than the marker, the result is longer than width",
+      "title": "When width is smaller than the marker, the result is longer than width"
     },
     {
-      "slug": "once",
-      "title": "Docstring says BaseException is caught, but the code only catches KeyboardInterrupt/SystemExit (re-raised) and Exception",
-      "path": "functx/once.py",
       "line": 14,
+      "path": "functx/once.py",
       "severity": "nit",
-      "text": "The docstring says \"`BaseException` is caught as well as `Exception`\". The code never catches `BaseException`. It catches `(KeyboardInterrupt, SystemExit)` only to re-raise them, then caches `Exception`. Other `BaseException` subclasses, such as `GeneratorExit`, `asyncio.CancelledError` and custom `BaseException` types, are not mentioned anywhere and pass through uncaught. As with the two named signals, they leave the result unset, so the next call runs the function again. That runtime behaviour matches the stated intent: stop signals are not remembered. The docstring describes a mechanism the code does not have, though. A maintainer who trusts it could \"fix\" the code into an `except BaseException` that caches cancellations. Either reword the docstring to say only `Exception` is cached and every other `BaseException` propagates without setting the result, or make the code match it."
+      "slug": "once",
+      "text": "The docstring says \"`BaseException` is caught as well as `Exception`\". The code never catches `BaseException`. It catches `(KeyboardInterrupt, SystemExit)` only to re-raise them, then caches `Exception`. Other `BaseException` subclasses, such as `GeneratorExit`, `asyncio.CancelledError` and custom `BaseException` types, are not mentioned anywhere and pass through uncaught. As with the two named signals, they leave the result unset, so the next call runs the function again. That runtime behaviour matches the stated intent: stop signals are not remembered. The docstring describes a mechanism the code does not have, though. A maintainer who trusts it could \"fix\" the code into an `except BaseException` that caches cancellations. Either reword the docstring to say only `Exception` is cached and every other `BaseException` propagates without setting the result, or make the code match it.",
+      "title": "Docstring says BaseException is caught, but the code only catches KeyboardInterrupt/SystemExit (re-raised) and Exception"
     },
     {
-      "slug": "once",
-      "title": "Docstring says BaseException is caught, but the code catches only KeyboardInterrupt/SystemExit and Exception",
-      "path": "functx/once.py",
       "line": 31,
+      "path": "functx/once.py",
       "severity": "nit",
-      "text": "The docstring says \"`BaseException` is caught as well as `Exception`\". The code never catches BaseException. It names only KeyboardInterrupt and SystemExit, re-raises them, and then catches Exception. Any other BaseException subclass, such as asyncio.CancelledError or GeneratorExit, is not caught by either clause. It propagates and leaves both slots unset, so the next call runs the function again.\n\nIn practice this matches the stated intent that stop signals are not remembered. The docstring still describes a catch that does not exist, so anyone maintaining this will misread the control flow. A future edit that 'restores' `except BaseException` to match the docstring would start caching shutdown signals, which is exactly what the docstring says must not happen. Fix the docstring: say that BaseException subclasses that are not Exception propagate uncached. Or add an explicit `except BaseException: raise` so the code says it too."
+      "slug": "once",
+      "text": "The docstring says \"`BaseException` is caught as well as `Exception`\". The code never catches BaseException. It names only KeyboardInterrupt and SystemExit, re-raises them, and then catches Exception. Any other BaseException subclass, such as asyncio.CancelledError or GeneratorExit, is not caught by either clause. It propagates and leaves both slots unset, so the next call runs the function again.\n\nIn practice this matches the stated intent that stop signals are not remembered. The docstring still describes a catch that does not exist, so anyone maintaining this will misread the control flow. A future edit that 'restores' `except BaseException` to match the docstring would start caching shutdown signals, which is exactly what the docstring says must not happen. Fix the docstring: say that BaseException subclasses that are not Exception propagate uncached. Or add an explicit `except BaseException: raise` so the code says it too.",
+      "title": "Docstring says BaseException is caught, but the code catches only KeyboardInterrupt/SystemExit and Exception"
     },
     {
-      "slug": "once",
-      "title": "Re-raising the same cached exception instance makes its traceback grow on every call",
-      "path": "functx/once.py",
       "line": 36,
+      "path": "functx/once.py",
       "severity": "nit",
-      "text": "When `func` fails, the wrapper stores the exception object and runs `raise stored[\"error\"]` on every later call. Each time the same instance is raised again, Python adds the current frames to that instance's existing `__traceback__`. A once-decorated function that failed and is called N more times therefore has a traceback chain that grows with N. That chain keeps every caller frame and its locals in memory for the life of the process, and the reported tracebacks get longer and longer. This clashes with the intent of caching one fixed failure. Re-raise with a fixed traceback, for example `raise err.with_traceback(original_tb)` with `original_tb` saved at capture time, or raise a fresh copy."
+      "slug": "once",
+      "text": "When `func` fails, the wrapper stores the exception object and runs `raise stored[\"error\"]` on every later call. Each time the same instance is raised again, Python adds the current frames to that instance's existing `__traceback__`. A once-decorated function that failed and is called N more times therefore has a traceback chain that grows with N. That chain keeps every caller frame and its locals in memory for the life of the process, and the reported tracebacks get longer and longer. This clashes with the intent of caching one fixed failure. Re-raise with a fixed traceback, for example `raise err.with_traceback(original_tb)` with `original_tb` saved at capture time, or raise a fresh copy.",
+      "title": "Re-raising the same cached exception instance makes its traceback grow on every call"
     }
-  ]
+  ],
+  "finished": "2026-11-26T22:03:44Z",
+  "harness_kind": "hermes",
+  "keys_relabelled_after_run": {
+    "note": "This run was produced before the key was renamed; the value is unchanged.",
+    "rate": "seeds_with_findings_rate"
+  },
+  "level": "standard",
+  "runs": [
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 48.0,
+      "slug": "clamp",
+      "status": "evaluated",
+      "title": "Add a clamp() helper"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 30.3,
+      "slug": "chunk",
+      "status": "evaluated",
+      "title": "Add chunk() for splitting a list"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 33.3,
+      "slug": "mean",
+      "status": "evaluated",
+      "title": "Add mean() over an iterable"
+    },
+    {
+      "confirmed": 3,
+      "findings": [
+        {
+          "body": "The docstring promises that accents are folded rather than dropped, giving \"Caf\u00e9\" as \"cafe\", not \"caf\", \"or a title loses letters\". The comment says only non-Latin scripts lack a decomposition, which suggests Latin text is safe.\n\nThat is not true for several common Latin letters. \u00f8, \u00d8, \u0142, \u0141, \u0111, \u0127, \u00df, \u00e6 and \u0153 have no NFKD decomposition, so `encode(\"ascii\", \"ignore\")` deletes them:\n- slugify('K\u00f8benhavn') returns 'kbenhavn'\n- slugify('\u0141\u00f3d\u017a') returns 'odz'\n- slugify('Stra\u00dfe') returns 'strae'\n- slugify('\u00c6r\u00f8') returns 'r'\n\nThis is the \"caf\" failure the docstring says the function prevents. Other ASCII characters survive, so the empty-result guard does not catch it either.\n\nFix: either add a small fold table for these letters (\u00f8\u2192o, \u0142\u2192l, \u0111\u2192d, \u00df\u2192ss, \u00e6\u2192ae, \u0153\u2192oe and so on) before the ASCII encode, or narrow the docstring's promise.",
+          "evidence": "+    folded = unicodedata.normalize(\"NFKD\", text)\n+    ascii_text = folded.encode(\"ascii\", \"ignore\").decode(\"ascii\").strip().lower()",
+          "id": "edge-91fe79a7ca",
+          "lens": "edge",
+          "line": 23,
+          "path": "textx/slug.py",
+          "severity": "important",
+          "title": "Latin letters with no NFKD decomposition (\u00f8, \u0142, \u0111, \u00df, \u00e6) are silently dropped, so titles lose letters"
+        },
+        {
+          "body": "The comment says a title that loses everything in the fold should raise an error rather than quietly become nothing. The guard only checks `ascii_text`, which is the text before `_NON_WORD` removes separators. If any ASCII punctuation survives the fold, `ascii_text` is not empty and the guard does not fire. The return line then turns that punctuation into hyphens and strips them, so the result is still \"\".\n\nExamples:\n- `slugify(\"\u041c\u043e\u0441\u043a\u0432\u0430!\")`: `ascii_text` is \"!\", so there is no ValueError, and the function returns \"\".\n- `slugify(\"\u4e2d\u6587, \u6807\u9898\")`: `ascii_text` is \",\", and the function returns \"\".\n- `slugify(\"\u65e5\u672c\u8a9e (2)\")` returns \"2\". It keeps a digit, which the guard at least allows on purpose, but the bare-punctuation cases above clearly go against the stated intent.\n\nThese are the same scripts the comment says it measured. Callers will get empty slugs, and empty slugs can collide or resolve to a parent route, which is what this branch was added to prevent. To fix it, compute the slug first and raise if it is empty while `text.strip()` is not.",
+          "evidence": "+    ascii_text = folded.encode(\"ascii\", \"ignore\").decode(\"ascii\").strip().lower()\n+    if not ascii_text and text.strip():\n+        raise ValueError(f\"cannot make an ASCII slug from {text!r}: no character survives the fold\")\n+    return _NON_WORD.sub(\"-\", ascii_text).strip(\"-\")",
+          "id": "correctness-20ed0df785",
+          "lens": "correctness",
+          "line": 24,
+          "path": "textx/slug.py",
+          "severity": "important",
+          "title": "Empty-result guard checks the folded text, not the final slug, so non-Latin titles with punctuation still return \"\""
+        }
+      ],
+      "posted": 2,
+      "raw_findings": 3,
+      "seconds": 92.8,
+      "slug": "slugify",
+      "status": "evaluated",
+      "title": "Add a slug helper"
+    },
+    {
+      "confirmed": 1,
+      "findings": [
+        {
+          "body": "The guard's comment says it exists so that `sleep` cannot raise its own error and hide the operation's exception. The docstring promises that the last exception is re-raised. The guard refuses NaN, infinities and negative values, but it accepts any finite value. `time.sleep` also raises OverflowError for finite values beyond its internal range, about 9.2e9 seconds (for example, a delay of 1e10 or 1e300).\n\nWith such a delay, the first failed attempt reaches `sleep(delay)` inside the `except` branch. The caller then gets OverflowError ('timestamp too large to convert to C _PyTime_t') instead of the operation's own exception. The operation's error survives only as `__context__`. This is the masking the guard was written to prevent, and it breaks the docstring's promise.\n\nIt is rated nit because such delays are unrealistic. To fix it, either check for overflow when the arguments are validated (for example, set an upper bound or try a zero-cost conversion), or change the comment so it does not claim the guard prevents every case where `sleep` hides the error.",
+          "evidence": "    if delay != delay or delay in (float(\"inf\"), float(\"-inf\")) or delay < 0:\n        raise ValueError(\"delay must be a finite number that is not negative\")\n...\n            if attempt < attempts - 1 and delay:\n                sleep(delay)",
+          "id": "edge-b59c865735",
+          "lens": "edge",
+          "line": 19,
+          "path": "netx/retry.py",
+          "severity": "nit",
+          "title": "Very large finite delay still lets time.sleep raise and hide the operation's exception"
+        }
+      ],
+      "posted": 1,
+      "raw_findings": 1,
+      "seconds": 82.2,
+      "slug": "retry",
+      "status": "evaluated",
+      "title": "Add a bounded retry helper"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 57.1,
+      "slug": "humanise",
+      "status": "evaluated",
+      "title": "Add a byte-count humaniser"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 30.7,
+      "slug": "windows",
+      "status": "evaluated",
+      "title": "Add a sliding-window iterator"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 44.7,
+      "slug": "dedupe",
+      "status": "evaluated",
+      "title": "Add order-preserving dedupe"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 32.4,
+      "slug": "flatten",
+      "status": "evaluated",
+      "title": "Add a one-level flatten"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 34.5,
+      "slug": "percent",
+      "status": "evaluated",
+      "title": "Add a percentage formatter"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 40.7,
+      "slug": "parsekv",
+      "status": "evaluated",
+      "title": "Add a key=value line parser"
+    },
+    {
+      "confirmed": 1,
+      "findings": [
+        {
+          "body": "The docstring promises a result of \"at most `width` characters\". The guard only rejects width <= 0, so a width from 1 to len(marker) - 1 gets through. In that range, max(0, width - len(marker)) is 0, head becomes '', and the function returns the whole marker. With the default marker '...', truncate('hello', 1) and truncate('hello', 2) both return '...', which is 3 characters. The same happens with a longer custom marker: truncate('hello world', 4, marker='[more]') returns 6 characters. The caller gets an over-wide string and no error, which breaks the main guarantee of a helper meant to fit text into a fixed display width. Fix: raise ValueError when width < len(marker), or cut the marker down so it fits (marker[:width]).\n\nAlso noted: truncate() returns more than `width` characters when width is smaller than the marker; When width is smaller than the marker, the result is longer than width",
+          "evidence": "    if width <= 0:\n        raise ValueError(\"width must be positive\")\n    if len(text) <= width:\n        return text\n    head = text[: max(0, width - len(marker))]\n    if \" \" in head:\n        head = head[: head.rfind(\" \")]\n    return head.rstrip() + marker",
+          "id": "edge-b10fbfc917",
+          "lens": "edge",
+          "line": 10,
+          "path": "textx/truncate.py",
+          "severity": "important",
+          "title": "When width is smaller than the marker, the result is longer than width"
+        }
+      ],
+      "posted": 1,
+      "raw_findings": 3,
+      "seconds": 71.2,
+      "slug": "truncate",
+      "status": "evaluated",
+      "title": "Add a safe truncate helper"
+    },
+    {
+      "confirmed": 4,
+      "findings": [
+        {
+          "body": "The docstring says \"`BaseException` is caught as well as `Exception`\". The code never catches `BaseException`. It catches `(KeyboardInterrupt, SystemExit)` only to re-raise them, then caches `Exception`. Other `BaseException` subclasses, such as `GeneratorExit`, `asyncio.CancelledError` and custom `BaseException` types, are not mentioned anywhere and pass through uncaught. As with the two named signals, they leave the result unset, so the next call runs the function again. That runtime behaviour matches the stated intent: stop signals are not remembered. The docstring describes a mechanism the code does not have, though. A maintainer who trusts it could \"fix\" the code into an `except BaseException` that caches cancellations. Either reword the docstring to say only `Exception` is cached and every other `BaseException` propagates without setting the result, or make the code match it.",
+          "evidence": "+    `BaseException` is caught as well as `Exception`, because `SystemExit` and `KeyboardInterrupt`\n+                    except (KeyboardInterrupt, SystemExit):\n+                        raise\n+                    except Exception as exc:  # noqa: BLE001 - remember the failure too",
+          "id": "correctness-caaeec141c",
+          "lens": "correctness",
+          "line": 14,
+          "path": "functx/once.py",
+          "severity": "nit",
+          "title": "Docstring says BaseException is caught, but the code only catches KeyboardInterrupt/SystemExit (re-raised) and Exception"
+        },
+        {
+          "body": "The docstring says \"`BaseException` is caught as well as `Exception`\". The code never catches BaseException. It names only KeyboardInterrupt and SystemExit, re-raises them, and then catches Exception. Any other BaseException subclass, such as asyncio.CancelledError or GeneratorExit, is not caught by either clause. It propagates and leaves both slots unset, so the next call runs the function again.\n\nIn practice this matches the stated intent that stop signals are not remembered. The docstring still describes a catch that does not exist, so anyone maintaining this will misread the control flow. A future edit that 'restores' `except BaseException` to match the docstring would start caching shutdown signals, which is exactly what the docstring says must not happen. Fix the docstring: say that BaseException subclasses that are not Exception propagate uncached. Or add an explicit `except BaseException: raise` so the code says it too.",
+          "evidence": "+    `BaseException` is caught as well as `Exception`, because `SystemExit` and `KeyboardInterrupt`\n...\n+                    except (KeyboardInterrupt, SystemExit):\n+                        raise\n+                    except Exception as exc:  # noqa: BLE001 - remember the failure too",
+          "id": "edge-569a659912",
+          "lens": "edge",
+          "line": 31,
+          "path": "functx/once.py",
+          "severity": "nit",
+          "title": "Docstring says BaseException is caught, but the code catches only KeyboardInterrupt/SystemExit and Exception"
+        },
+        {
+          "body": "When `func` fails, the wrapper stores the exception object and runs `raise stored[\"error\"]` on every later call. Each time the same instance is raised again, Python adds the current frames to that instance's existing `__traceback__`. A once-decorated function that failed and is called N more times therefore has a traceback chain that grows with N. That chain keeps every caller frame and its locals in memory for the life of the process, and the reported tracebacks get longer and longer. This clashes with the intent of caching one fixed failure. Re-raise with a fixed traceback, for example `raise err.with_traceback(original_tb)` with `original_tb` saved at capture time, or raise a fresh copy.",
+          "evidence": "+        if stored[\"error\"] is not None:\n+            raise stored[\"error\"]",
+          "id": "correctness-df6db44a7d",
+          "lens": "correctness",
+          "line": 36,
+          "path": "functx/once.py",
+          "severity": "nit",
+          "title": "Re-raising the same cached exception instance makes its traceback grow on every call"
+        }
+      ],
+      "posted": 3,
+      "raw_findings": 5,
+      "seconds": 109.5,
+      "slug": "once",
+      "status": "evaluated",
+      "title": "Add a once-only decorator"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 28.3,
+      "slug": "groups",
+      "status": "evaluated",
+      "title": "Add grouping by a key function"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 36.3,
+      "slug": "safeget",
+      "status": "evaluated",
+      "title": "Add a dotted-path getter"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 34.6,
+      "slug": "iso",
+      "status": "evaluated",
+      "title": "Add an ISO date formatter"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 28.6,
+      "slug": "counter",
+      "status": "evaluated",
+      "title": "Add a counting helper over an iterable"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 29.4,
+      "slug": "normalise",
+      "status": "evaluated",
+      "title": "Add whitespace normalisation"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 35.1,
+      "slug": "windowmean",
+      "status": "evaluated",
+      "title": "Add a rolling mean"
+    },
+    {
+      "confirmed": 0,
+      "findings": [],
+      "posted": 0,
+      "raw_findings": 0,
+      "seconds": 28.2,
+      "slug": "is_palindrome",
+      "status": "evaluated",
+      "title": "Add a palindrome check"
+    }
+  ],
+  "seeds_attempted": 20,
+  "seeds_discarded": [],
+  "seeds_errored": [],
+  "seeds_evaluated": 20,
+  "seeds_unevaluated": 0,
+  "seeds_with_findings": 4,
+  "seeds_with_findings_rate": 0.2,
+  "started": "2026-11-26T21:55:51Z",
+  "unevaluated_detail": [],
+  "workers": 2
 }
