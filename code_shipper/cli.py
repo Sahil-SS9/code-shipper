@@ -214,6 +214,9 @@ def build_parser() -> argparse.ArgumentParser:
     ship_ui.add_argument("--state-dir", default="", help="where review state lives")
     ship_ui.add_argument("--demo", action="store_true",
                         help="draw sample data instead of a real review (labelled as demo data)")
+    ship_ui.description = (
+        "Alias of `ui` with narrower defaults (113 columns, 30 rows) for an 80-column terminal session."
+    )
     ship_ui.add_argument("--width", type=int, default=113, help="columns")
     ship_ui.add_argument("--height", type=int, default=30, help="rows")
 
@@ -1077,6 +1080,19 @@ _DEMO_STATES = ("empty", "reviewing", "findings", "incomplete", "approvals-block
                 "approvals-satisfied", "observe", "paused", "stopped", "error")
 
 
+def _resolve_positional_pr(args: argparse.Namespace) -> None:
+    """Treat a numeric positional as a pull request, the way `review 25` reads.
+
+    Kept out of `_projection_for` because that function draws; interpreting arguments is a separate job and
+    a caller that only wants the parser's own view should not have its Namespace rewritten underneath it.
+    """
+    state = getattr(args, "state", None)
+    if isinstance(state, str) and state.isdigit():
+        if getattr(args, "pr", None) is None:
+            args.pr = int(state)
+        args.state = "auto"
+
+
 def _projection_for(args: argparse.Namespace):
     """The projection a surface should draw: stored state, or the sample board under --demo.
 
@@ -1089,14 +1105,6 @@ def _projection_for(args: argparse.Namespace):
     state_name = getattr(args, "state", None)
     repo = getattr(args, "repo", "") or ""
     pr = getattr(args, "pr", None)
-
-    # A number in the positional slot is a pull request, exactly as `review 25` reads. A word is a demo
-    # state. This is the whole of A5: `ui 25` used to fail with "invalid choice: '25'" while `review 25`
-    # worked, because the positional was restricted to state names.
-    if isinstance(state_name, str) and state_name.isdigit():
-        if pr is None:
-            pr = int(state_name)
-        state_name = "auto"
 
     if state_name and state_name != "auto":
         if state_name not in _DEMO_STATES:
@@ -1142,6 +1150,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
     """Draw the terminal board: the most recent real review, or a sample state under --demo."""
     from .surfaces import cli_view, tui
 
+    _resolve_positional_pr(args)
     projection, demo = _projection_for(args)
     if args.json:
         print(cli_view.render_json(projection))
@@ -1213,6 +1222,7 @@ def cmd_ship_page(args: argparse.Namespace) -> int:
     """Write the Desktop page for a real review, or a sample state under --demo."""
     from .surfaces import desktop
 
+    _resolve_positional_pr(args)
     projection, demo = _projection_for(args)
     html = desktop.render(projection, demo=demo)
     target = Path(args.out).expanduser()
