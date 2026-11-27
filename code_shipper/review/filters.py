@@ -60,9 +60,9 @@ class PathFilter:
     def is_ignored(self, path: str) -> bool:
         if self.include_ignored:
             return False
-        from ..steward.policy import _glob_match
+        from ..steward.policy import _glob_match, normalise_path
 
-        normalised = path.replace("\\", "/").lstrip("./")
+        normalised = normalise_path(path)
         basename = normalised.rsplit("/", 1)[-1]
         for pattern in self.ignored_patterns():
             if _glob_match(normalised, pattern):

@@ -75,7 +75,9 @@ class WorkItem:
 
 
 def _norm(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
+    from .policy import normalise_path
+
+    return normalise_path(path)
 
 
 def _touches(changed_files: list[str], path: str) -> bool:

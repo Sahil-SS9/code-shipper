@@ -168,7 +168,9 @@ class RefusesCheatingTests(FixCase):
         verdict = self.ws.check(before)
 
         self.assertFalse(verdict.ok)
-        self.assertTrue(any("out of scope" in p for p in verdict.problems), verdict.problems)
+        # Since N1 the CI workflow is refused as a protected path before scope is even consulted.
+        self.assertTrue(any("protected path" in p and ".github/" in p for p in verdict.problems),
+                        verdict.problems)
 
     def test_deleting_a_file_is_refused(self) -> None:
         before = self.ws.before()

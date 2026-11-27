@@ -17,7 +17,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..steward.policy import ScopePolicy, weakening
+from ..steward.policy import ScopePolicy, protected_reason, weakening
 
 # There are no scope patterns here. Path rules and test-weakening detection live in exactly one place,
 # `code_shipper.steward.policy`, and this module calls it. Two implementations of one rule is how one
@@ -83,6 +83,10 @@ def check_scope(
 
     total = 0
     for path in changed:
+        rule = protected_reason(path)
+        if rule:
+            problems.append(f"protected path, never editable by a fix: {path} (matches {rule})")
+            continue
         if not policy.path_allowed(path):
             problems.append(f"out of scope: {path}")
             continue

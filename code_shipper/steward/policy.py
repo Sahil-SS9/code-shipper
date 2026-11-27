@@ -53,6 +53,73 @@ def _glob_match(path: str, pattern: str) -> bool:
     return re.fullmatch("".join(parts), path) is not None
 
 
+#: Paths no fix may ever write, whatever the repository's configuration says (N1). These are the files that
+#: govern the repository and Code-Shipper itself: CI, ownership, our own rules, agent instructions, git
+#: plumbing, and anything that looks like a secret. A fix that could edit them could rewrite its own limits.
+#: Matched case-insensitively, because `.GitHub/` is `.github/` on macOS and Windows checkouts.
+PROTECTED_PATHS: tuple[str, ...] = (
+    ".github/**",
+    "CODEOWNERS",
+    "**/CODEOWNERS",
+    ".code-shipper/**",
+    "code-shipper.yml",
+    "code-shipper.yaml",
+    "AGENTS.md",
+    "**/AGENTS.md",
+    "CLAUDE.md",
+    "**/CLAUDE.md",
+    "REVIEW.md",
+    ".git/**",
+    ".gitmodules",
+    ".githooks/**",
+    ".husky/**",
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "id_rsa*",
+    "id_ed25519*",
+    "*credentials*",
+    "*.p12",
+    "*.pfx",
+)
+
+
+def normalise_path(path: str) -> str:
+    """POSIX separators, leading "./" segments and slashes removed — and nothing else.
+
+    The previous version used `lstrip("./")`, which strips *characters*, not a prefix: ".github/ci.yml"
+    became "github/ci.yml" and ".env" became "env", so a configured `forbidden: [".github/**"]` never
+    matched anything. Measured before the fix: with allowed ["**"] and that forbidden list, a fix to
+    .github/workflows/ci.yml was allowed.
+    """
+    normalised = path.replace("\\", "/")
+    while True:
+        if normalised.startswith("./"):
+            normalised = normalised[2:]
+        elif normalised.startswith("/"):
+            normalised = normalised[1:]
+        else:
+            return normalised
+
+
+def protected_reason(path: str) -> str:
+    """The protected pattern a path falls under, or "" when it is not protected.
+
+    Lives outside `ScopePolicy` on purpose: no field, constructor argument or config key reaches it, so a
+    repository cannot shrink the list by configuration — the only way to change it is to change this file.
+    """
+    normalised = normalise_path(path).casefold()
+    basename = normalised.rsplit("/", 1)[-1]
+    for pattern in PROTECTED_PATHS:
+        folded = pattern.casefold()
+        if _glob_match(normalised, folded):
+            return pattern
+        if "/" not in pattern and _glob_match(basename, folded):
+            return pattern
+    return ""
+
+
 @dataclass(frozen=True)
 class ScopePolicy:
     """Where a fix may write. Defaults are deliberately empty: a caller must opt in."""
@@ -64,7 +131,7 @@ class ScopePolicy:
     max_total_bytes: int = 200_000
 
     def normalise(self, path: str) -> str:
-        return path.replace("\\", "/").lstrip("./")
+        return normalise_path(path)
 
     def _matches(self, path: str, patterns: Iterable[str]) -> bool:
         normalised = self.normalise(path)
@@ -80,6 +147,8 @@ class ScopePolicy:
         return False
 
     def path_allowed(self, path: str) -> bool:
+        if protected_reason(path):
+            return False
         if self._matches(path, self.forbidden):
             return False
         return self._matches(path, self.allowed)
