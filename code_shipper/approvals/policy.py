@@ -101,6 +101,11 @@ class Policy:
     agents: dict[str, Any] = field(default_factory=dict)
     scope: dict[str, Any] = field(default_factory=dict)
     source: str = ""
+    # D16b needs to know *which* repository's rules these are and where its confirmation would live.
+    # Without these, `allow_agent_approval` could only be checked against nothing.
+    repo: str = ""
+    state_dir: str = ""
+    approvals_yml: str = ""
 
     @property
     def observe_only(self) -> bool:

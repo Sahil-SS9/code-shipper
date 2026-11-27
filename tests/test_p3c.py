@@ -143,6 +143,25 @@ class StopConditionTests(unittest.TestCase):
 POSIX = not sys.platform.startswith("win")
 
 
+def _descendants_of(root_pid: int, ps_output: str) -> set[str]:
+    """Every pid descended from `root_pid`, from `ps -eo pid,ppid,args` output."""
+    children: dict[str, list[str]] = {}
+    for line in ps_output.splitlines()[1:]:
+        parts = line.split(None, 2)
+        if len(parts) < 2:
+            continue
+        pid, ppid = parts[0], parts[1]
+        children.setdefault(ppid, []).append(pid)
+    found: set[str] = set()
+    stack = [str(root_pid)]
+    while stack:
+        for child in children.get(stack.pop(), []):
+            if child not in found:
+                found.add(child)
+                stack.append(child)
+    return found
+
+
 class CancellationTests(unittest.TestCase):
     """T-ADV-14: the process dies, and that is asserted against a real process."""
 
@@ -186,10 +205,18 @@ class CancellationTests(unittest.TestCase):
         timer.start()
         with self.assertRaises(Cancelled):
             run_with_cancel([sys.executable, "-c", script], token=token, timeout_s=30)
-        # the process group is gone: no python child of ours should still be running that script
+        # the process group is gone: no python child of OURS should still be running that script.
+        #
+        # Scoped to this test's own descendants rather than the whole host. Asserting on the host's process
+        # table made the test fail whenever anything else on the machine happened to run a subprocess with
+        # the same `time.sleep(30)` in it — which is exactly what happened: another repo's pytest suite was
+        # running, and this test reported it as our leak. A test that fails for someone else's process is
+        # not measuring cancellation.
         time.sleep(0.2)
-        ps = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True).stdout
-        self.assertNotIn("time.sleep(30)", ps)
+        ps = subprocess.run(["ps", "-eo", "pid,ppid,args"], capture_output=True, text=True).stdout
+        mine = _descendants_of(os.getpid(), ps)
+        leaked = [line for line in ps.splitlines() if "time.sleep(30)" in line and line.split()[0] in mine]
+        self.assertEqual(leaked, [], f"a child of this test survived cancellation: {leaked}")
 
     def test_a_completed_process_is_not_reported_as_cancelled(self) -> None:
         token = CancelToken()

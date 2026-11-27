@@ -248,4 +248,21 @@ def refuses_agent_approval(policy: Policy | None) -> tuple[bool, str]:
             "allow_agent_approval requires separated identities (agents.mode), because a single "
             "identity cannot approve its own work"
         )
+    # D16b: the flag is a request, not a grant. Without an acknowledgement record bound to this repository
+    # and to the current approvals.yml, agent approval stays off. Checked here — where the decision is made —
+    # so no path can reach approval without passing it.
+    state_dir = getattr(policy, "state_dir", "") or ""
+    if not state_dir:
+        return True, (
+            "allow_agent_approval is set but no state directory is known, so the D16b confirmation "
+            "cannot be checked. Refusing rather than approving on an unverifiable consent record."
+        )
+    from .confirm import agent_approval_is_enabled
+
+    enabled, reason = agent_approval_is_enabled(
+        state_dir=state_dir, repo=getattr(policy, "repo", "") or "",
+        approvals_yml=getattr(policy, "approvals_yml", "") or "",
+    )
+    if not enabled:
+        return True, reason
     return False, ""

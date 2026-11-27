@@ -280,10 +280,12 @@ def build_parser() -> argparse.ArgumentParser:
     config = sub.add_parser("config", help="inspect configuration", **_NO_ABBREV)
     config.add_argument(
         "action",
-        choices=["effective"],
-        help="effective: the merged policy and where each value came from",
+        choices=["effective", "confirm-agent-approval"],
+        help="effective: the merged policy and where each value came from. "
+             "confirm-agent-approval: deliberately enable agent approval for one repository",
     )
     config.add_argument("--repo", required=True, metavar="OWNER/NAME", help="repository slug")
+    config.add_argument("--state-dir", default="", help="where review state lives")
     config.add_argument(
         "--central",
         default="",
@@ -503,6 +505,48 @@ def cmd_review(args: argparse.Namespace) -> int:
         if not args.dry_run:
             print(f"\nsee it: code-shipper ui --repo {args.repo} --pr {args.pr}")
     return _review_exit_code(outcome)
+
+
+def cmd_config_confirm_agent_approval(args: argparse.Namespace) -> int:
+    """D16b: the second step. Prints what will change, types the repo back, binds to the rules hash."""
+    from .approvals.confirm import ConfirmationRefused, confirm_interactively
+    from .hosts.github import GitHubHost
+
+    state_root = Path(args.state_dir).expanduser() if getattr(args, "state_dir", "") else _state_dir()
+    repo = args.repo
+
+    # Read the rules the confirmation will be bound to. Refusing when the file is absent is deliberate: a
+    # confirmation for rules that do not exist would be a confirmation for nothing.
+    import os
+
+    local = Path(".code-shipper/approvals.yml")
+    if local.exists():
+        rules = local.read_bytes()
+    else:
+        token = os.environ.get("CODE_SHIPPER_GITHUB_TOKEN") or _read_token_quietly()
+        if not token:
+            print(
+                f"no .code-shipper/approvals.yml in {os.getcwd()} and no GitHub token to fetch one. "
+                "Run this from the repository root.",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            fetched = GitHubHost(token).read_file(repo, "HEAD", ".code-shipper/approvals.yml")
+            if fetched is None:
+                print(f"{repo} has no .code-shipper/approvals.yml at HEAD", file=sys.stderr)
+                return 2
+            rules = fetched
+        except Exception as exc:  # noqa: BLE001 - a read failure is a message, not a traceback
+            print(f"could not read .code-shipper/approvals.yml from {repo}: {exc}", file=sys.stderr)
+            return 2
+
+    try:
+        confirm_interactively(repo=repo, approvals_yml=rules, state_dir=str(state_root))
+    except ConfirmationRefused as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    return 0
 
 
 def _add_harness_arguments(parser) -> None:
@@ -1240,6 +1284,8 @@ def cmd_ship_page(args: argparse.Namespace) -> int:
 
 
 def cmd_config(args: argparse.Namespace) -> int:
+    if getattr(args, "action", "") == "confirm-agent-approval":
+        return cmd_config_confirm_agent_approval(args)
     """`config effective`: the merged policy, with the source of every value (C13, D15d).
 
     Read-only. It prints what *would* be applied, which is the point: a tighten-only rule that refuses
