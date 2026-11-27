@@ -275,3 +275,45 @@ class TheProfileFlagIsNotANoOpTests(unittest.TestCase):
         self.assertEqual(selection.profile, "nope-not-a-profile")
         self.assertIsInstance(selection.model, str)
         self.assertTrue(selection.model)
+
+
+class NestedHomeNoteTests(unittest.TestCase):
+    """Measured: a HERMES_HOME inside ~/.hermes is served by the main gateway with the main model."""
+
+    def setUp(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        self.root = Path(tempfile.mkdtemp(prefix="cs-root-")) / ".hermes"
+        (self.root / "cache" / "scratch" / "throwaway").mkdir(parents=True)
+        (self.root / "profiles" / "work").mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        import shutil
+
+        shutil.rmtree(self.root.parent, ignore_errors=True)
+
+    def note(self, home: str) -> str:
+        from code_shipper.harness.factory import nested_home_note
+
+        return nested_home_note({"HERMES_HOME": home} if home else {}, default_root=self.root)
+
+    def test_a_home_nested_in_the_main_one_is_warned_about(self) -> None:
+        text = self.note(str(self.root / "cache" / "scratch" / "throwaway"))
+        self.assertIn("treats it as your main setup", text)
+
+    def test_the_main_home_a_named_profile_and_an_outside_home_are_not(self) -> None:
+        import tempfile
+
+        self.assertEqual(self.note(""), "")
+        self.assertEqual(self.note(str(self.root)), "")
+        self.assertEqual(self.note(str(self.root / "profiles" / "work")), "")
+        with tempfile.TemporaryDirectory() as outside:
+            self.assertEqual(self.note(outside), "")
+
+    def test_the_banner_carries_the_warning(self) -> None:
+        from code_shipper.harness.factory import Selection
+
+        sel = Selection(harness=None, name="hermes", profile="", model="m", unverified=False, reason="",
+                        home_note="warning: x")
+        self.assertEqual(sel.banner().splitlines()[1], "warning: x")

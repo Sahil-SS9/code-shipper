@@ -9,6 +9,7 @@ and every summary can name the harness, profile and model that actually ran.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,6 +39,7 @@ class Selection:
     unverified: bool
     reason: str
     provider: str = ""
+    home_note: str = ""
 
     def summary_fields(self) -> dict[str, str]:
         """The three facts every summary must name, so a review cannot misreport what ran."""
@@ -50,7 +52,8 @@ class Selection:
         flag = "  [UNVERIFIED]" if self.unverified else ""
         where = self.profile or "(default)"
         provider = f" · provider: {self.provider}" if self.provider else ""
-        return f"harness: {self.name} · profile: {where} · model: {self.model}{provider}{flag}"
+        line = f"harness: {self.name} · profile: {where} · model: {self.model}{provider}{flag}"
+        return f"{line}\n{self.home_note}" if self.home_note else line
 
 
 def _model_for(harness: Any, profile: str = "") -> str:
@@ -73,6 +76,30 @@ def _model_for(harness: Any, profile: str = "") -> str:
 
 
 UNRESOLVED_MODEL = "(unknown"
+
+
+def nested_home_note(env: dict[str, str] | None = None, default_root: Path | None = None) -> str:
+    """Warn when HERMES_HOME sits inside the main Hermes home but is not one of its profiles.
+
+    Measured on Hermes (fork a97cbc9): such a home resolves to the main root, is named profile
+    "default", and is served by the main host gateway, so the main setup's model and credentials
+    answer — not the throwaway config. A home outside ~/.hermes counts as a separate install and gets
+    its own gateway. Empty when there is nothing to warn about.
+    """
+    import os
+
+    raw = (env if env is not None else os.environ).get("HERMES_HOME", "").strip()
+    if not raw:
+        return ""
+    root = (default_root or Path.home() / ".hermes").expanduser().resolve()
+    home = Path(raw).expanduser().resolve()
+    if home == root or root not in home.parents:
+        return ""
+    relative = home.relative_to(root).parts
+    if len(relative) == 2 and relative[0] == "profiles":
+        return ""
+    return (f"warning: HERMES_HOME {raw} is inside {root}, so Hermes treats it as your main setup and "
+            f"answers with its model. Put a throwaway home outside {root}.")
 
 
 def unresolved_model_note(profile: str = "") -> str:
@@ -189,4 +216,5 @@ def build_harness(
         provider=_hermes_provider(profile) if name == "hermes" else "",
         unverified=unverified,
         reason=reason,
+        home_note=nested_home_note() if name == "hermes" else "",
     )

@@ -77,8 +77,8 @@ figure. Every review summary names the harness, profile and model that actually 
 harness: hermes · profile: (default) · model: claude-opus-5-5 · provider: anthropic
 ```
 
-An unknown model is explained, not guessed. `HERMES_HOME` picks the Hermes *configuration*, not an
-isolated inference path — calls may still reach services already running on the machine.
+An unknown model is explained, not guessed. A throwaway `HERMES_HOME` must sit outside `~/.hermes`:
+Hermes treats a home inside it as your main setup and answers with that setup's model, and Code-Shipper warns.
 
 **1. Check the machine.**
 
@@ -184,7 +184,7 @@ py -3 -m unittest discover -s tests -t . -q
 
 | Platform | Unit tests | A real contained fix run |
 |---|---|---|
-| Linux | **yes** — 1560 tests, 3.11 / 3.12 / 3.13, run locally | yes |
+| Linux | **yes** — 1572 tests, 3.11 / 3.12 / 3.13, run locally | yes |
 | macOS | **last passed on CI at `ccfbefa`; untested since** | no |
 | Windows | **last passed on CI at `ccfbefa`; untested since** | no |
 
