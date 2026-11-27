@@ -21,6 +21,10 @@ The ledger's real vocabulary is `planned`, `posting`, `confirmed`, `refused`, `u
 Nothing here contacts GitHub. Whether a pull request is closed is an input (`closed_prs`), because a pruner
 that made network calls at the start of every command would add latency and failure modes to the command the
 user actually asked for. A pull request not named in that set is treated as open, so the default is keep.
+
+The CLI supplies that set by asking only about `closure_candidates` — ledgers that are old and settled, so
+the answer can actually change something — through `resolve_closed`, which is capped and treats every
+error as "not closed". With no such ledgers, no request is made.
 """
 
 from __future__ import annotations
@@ -215,6 +219,84 @@ def prune_repo_ledgers(
             retention_days=retention_days,
         )
     return results
+
+
+def _walk_ledgers(state_dir: str, host: str):
+    """Yield ("owner/repo", number, path) for every per-PR ledger under the state tree."""
+    host_root = os.path.join(state_dir, "prs", host)
+    if not os.path.isdir(host_root):
+        return
+    for owner in sorted(os.listdir(host_root)):
+        owner_root = os.path.join(host_root, owner)
+        if not os.path.isdir(owner_root):
+            continue
+        for repo in sorted(os.listdir(owner_root)):
+            repo_root = os.path.join(owner_root, repo)
+            if not os.path.isdir(repo_root):
+                continue
+            for name in sorted(os.listdir(repo_root)):
+                stem = name[: -len(".jsonl")] if name.endswith(".jsonl") else ""
+                if stem.isdigit():
+                    yield f"{owner}/{repo}", int(stem), os.path.join(repo_root, name)
+
+
+def closure_candidates(
+    *,
+    state_dir: str,
+    now: float | None = None,
+    retention_days: int = RETENTION_DAYS,
+    host: str = "github.com",
+) -> list[tuple[str, int]]:
+    """Pull requests whose ledger would be pruned *if* the pull request were closed.
+
+    Only these are worth asking GitHub about: a ledger that is young, unsettled or unreadable is kept
+    whatever the answer, so asking about it would be a network call that cannot change anything. On a
+    normal day this list is empty and the command makes no extra request at all.
+    """
+    now = time.time() if now is None else now
+    found: list[tuple[str, int]] = []
+    for key, number, path in _walk_ledgers(state_dir, host):
+        entries = _read_entries(path)
+        if _protection(entries):
+            continue
+        newest = _newest_ts(entries or [])
+        if newest is None or (now - newest) / 86400.0 <= retention_days:
+            continue
+        found.append((key, number))
+    return found
+
+
+def resolve_closed(
+    candidates: list[tuple[str, int]],
+    get_state,
+    *,
+    cap: int = 20,
+    log: list[str] | None = None,
+) -> dict[str, set[int]]:
+    """Ask the host which candidates are closed. Best effort, and every doubt resolves to "keep".
+
+    `get_state(repo, number)` returns the pull request's state string. Any exception, any answer other
+    than exactly "closed", and anything past `cap` leaves the pull request out of the closed set, so its
+    record is kept and is simply considered again on a later run. The cap bounds how long housekeeping can
+    hold up the command the user asked for.
+    """
+    closed: dict[str, set[int]] = {}
+    asked = 0
+    for key, number in candidates:
+        if asked >= cap:
+            if log is not None:
+                log.append(f"closure check capped at {cap}; {len(candidates) - cap} left for a later run")
+            break
+        asked += 1
+        try:
+            state = get_state(key, number)
+        except Exception as exc:  # noqa: BLE001 - an unanswered question means keep
+            if log is not None:
+                log.append(f"{key}#{number}: state unknown ({exc}), kept")
+            continue
+        if state == "closed":
+            closed.setdefault(key, set()).add(number)
+    return closed
 
 
 def prune_all(

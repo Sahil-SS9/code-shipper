@@ -1510,6 +1510,16 @@ def _resolve_pr_alias(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
+PRUNE_CLOSURE_CAP = 20
+
+
+def _closure_host(token: str):
+    """The read-only host used to ask whether old pull requests are closed. A seam for tests."""
+    from .hosts.github import GitHubHost
+
+    return GitHubHost(token, timeout=5.0)
+
+
 def _prune_receipts_once(args: argparse.Namespace) -> None:
     """D16e: prune at the start of a command, never as a daemon, and never fatally.
 
@@ -1520,18 +1530,35 @@ def _prune_receipts_once(args: argparse.Namespace) -> None:
     It prunes the broker ledger, which is what actually holds the record of a write. The first version
     walked `<state>/receipts`, a directory nothing writes, so it reported success and deleted nothing.
 
-    Whether a pull request is closed is NOT determined here. There is no local signal for it, and making
-    network calls before every command would add a failure mode to the command the user asked for. With no
-    closed set, every record is kept — which is the correct default, and the reason this is a no-op until a
-    caller supplies that knowledge.
+    Whether a pull request is closed is asked of GitHub only for ledgers that are old and settled — the
+    only ones the answer can change. Usually there are none and no request is made. When there are, at
+    most PRUNE_CLOSURE_CAP are asked per run, read-only, and any error or missing token means "not
+    closed", so the record is kept and considered again next time.
     """
     if getattr(args, "command", "") in {"ui", "ship-ui", "status", "doctor", "lessons", "stop"}:
         return
     try:
-        from .receipts import prune_all
+        import os
+
+        from .receipts import closure_candidates, prune_all, resolve_closed
 
         log: list[str] = []
-        prune_all(state_dir=str(_state_dir()), log=log)
+        state_dir = str(_state_dir())
+        closed: dict[str, set[int]] = {}
+        candidates = closure_candidates(state_dir=state_dir)
+        if candidates:
+            token = os.environ.get("CODE_SHIPPER_GITHUB_TOKEN") or _read_token_quietly()
+            if token:
+                host = _closure_host(token)
+                closed = resolve_closed(
+                    candidates,
+                    lambda repo, number: host.get_pr(repo, number).state,
+                    cap=PRUNE_CLOSURE_CAP,
+                    log=log,
+                )
+            else:
+                log.append(f"{len(candidates)} old record(s) kept: no GitHub token to check they are closed")
+        prune_all(state_dir=state_dir, closed_prs_by_repo=closed, log=log)
         for line in log:
             print(f"ledger: {line}", file=sys.stderr)
     except Exception as exc:  # noqa: BLE001 - housekeeping must never block the real command

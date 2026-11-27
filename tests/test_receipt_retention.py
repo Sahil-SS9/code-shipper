@@ -269,5 +269,113 @@ class PruningIsLoggedTests(unittest.TestCase):
             self.assertEqual(log, [])
 
 
+class TheCommandSuppliesClosureTests(unittest.TestCase):
+    """The condition on Part 1: retention was correct but its only real caller never said what was closed,
+    so it pruned nothing, ever. These go through `cli._prune_receipts_once`, the function `main` calls."""
+
+    def _run(self, state: str, host, *, token: str | None = "t0ken") -> list[str]:
+        import argparse
+        import contextlib
+        import io
+        import time
+        from unittest import mock
+
+        from code_shipper import cli
+
+        env = {"XDG_STATE_HOME": state}
+        if token:
+            env["CODE_SHIPPER_GITHUB_TOKEN"] = token
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=False), \
+                mock.patch.object(cli, "_closure_host", return_value=host), \
+                mock.patch.object(cli, "_read_token_quietly", return_value=None), \
+                contextlib.redirect_stderr(err):
+            if not token:
+                os.environ.pop("CODE_SHIPPER_GITHUB_TOKEN", None)
+            cli._prune_receipts_once(argparse.Namespace(command="review"))
+        self._now = time.time()
+        return err.getvalue().splitlines()
+
+    @staticmethod
+    def _ledger(state: str, number: int, outcome: str, age_days: float) -> str:
+        import time
+
+        path = real_ledger(os.path.join(state, "code-shipper"), "o", "n", number, outcome, age_days=0)
+        lines = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+        for entry in lines:
+            entry["ts"] = time.time() - age_days * DAY
+        open(path, "w", encoding="utf-8").write("\n".join(json.dumps(e) for e in lines) + "\n")
+        return path
+
+    class _Host:
+        def __init__(self, states=None, error=None):
+            self.states, self.error, self.asked = states or {}, error, []
+
+        def get_pr(self, repo, number):
+            self.asked.append((repo, number))
+            if self.error:
+                raise self.error
+
+            class _PR:
+                state = self.states.get(number, "open")
+            return _PR()
+
+    def test_an_old_settled_record_on_a_closed_pr_is_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as state:
+            path = self._ledger(state, 5, "confirmed", age_days=45)
+            host = self._Host({5: "closed"})
+            self._run(state, host)
+            self.assertEqual(host.asked, [("o/n", 5)])
+            self.assertFalse(os.path.exists(path))
+
+    def test_it_is_kept_when_the_reader_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as state:
+            path = self._ledger(state, 6, "confirmed", age_days=45)
+            lines = self._run(state, self._Host(error=RuntimeError("network down")))
+            self.assertTrue(os.path.exists(path))
+            self.assertTrue(any("state unknown" in line for line in lines), lines)
+
+    def test_it_is_kept_while_the_pr_is_open(self) -> None:
+        with tempfile.TemporaryDirectory() as state:
+            path = self._ledger(state, 7, "confirmed", age_days=45)
+            self._run(state, self._Host({7: "open"}))
+            self.assertTrue(os.path.exists(path))
+
+    def test_it_is_kept_without_a_token_and_says_why(self) -> None:
+        with tempfile.TemporaryDirectory() as state:
+            path = self._ledger(state, 8, "confirmed", age_days=45)
+            host = self._Host({8: "closed"})
+            lines = self._run(state, host, token=None)
+            self.assertEqual(host.asked, [])
+            self.assertTrue(os.path.exists(path))
+            self.assertTrue(any("no GitHub token" in line for line in lines), lines)
+
+    def test_no_request_is_made_when_nothing_is_old_and_settled(self) -> None:
+        """Young records and unsettled writes cannot be pruned whatever GitHub says, so nobody asks."""
+        with tempfile.TemporaryDirectory() as state:
+            self._ledger(state, 9, "confirmed", age_days=3)
+            self._ledger(state, 10, "uncertain", age_days=90)
+            host = self._Host({9: "closed", 10: "closed"})
+            self._run(state, host)
+            self.assertEqual(host.asked, [])
+
+    def test_the_number_of_questions_per_run_is_capped(self) -> None:
+        from code_shipper.receipts import resolve_closed
+
+        asked = []
+        log: list[str] = []
+        closed = resolve_closed([("o/n", n) for n in range(30)],
+                                lambda repo, n: asked.append(n) or "closed", cap=20, log=log)
+        self.assertEqual(len(asked), 20)
+        self.assertEqual(len(closed["o/n"]), 20)
+        self.assertIn("capped at 20", log[-1])
+
+    def test_only_exactly_closed_counts(self) -> None:
+        from code_shipper.receipts import resolve_closed
+
+        for answer in ("CLOSED", "merged", "", None, "open"):
+            self.assertEqual(resolve_closed([("o/n", 1)], lambda r, n, a=answer: a), {}, answer)
+
+
 if __name__ == "__main__":
     unittest.main()
