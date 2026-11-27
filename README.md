@@ -2,11 +2,14 @@
 
 Review, fix and get pull requests ready to merge, with any agent harness. Hermes Agent first.
 
-Status: **Phases 0-7 built against a sandbox repository. Not published.** Readers and writers are
-exercised on `Sahil-SS9/code-shipper-sandbox`. The TUI and Desktop surfaces are designed, built and
-signed off. The canonical documents are `docs/HANDOFF.md`, `docs/tech-spec.md`, `docs/decisions.md`
-and the per-phase reports in `docs/reports/`. Code-Shipper exposes no merge action on any surface,
-and that is asserted by tests rather than promised by documentation.
+Status: **v1, GitHub only, Linux tested.** Built and exercised end to end against a sandbox repository
+(`Sahil-SS9/code-shipper-sandbox`). Code-Shipper exposes no merge action on any surface, and that is
+asserted by tests rather than promised by documentation. Design and build records are in `docs/`.
+
+[![Code-Shipper demo, 60 seconds](docs/media/code-shipper-demo.jpg)](docs/media/code-shipper-demo.mp4)
+
+*60-second demo. Green tag = a real review of sandbox PR #25; amber tag = built-in sample data.
+(Recorded before a fix: the header showed the builder's agent name instead of your profile.)*
 
 Code-Shipper is an open-source take on the workflow Anthropic calls Claude Ship, built to work
 across agent harnesses (Hermes, Claude Code, Codex, OpenCode, or a direct model API):
@@ -184,7 +187,7 @@ py -3 -m unittest discover -s tests -t . -q
 
 | Platform | Unit tests | A real contained fix run |
 |---|---|---|
-| Linux | **yes** — 1576 tests, 3.11 / 3.12 / 3.13, run locally | yes |
+| Linux | **yes** — 1577 tests, 3.11 / 3.12 / 3.13, run locally | yes |
 | macOS | **last passed on CI at `ccfbefa`; untested since** | no |
 | Windows | **last passed on CI at `ccfbefa`; untested since** | no |
 
