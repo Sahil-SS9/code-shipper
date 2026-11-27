@@ -348,11 +348,28 @@ def cmd_review(args: argparse.Namespace) -> int:
     from .review.framing import ci_annotations, hint_block
     from .review.engine import review as run_review
 
+    # Resolve the harness FIRST. The spec is explicit that an unsupported harness is refused before any
+    # work starts; resolving it after the PR read meant `--harness claude` spent a network call and returned
+    # a 404 message about the repository instead of saying the harness was unavailable.
+    from .harness.factory import HarnessRefused, build_harness
+
+    try:
+        selection = build_harness(
+            name=getattr(args, "harness", "hermes"),
+            profile=getattr(args, "hermes_profile", "") or "",
+            allow_unverified=getattr(args, "allow_unverified_harness", False),
+        )
+    except HarnessRefused as exc:
+        print(str(exc), file=sys.stderr)
+        return exc.exit_code
+    harness = selection.harness
+
     token = os.environ.get("CODE_SHIPPER_GITHUB_TOKEN") or _read_token_quietly()
     if not token:
         print(
             "no GitHub token found. Set CODE_SHIPPER_GITHUB_TOKEN, or place one at "
-            "~/.config/code-shipper/tokens/fixer. Dry runs still need read access.",
+            "~/.config/code-shipper/tokens/fixer. A review reads the pull request, so it needs read "
+            "access even with --dry-run.",
             file=sys.stderr,
         )
         return 2
@@ -365,19 +382,6 @@ def cmd_review(args: argparse.Namespace) -> int:
         print(f"could not read PR #{args.pr} in {args.repo}: {exc}", file=sys.stderr)
         return 2
 
-    from .harness.factory import HarnessRefused, build_harness
-
-    try:
-        selection = build_harness(
-            name=getattr(args, "harness", "hermes"),
-            profile=getattr(args, "hermes_profile", "") or "",
-            allow_unverified=getattr(args, "allow_unverified_harness", False),
-        )
-    except HarnessRefused as exc:
-        # Refused before any work: exit 2, with doctor's own reason.
-        print(str(exc), file=sys.stderr)
-        return exc.exit_code
-    harness = selection.harness
     ok, reason = harness.available()
     if not ok:
         print(f"harness unavailable: {reason}", file=sys.stderr)

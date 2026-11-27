@@ -3,11 +3,10 @@
 Review, fix and get pull requests ready to merge, with any agent harness. Hermes Agent first.
 
 Status: **Phases 0-7 built against a sandbox repository. Not published.** Readers and writers are
-exercised on `Sahil-SS9/code-shipper-sandbox`; the TUI and Desktop surfaces are awaiting a redesign
-and visual sign-off and are not part of any distribution yet. The canonical documents are
-`docs/HANDOFF.md`, `docs/tech-spec.md`, `docs/decisions.md` and the per-phase reports in
-`docs/reports/`. Code-Shipper exposes no merge action on any surface, and that is asserted by tests
-rather than promised by documentation.
+exercised on `Sahil-SS9/code-shipper-sandbox`. The TUI and Desktop surfaces are designed, built and
+signed off. The canonical documents are `docs/HANDOFF.md`, `docs/tech-spec.md`, `docs/decisions.md`
+and the per-phase reports in `docs/reports/`. Code-Shipper exposes no merge action on any surface,
+and that is asserted by tests rather than promised by documentation.
 
 Code-Shipper is an open-source take on the workflow Anthropic calls Claude Ship, built to work
 across agent harnesses (Hermes, Claude Code, Codex, OpenCode, or a direct model API):
@@ -57,6 +56,96 @@ python3 -m code_shipper.cli --help
 There is nothing to install. `python3 -m code_shipper.cli` is the whole entry point; a wrapper script or a
 `pip install -e .` is optional.
 
+## First review
+
+Everything below was run as written, in this order, on a fresh clone with no GitHub token set. The output is
+quoted, not paraphrased.
+
+**What you need:** Python 3.11 or newer, and one working agent harness. For Hermes, that means
+`hermes chat` answers.
+
+You also need read access to the repository, even for `--dry-run`: a review reads the pull request, and the
+public sandbox is readable without a token. On a private repository, set `CODE_SHIPPER_GITHUB_TOKEN` or
+place a token at `~/.config/code-shipper/tokens/fixer`. To *post* a review the token needs Issues: write on
+that repository.
+
+**Which AI it uses.** Your default Hermes model, unless you pass `--hermes-profile NAME` or
+`--harness`. It costs whatever that model costs — Code-Shipper does not meter spend and cannot tell you a
+figure. Every review summary names the harness, profile and model that actually ran:
+
+```
+harness: hermes · profile: (default) · model: (harness default)
+```
+
+**1. Check the machine.**
+
+```
+$ python3 -m code_shipper.cli doctor
+container backends:
+  docker-rootless: VERIFIED
+  bubblewrap: UNVERIFIED
+```
+
+UNVERIFIED is not an error. It means the backend is present but its controls have not been measured here, so
+nothing depends on it.
+
+**2. Review something, without posting.**
+
+```
+$ python3 -m code_shipper.cli review 25 --repo Sahil-SS9/code-shipper-sandbox --level quick --dry-run
+```
+
+On the public sandbox this reports two real defects and exits **1**:
+
+```
+Merge risk: elevated — 2 important finding(s) open.
+
+  [important] scn05_clamp.py:4 clamp() never applies the high bound, so values above high come back unchanged
+  [important] scn05_clamp.py:9 window() off-by-one drops the last window and returns [] when len(values) == size
+```
+
+Exit codes: **0** clean, **1** findings, **2** usage or setup error, **3** review incomplete (a partial
+review is not a pass).
+
+**3. Post for real.** Drop `--dry-run` and add a token that can comment on the repository:
+
+```
+$ export GITHUB_TOKEN=...        # a fine-grained token with Issues: write on that repo
+$ python3 -m code_shipper.cli watch <pr> --repo owner/name
+```
+
+`watch` is the posting path. `review` computes and stores; it does not comment on GitHub, and says so.
+Nothing ever approves and nothing ever merges — on any surface, including the API behind the plugin.
+
+**4. See the board.**
+
+```
+$ python3 -m code_shipper.cli ui 25
+```
+
+With no terminal attached it prints plain text and no escape codes, which is what makes it safe in CI logs.
+
+**5. Use it from Hermes.**
+
+The plugin ships in `plugin/code-shipper` and validates against the installed Hermes:
+
+```
+$ hermes plugins validate plugin/code-shipper
+✓ manifest — plugin.yaml parses
+✓ manifest fields — name, version, description present
+✓ loadable — entry: __init__.py
+✓ declared tools — matches registrations
+```
+
+Install it from the repository URL, then restart the gateway and use `/ship` in a session:
+
+```
+$ hermes plugins install https://github.com/Sahil-SS9/code-shipper --enable
+```
+
+It is the same code on the same state directory as the CLI: a review started from either is visible from
+both.
+
 Run it from a checkout **outside** any credential directory. Code-Shipper refuses to mount `~/.ssh`,
 `~/.aws`, `~/.hermes/auth` and similar into a worker, and the error names the path and suggests
 `~/repos/<name>`. A checkout under `~/.hermes/repos/` is fine — only the credential locations are refused.
@@ -85,7 +174,7 @@ py -3 -m unittest discover -s tests -t . -q
 
 | Platform | Unit tests | A real contained fix run |
 |---|---|---|
-| Linux | **yes** — 1236 tests, 3.11 / 3.12 / 3.13, run locally | yes |
+| Linux | **yes** — 1408 tests, 3.11 / 3.12 / 3.13, run locally | yes |
 | macOS | **last passed on CI at `ccfbefa`; untested since** | no |
 | Windows | **last passed on CI at `ccfbefa`; untested since** | no |
 

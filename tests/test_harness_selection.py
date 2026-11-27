@@ -129,6 +129,29 @@ class TheProfileIsHonouredOrRefusedTests(unittest.TestCase):
         self.assertIn("hermes", message)
 
 
+class RefusalComesBeforeAnyNetworkWorkTests(unittest.TestCase):
+    def test_the_harness_is_resolved_before_the_pull_request_is_read(self) -> None:
+        """Found by running it: `--harness claude` fetched the PR and reported a 404 about the repository.
+
+        The spec says UNSUPPORTED is refused before any work starts. Ordering is the requirement, so it is
+        asserted against the source rather than only through a side effect.
+        """
+        source = CLI.read_text()
+        body = source[source.index("def cmd_review("):]
+        body = body[:body.index("def ", 10)]
+        harness_at = body.index("build_harness")
+        fetch_at = body.index("host.get_diff")
+        self.assertLess(harness_at, fetch_at,
+                        "the harness must be resolved before the PR is fetched")
+
+    def test_a_refused_harness_reports_the_harness_and_not_the_repository(self) -> None:
+        """The symptom the user saw was a 404 about the repo, which hid the real problem."""
+        source = CLI.read_text()
+        body = source[source.index("def cmd_review("):]
+        body = body[:body.index("def ", 10)]
+        self.assertLess(body.index("build_harness"), body.index("read_token"))
+
+
 class EverySummaryNamesWhatRanTests(unittest.TestCase):
     def test_summary_fields_carry_harness_profile_and_model(self) -> None:
         selection = build_harness(name="hermes", profile="review")
