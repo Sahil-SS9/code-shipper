@@ -1513,22 +1513,29 @@ def _resolve_pr_alias(args: argparse.Namespace) -> argparse.Namespace:
 def _prune_receipts_once(args: argparse.Namespace) -> None:
     """D16e: prune at the start of a command, never as a daemon, and never fatally.
 
-    A failed prune must not stop the command the user actually asked for: the receipts it did not reach are
+    A failed prune must not stop the command the user actually asked for: the records it did not reach are
     still there, and refusing to review because housekeeping failed would be worse than the delay. Pruning
     is skipped for read-only display commands, where it would be a surprising side effect on a `ui` call.
+
+    It prunes the broker ledger, which is what actually holds the record of a write. The first version
+    walked `<state>/receipts`, a directory nothing writes, so it reported success and deleted nothing.
+
+    Whether a pull request is closed is NOT determined here. There is no local signal for it, and making
+    network calls before every command would add a failure mode to the command the user asked for. With no
+    closed set, every record is kept — which is the correct default, and the reason this is a no-op until a
+    caller supplies that knowledge.
     """
     if getattr(args, "command", "") in {"ui", "ship-ui", "status", "doctor", "lessons", "stop"}:
         return
     try:
         from .receipts import prune_all
 
-        root = str(_state_dir() / "receipts")
         log: list[str] = []
-        prune_all(receipts_dir=root, log=log)
+        prune_all(state_dir=str(_state_dir()), log=log)
         for line in log:
-            print(f"receipts: {line}", file=sys.stderr)
+            print(f"ledger: {line}", file=sys.stderr)
     except Exception as exc:  # noqa: BLE001 - housekeeping must never block the real command
-        print(f"receipts: pruning skipped ({exc})", file=sys.stderr)
+        print(f"ledger: pruning skipped ({exc})", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
