@@ -14,6 +14,7 @@ from typing import Any
 from pathlib import Path
 
 from . import __version__
+from .surfaces.mantra import NEVER_MERGES
 
 
 # The exit-code contract, in one place: --help and the README both quote these.
@@ -460,6 +461,8 @@ def cmd_review(args: argparse.Namespace) -> int:
         # Deliberately not folded into the line above: `profile=` there is the review level's profile,
         # and a Hermes profile with the same word would read as the same thing.
         print(selection.banner())
+        # One constant, three callers (D16a). The phrase used to differ on each surface.
+        print(NEVER_MERGES)
         if args.dry_run:
             print("dry run: nothing was posted and no review state was stored")
         else:

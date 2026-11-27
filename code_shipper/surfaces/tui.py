@@ -13,6 +13,7 @@ Everything textual comes from the projection. This module decides layout only.
 
 from __future__ import annotations
 
+from .mantra import NEVER_MERGES
 from .projection import Projection
 
 # Below this width a two-column board would clip its own key bar.
@@ -216,9 +217,12 @@ def _key_bar(projection: Projection, width: int) -> list[str]:
     live = "  ".join(KEYMAP[a] for a in projection.actions() if a in KEYMAP)
     nav = "  ".join(f"{key} {label}" for key, label in STATIC_KEYS)
     tail = f"round {budget.fixed_rounds}/{budget.max_rounds} · {budget.clock_text()}"
+    # D16a: the sentence is on every surface in the same words. It sits on the footer rather than only in
+    # the NEXT text because a user can read the board without reading the next action.
     return [_pad(f" {nav}", width),
             _pad(f" {live}   {tail}", width),
-            _pad(f" {projection.authority_note}", width)]
+            _pad(f" {projection.authority_note}", width),
+            _pad(f" {NEVER_MERGES}", width)]
 
 
 def render(projection: Projection, *, width: int = DEFAULT_WIDTH,

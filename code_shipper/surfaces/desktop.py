@@ -14,6 +14,7 @@ Nothing here decides anything. Verdict names, Next-bar copy, lane states and inb
 
 from __future__ import annotations
 
+from .mantra import NEVER_MERGES
 from .projection import Projection
 
 # Tokens copied from the approved reference (phase5c-reference-gen.py), not imported.
@@ -361,7 +362,7 @@ def _empty(projection: Projection) -> str:
         '<div class="empty"><div class="ebox">'
         '<div class="eart"><i></i></div>'
         f'<h2>{_esc(headline)}</h2>'
-        f'<p>{_esc(sub)} It never approves and never merges.</p>'
+        f'<p>{_esc(sub)} {_esc(NEVER_MERGES)}</p>'
         '<div class="esteps">'
         '<div><span class="num">1</span>Initialise a policy<code>code-shipper init</code></div>'
         '<div><span class="num">2</span>Review one pull request<code>code-shipper review 25</code></div>'
@@ -416,7 +417,7 @@ def _status_bar(projection: Projection) -> str:
         budget.spend_text(),
     ]
     left = '<span class="sep"></span>'.join(f"<span>{p}</span>" for p in parts)
-    return f'{left}<span class="r">Advisory. Code-Shipper never approves or merges.</span>'
+    return f'{left}<span class="r">{NEVER_MERGES}</span>'
 
 
 def render(projection: Projection, *, title: str = "Code-Shipper", demo: bool = False) -> str:

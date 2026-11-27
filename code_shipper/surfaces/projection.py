@@ -20,6 +20,8 @@ screenshot in greyscale or a colour-blind reader loses nothing.
 
 from __future__ import annotations
 
+from .mantra import NEVER_MERGES
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -153,7 +155,9 @@ class Projection:
     profile: str = "standard"
     runtime_owner: str = ""
     sync_age_seconds: int = 0
-    authority_note: str = "Advisory. Code-Shipper never approves or merges."
+    # One sentence, one source (D16a). This used to read "Advisory. Code-Shipper never approves or
+    # merges." while the Desktop said something else again.
+    authority_note: str = NEVER_MERGES
     branch: str = ""
     base_ref: str = ""
     author: str = "kensei"
@@ -209,7 +213,8 @@ class Projection:
                     f"From: {names}. Code-Shipper cannot approve for them.",
                     "open-pr", "Open on GitHub")
         if self.state == "approvals-satisfied":
-            return ("Your rules are met. Merge on GitHub when you are ready",
+            # The agreed wording. "when you are ready" was a fifth phrasing of the same promise.
+            return (f"Your rules are met. {NEVER_MERGES}",
                     "Code-Shipper has finished. The merge is yours to make.",
                     "open-pr", "Open on GitHub")
         if self.state == "observe":

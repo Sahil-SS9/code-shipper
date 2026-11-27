@@ -151,7 +151,8 @@ class ProjectionTests(unittest.TestCase):
         # Superseded wording: 5b's note said the surfaces were unverified until the sandbox proof landed,
         # which stopped being true. The approved line is a standing rule, not a status.
         self.assertEqual(fixtures.state_findings().authority_note,
-                         "Advisory. Code-Shipper never approves or merges.")
+                         # D16a: the authority note is the one agreed sentence.
+                     "Code-Shipper never merges. Merge on GitHub.")
 
 
 class TuiTests(unittest.TestCase):

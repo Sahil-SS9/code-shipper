@@ -40,14 +40,17 @@ EXPECTED_HEADLINES = {
     "findings": "You decide on 2 important findings",
     "incomplete": "This review did not finish, so it proves nothing",
     "approvals-blocked": "2 more approvals needed on GitHub",
-    "approvals-satisfied": "Your rules are met. Merge on GitHub when you are ready",
+    # D16a supersedes the original spec copy: one sentence, everywhere, in the same words.
+    "approvals-satisfied": "Your rules are met. Code-Shipper never merges. Merge on GitHub.",
     "observe": "Rules are in observe mode. Nothing is blocking",
     "paused": "Paused at the review cap (12 of 12)",
     "stopped": "Stopped by Sahil-SS9 at round 1",
     "empty": "No pull requests to watch yet",
 }
 
-FOOTER = "Advisory. Code-Shipper never approves or merges."
+# D16a: the footer is now the agreed sentence rather than the advisory wording. One constant in
+# surfaces/mantra.py so the three surfaces cannot drift apart again.
+FOOTER = "Code-Shipper never merges. Merge on GitHub."
 
 # Every key label either surface can show.
 KEYMAP_ALL = [f"{k} {v}" for k, v in tui.KEYMAP.items()] + [f"{k} {v}" for k, v in tui.STATIC_KEYS]
